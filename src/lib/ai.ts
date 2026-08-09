@@ -22,8 +22,19 @@ export class AiError extends Error {
   }
 }
 
+/**
+ * The SDK's default timeout is generous enough that a stalled request looks
+ * like a frozen upload. Two minutes is well past a normal long-context call
+ * and still fails while the student is watching.
+ */
+const REQUEST_TIMEOUT_MS = 120_000;
+
 function model(params: Omit<ModelParams, 'model'> = {}): GenerativeModel {
-  return getGenerativeModel(getAiClient(), { model: GEMINI_MODEL, ...params });
+  return getGenerativeModel(
+    getAiClient(),
+    { model: GEMINI_MODEL, ...params },
+    { timeout: REQUEST_TIMEOUT_MS }
+  );
 }
 
 /** Turns an unknown SDK failure into something worth showing a student. */
@@ -37,7 +48,8 @@ function describe(error: unknown): string {
     return 'Gemini rate limit reached. Wait a moment and try again.';
   }
   if (/permission|403/i.test(raw)) return 'Permission denied by Firebase AI Logic.';
-  if (/network|fetch|Failed to fetch/i.test(raw)) return 'Network error talking to Gemini.';
+  if (/timed? ?out|deadline/i.test(raw)) return 'Gemini took too long to respond. Try again.';
+  if (/network|fetch|Failed to fetch|ERR_/i.test(raw)) return 'Network error talking to Gemini.';
   return raw;
 }
 

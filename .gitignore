@@ -42,3 +42,14 @@ yarn-error.*
 
 # pdf.js worker is copied from node_modules by scripts/copy-pdf-worker.mjs
 public/pdf.worker.min.mjs
+
+# local env files
+.env
+
+# Firebase emulator debug output
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+pubsub-debug.log
+ui-debug.log
+.firebase/

@@ -18,7 +18,7 @@ import { parseDueDate } from './dates';
 import { getBucket, getDb } from './firebase';
 import { stableId } from './ids';
 import { materialsStoragePath, paths } from './paths';
-import { ACCEPTED_MIME_TYPES, extractText, ParseError } from './parse';
+import { ACCEPTED_MIME_TYPES, canonicalMimeType, extractText, ParseError } from './parse';
 import { colorForSubject, type ExtractedMetadata } from './schema';
 
 export type IngestStage =
@@ -126,7 +126,10 @@ async function ingestAsset(
   const bytes = await readAsset(asset);
 
   report('extracting');
-  const { text } = await extractText(bytes, asset.name, asset.mimeType ?? '');
+  const { text, kind } = await extractText(bytes, asset.name, asset.mimeType ?? '');
+  // Label the upload by what parsing proved it to be, not by what the OS
+  // guessed, so storage.rules can stay strict about content types.
+  const contentType = canonicalMimeType(kind);
 
   // Gemini failing must not cost the student their upload, so the document is
   // still saved with filename-derived defaults.
@@ -156,7 +159,7 @@ async function ingestAsset(
   let downloadUrl: string | null = null;
   try {
     const uploaded = await uploadBytes(ref(getBucket(), storagePath), bytes, {
-      contentType: asset.mimeType || 'application/octet-stream',
+      contentType,
       customMetadata: { originalName: asset.name, subjectId },
     });
     downloadUrl = await getDownloadURL(uploaded.ref);
@@ -170,7 +173,7 @@ async function ingestAsset(
   await setDoc(documentRef, {
     title: metadata?.subjectName && moduleCode ? asset.name : fallbackName || asset.name,
     fileName: asset.name,
-    mimeType: asset.mimeType ?? 'application/octet-stream',
+    mimeType: contentType,
     sizeBytes: asset.size ?? bytes.byteLength,
     text,
     charCount: text.length,

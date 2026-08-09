@@ -2,13 +2,14 @@ import { Platform } from 'react-native';
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 import {
   browserLocalPersistence,
+  connectAuthEmulator,
   getAuth,
   indexedDBLocalPersistence,
   initializeAuth,
   type Auth,
 } from 'firebase/auth';
-import { getFirestore, type Firestore } from 'firebase/firestore';
-import { getStorage, type FirebaseStorage } from 'firebase/storage';
+import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore';
+import { connectStorageEmulator, getStorage, type FirebaseStorage } from 'firebase/storage';
 import { getAI, GoogleAIBackend, type AI } from 'firebase/ai';
 
 /**
@@ -36,6 +37,14 @@ export const missingFirebaseConfigKeys: string[] = REQUIRED_KEYS.filter(
 export const isFirebaseConfigured = missingFirebaseConfigKeys.length === 0;
 
 export const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-2.5-flash';
+
+/**
+ * Point Auth/Firestore/Storage at `firebase emulators:start` instead of the
+ * live project. AI Logic always calls the real service — there is no local
+ * Gemini emulator.
+ */
+const USE_EMULATORS = process.env.EXPO_PUBLIC_USE_FIREBASE_EMULATORS === '1';
+const EMULATOR_HOST = process.env.EXPO_PUBLIC_EMULATOR_HOST || '127.0.0.1';
 
 /**
  * Everything below is lazily created so that an unconfigured build still boots
@@ -77,17 +86,32 @@ export function getFirebaseAuth(): Auth {
     } else {
       authRef = getAuth(app);
     }
+    if (USE_EMULATORS) {
+      connectAuthEmulator(authRef, `http://${EMULATOR_HOST}:9099`, { disableWarnings: true });
+    }
   }
   return authRef;
 }
 
 export function getDb(): Firestore {
-  if (!dbRef) dbRef = getFirestore(getFirebaseApp());
+  if (!dbRef) {
+    dbRef = getFirestore(getFirebaseApp());
+    if (USE_EMULATORS) connectFirestoreEmulator(dbRef, EMULATOR_HOST, 8080);
+  }
   return dbRef;
 }
 
 export function getBucket(): FirebaseStorage {
-  if (!storageRef) storageRef = getStorage(getFirebaseApp());
+  if (!storageRef) {
+    storageRef = getStorage(getFirebaseApp());
+    // The SDK retries a failed upload for ten minutes by default, which shows
+    // up as an upload that never finishes. Fail inside a window a student will
+    // actually wait out — ingest degrades to "text saved, original missing"
+    // rather than hanging.
+    storageRef.maxUploadRetryTime = 120_000;
+    storageRef.maxOperationRetryTime = 30_000;
+    if (USE_EMULATORS) connectStorageEmulator(storageRef, EMULATOR_HOST, 9199);
+  }
   return storageRef;
 }
 

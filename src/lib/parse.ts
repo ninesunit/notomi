@@ -7,10 +7,29 @@ export class ParseError extends Error {
   }
 }
 
+export type FileKind = 'pdf' | 'docx' | 'text';
+
 export type ParsedFile = {
   text: string;
   pageCount: number | null;
+  kind: FileKind;
 };
+
+const CANONICAL_MIME: Record<FileKind, string> = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  text: 'text/plain',
+};
+
+/**
+ * The MIME type the OS hands us is unreliable — Markdown and some DOCX files
+ * arrive as an empty string or application/octet-stream, which storage.rules
+ * rightly rejects. By the time a file reaches the upload we have already
+ * parsed it, so we know what it really is and can label it accurately.
+ */
+export function canonicalMimeType(kind: FileKind): string {
+  return CANONICAL_MIME[kind];
+}
 
 export const ACCEPTED_MIME_TYPES = [
   'application/pdf',
@@ -36,7 +55,7 @@ export async function extractText(
     case 'docx':
       return extractDocx(data);
     case 'text':
-      return { text: new TextDecoder().decode(data), pageCount: null };
+      return { text: new TextDecoder().decode(data), pageCount: null, kind: 'text' };
     default:
       throw new ParseError(
         `Notomi can read PDF, DOCX, TXT and Markdown files. "${fileName}" is not one of those.`
@@ -101,7 +120,7 @@ async function extractPdf(data: ArrayBuffer): Promise<ParsedFile> {
       'No selectable text found — that PDF is probably a scan. Run it through OCR first.'
     );
   }
-  return { text, pageCount: pdf.numPages };
+  return { text, pageCount: pdf.numPages, kind: 'pdf' };
 }
 
 /**
@@ -131,5 +150,5 @@ async function extractDocx(data: ArrayBuffer): Promise<ParsedFile> {
 
   const text = value.trim();
   if (!text) throw new ParseError('That DOCX file appears to be empty.');
-  return { text, pageCount: null };
+  return { text, pageCount: null, kind: 'docx' };
 }
