@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Original uploads: materials/{userId}/{subjectId}/{documentId}-{fileName}
+    match /materials/{userId}/{allPaths=**} {
+      allow read, delete: if request.auth != null && request.auth.uid == userId;
+
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 50 * 1024 * 1024
+        && request.resource.contentType.matches(
+             'application/pdf'
+             + '|application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+             + '|application/msword'
+             + '|text/.*'
+           );
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

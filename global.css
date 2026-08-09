@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Web-only guards. React Native has no document/body, so these rules are inert
+ * on native and only take effect in the browser build.
+ */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    background-color: #f7f5ee;
+    /* iOS Safari: stop the whole page from rubber-banding; panes scroll instead. */
+    overscroll-behavior: none;
+  }
+
+  #root {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Respect the iPhone/iPad safe areas without pushing layout off-screen. */
+  body {
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+}

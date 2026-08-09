@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Notomi",
+    "slug": "notomi",
+    "version": "1.0.0",
+    "scheme": "notomi",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.notomi.app"
+    },
+    "android": {
+      "package": "com.notomi.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#F7F5EE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png",
+      "name": "Notomi",
+      "shortName": "Notomi",
+      "themeColor": "#F7F5EE",
+      "backgroundColor": "#F7F5EE",
+      "display": "standalone",
+      "orientation": "any"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

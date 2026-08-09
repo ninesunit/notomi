@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Every Notomi document lives under users/{userId}, so ownership is the
+    // only rule the app needs. Nothing is readable across accounts.
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId);
+      allow delete: if false;
+
+      match /subjects/{subjectId} {
+        allow read, write: if isOwner(userId);
+
+        match /documents/{documentId} {
+          allow read, delete: if isOwner(userId);
+          // Source text is passed wholesale into Gemini's context window, but a
+          // single Firestore document still has to fit under 1 MiB.
+          allow create, update: if isOwner(userId)
+            && request.resource.data.text is string
+            && request.resource.data.text.size() < 900000;
+        }
+      }
+
+      match /todos/{todoId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 500
+          && request.resource.data.isCompleted is bool
+          && request.resource.data.priority in ['low', 'medium', 'high'];
+      }
+
+      match /weak_concepts/{conceptId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Deny anything not explicitly matched above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
