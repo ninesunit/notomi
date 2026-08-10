@@ -21,11 +21,12 @@ export type SourceDocument = {
   mimeType: string;
   sizeBytes: number;
   /** Full extracted text. Passed wholesale into Gemini's long context window. */
-  text: string;
+  rawText: string;
   charCount: number;
-  /** Cloud Storage object path, e.g. materials/{uid}/{subjectId}/{docId}-name.pdf */
-  storagePath: string;
-  downloadUrl: string | null;
+  /** R2 object key: users/{userId}/{subjectId}/{fileName} */
+  r2FileKey: string;
+  /** Public or presigned viewing URL for the original file. */
+  r2FileUrl: string;
   moduleCode: string | null;
   summary: string | null;
   status: 'ready' | 'parsing' | 'failed';

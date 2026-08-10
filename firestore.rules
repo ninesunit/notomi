@@ -22,8 +22,8 @@ service cloud.firestore {
           // Source text is passed wholesale into Gemini's context window, but a
           // single Firestore document still has to fit under 1 MiB.
           allow create, update: if isOwner(userId)
-            && request.resource.data.text is string
-            && request.resource.data.text.size() < 900000;
+            && request.resource.data.rawText is string
+            && request.resource.data.rawText.size() < 900000;
         }
       }
 

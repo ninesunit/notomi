@@ -54,7 +54,7 @@ export default function Reader() {
       buildContext(
         documents.data.map((document) => ({
           title: document.fileName || document.title,
-          text: document.text ?? '',
+          text: document.rawText ?? '',
         }))
       ),
     [documents.data]

@@ -2,17 +2,24 @@ import { useMemo, useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { deleteDoc, doc, increment, orderBy, query, updateDoc } from 'firebase/firestore';
-import { deleteObject, ref } from 'firebase/storage';
+import { deleteDoc, doc, orderBy, query } from 'firebase/firestore';
+import { AddMaterialModal } from '@/components/AddMaterialModal';
 import { ScreenScroll } from '@/components/ScreenScroll';
-import { UploadButton } from '@/components/UploadButton';
 import { Badge, Button, Card, EmptyState, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { formatDateTime } from '@/lib/dates';
-import { getBucket, getDb } from '@/lib/firebase';
+import { getDb } from '@/lib/firebase';
 import { paths } from '@/lib/paths';
 import type { SourceDocument, Subject } from '@/lib/schema';
+import { deleteMaterial } from '@/services/ingestion';
+import { deleteR2File, getR2FileUrl } from '@/services/r2Storage';
+
+/** Rounding to "k" alone renders a short handout as a misleading "0k". */
+function formatChars(count: number): string {
+  if (count < 1000) return `${count} chars`;
+  return `${(count / 1000).toFixed(count < 10_000 ? 1 : 0)}k chars`;
+}
 
 export default function SubjectFolder() {
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>();
@@ -21,6 +28,7 @@ export default function SubjectFolder() {
   const db = getDb();
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const subject = useDocument<Subject>(paths.subject(db, uid, subjectId), [uid, subjectId]);
   const documents = useCollection<SourceDocument>(
@@ -52,12 +60,7 @@ export default function SubjectFolder() {
     setError(null);
     setRemoving(document.id);
     try {
-      if (document.storagePath) {
-        // A missing object must not block removing the Firestore record.
-        await deleteObject(ref(getBucket(), document.storagePath)).catch(() => undefined);
-      }
-      await deleteDoc(paths.document(db, uid, subjectId, document.id));
-      await updateDoc(paths.subject(db, uid, subjectId), { documentCount: increment(-1) });
+      await deleteMaterial(uid, subjectId, document.id, document.r2FileKey || null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -65,14 +68,28 @@ export default function SubjectFolder() {
     }
   }
 
+  /**
+   * Presigned URLs expire, so the link is minted on demand rather than stored.
+   * A configured public bucket base short-circuits this inside getR2FileUrl.
+   */
+  async function openOriginal(document: SourceDocument) {
+    setError(null);
+    try {
+      const url = document.r2FileKey ? await getR2FileUrl(document.r2FileKey) : document.r2FileUrl;
+      if (!url) throw new Error('This document has no stored original.');
+      await Linking.openURL(url);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }
+
   async function removeSubject() {
     setError(null);
     try {
+      // A missing object must not block removing the Firestore records.
       await Promise.all(
         documents.data.map((document) =>
-          document.storagePath
-            ? deleteObject(ref(getBucket(), document.storagePath)).catch(() => undefined)
-            : Promise.resolve()
+          document.r2FileKey ? deleteR2File(document.r2FileKey).catch(() => undefined) : Promise.resolve()
         )
       );
       await Promise.all(
@@ -128,7 +145,7 @@ export default function SubjectFolder() {
         subtitle={[
           subject.data.moduleCode,
           `${documents.data.length} ${documents.data.length === 1 ? 'source' : 'sources'}`,
-          totalChars > 0 ? `${Math.round(totalChars / 1000)}k characters of context` : null,
+          totalChars > 0 ? `${formatChars(totalChars)} of context` : null,
         ]
           .filter(Boolean)
           .join(' · ')}
@@ -151,7 +168,14 @@ export default function SubjectFolder() {
       ) : null}
 
       <View className="mb-8">
-        <UploadButton subjectId={subjectId} label="Add to this subject" variant="secondary" size="sm" />
+        <Button
+          label="Add material"
+          icon="upload-cloud"
+          variant="secondary"
+          size="sm"
+          onPress={() => setAddOpen(true)}
+          className="self-start"
+        />
       </View>
 
       {documents.loading ? (
@@ -194,7 +218,7 @@ export default function SubjectFolder() {
                           {[
                             formatDateTime(document.createdAt),
                             document.charCount
-                              ? `${Math.round(document.charCount / 1000)}k chars`
+                              ? formatChars(document.charCount)
                               : null,
                             document.sizeBytes
                               ? `${(document.sizeBytes / 1024 / 1024).toFixed(1)} MB`
@@ -206,11 +230,11 @@ export default function SubjectFolder() {
                       </View>
 
                       <View className="flex-row items-center">
-                        {document.downloadUrl ? (
+                        {document.r2FileKey || document.r2FileUrl ? (
                           <IconButton
                             icon="download"
-                            label={`Download ${document.fileName}`}
-                            onPress={() => void Linking.openURL(document.downloadUrl!)}
+                            label={`Open ${document.fileName}`}
+                            onPress={() => void openOriginal(document)}
                           />
                         ) : null}
                         <IconButton
@@ -244,6 +268,13 @@ export default function SubjectFolder() {
           </Text>
         </View>
       ) : null}
+
+      <AddMaterialModal
+        subjectId={subjectId}
+        subjectName={subject.data.name}
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+      />
     </ScreenScroll>
   );
 }

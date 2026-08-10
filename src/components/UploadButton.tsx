@@ -1,7 +1,7 @@
 import { Text, View } from 'react-native';
 import { Button } from './ui';
 import { useIngest } from '@/hooks/useIngest';
-import { STAGE_LABELS, type IngestResult } from '@/lib/ingest';
+import { STAGE_LABELS, type IngestResult } from '@/services/ingestion';
 
 type Props = {
   /** Pin every upload to one subject (used inside a subject folder). */

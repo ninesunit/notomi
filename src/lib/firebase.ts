@@ -9,7 +9,7 @@ import {
   type Auth,
 } from 'firebase/auth';
 import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore';
-import { connectStorageEmulator, getStorage, type FirebaseStorage } from 'firebase/storage';
+
 import { getAI, GoogleAIBackend, type AI } from 'firebase/ai';
 
 /**
@@ -53,7 +53,6 @@ const EMULATOR_HOST = process.env.EXPO_PUBLIC_EMULATOR_HOST || '127.0.0.1';
 let appRef: FirebaseApp | null = null;
 let authRef: Auth | null = null;
 let dbRef: Firestore | null = null;
-let storageRef: FirebaseStorage | null = null;
 let aiRef: AI | null = null;
 
 function assertConfigured(): void {
@@ -101,19 +100,10 @@ export function getDb(): Firestore {
   return dbRef;
 }
 
-export function getBucket(): FirebaseStorage {
-  if (!storageRef) {
-    storageRef = getStorage(getFirebaseApp());
-    // The SDK retries a failed upload for ten minutes by default, which shows
-    // up as an upload that never finishes. Fail inside a window a student will
-    // actually wait out — ingest degrades to "text saved, original missing"
-    // rather than hanging.
-    storageRef.maxUploadRetryTime = 120_000;
-    storageRef.maxOperationRetryTime = 30_000;
-    if (USE_EMULATORS) connectStorageEmulator(storageRef, EMULATOR_HOST, 9199);
-  }
-  return storageRef;
-}
+/**
+ * Original files live in Cloudflare R2 (see src/services/r2Storage.ts), not
+ * Firebase Storage, so no bucket handle is exported here.
+ */
 
 /**
  * Firebase AI Logic with the Gemini Developer API backend. The Firebase

@@ -1,9 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 import {
   createUserWithEmailAndPassword,
+  getRedirectResult,
+  GoogleAuthProvider,
   onAuthStateChanged,
   signInAnonymously,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  signInWithRedirect,
   signOut,
   updateProfile,
   type User,
@@ -16,6 +21,7 @@ type AuthValue = {
   initializing: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   continueAsGuest: () => Promise<void>;
   logOut: () => Promise<void>;
 };
@@ -46,6 +52,15 @@ export function authErrorMessage(error: unknown): string {
       return 'This sign-in method is disabled. Enable it in Firebase console > Authentication > Sign-in method.';
     case 'auth/admin-restricted-operation':
       return 'Anonymous sign-in is disabled. Enable it in Firebase console > Authentication > Sign-in method.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Google sign-in was cancelled.';
+    case 'auth/popup-blocked':
+      return 'Your browser blocked the Google popup. Allow popups for this site, or try again.';
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorised for Google sign-in. Add it in Firebase console > Authentication > Settings > Authorized domains.';
+    case 'auth/account-exists-with-different-credential':
+      return 'That email already has an account created with a different sign-in method.';
     default:
       return error instanceof Error ? error.message : 'Something went wrong. Try again.';
   }
@@ -78,6 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setInitializing(false);
       return;
     }
+
+    // Completes a signInWithRedirect that bounced through Google. Harmless
+    // when there is no pending redirect.
+    void getRedirectResult(getFirebaseAuth()).catch(() => undefined);
+
     return onAuthStateChanged(getFirebaseAuth(), (next) => {
       setUser(next);
       setInitializing(false);
@@ -101,6 +121,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const name = displayName.trim();
         if (name) await updateProfile(credential.user, { displayName: name });
         await ensureProfile(credential.user);
+      },
+      signInWithGoogle: async () => {
+        const auth = getFirebaseAuth();
+        const provider = new GoogleAuthProvider();
+        // Always show the chooser rather than silently reusing one Google
+        // session — students often have a personal and a university account.
+        provider.setCustomParameters({ prompt: 'select_account' });
+
+        if (Platform.OS !== 'web') {
+          // Native builds have no popup; the redirect flow is the only option.
+          await signInWithRedirect(auth, provider);
+          return;
+        }
+
+        try {
+          await signInWithPopup(auth, provider);
+        } catch (error) {
+          const code = (error as { code?: string }).code ?? '';
+          // Popups are blocked outright in some in-app browsers and iOS
+          // configurations; fall back rather than dead-ending the sign-in.
+          if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+            await signInWithRedirect(auth, provider);
+            return;
+          }
+          throw error;
+        }
       },
       continueAsGuest: async () => {
         await signInAnonymously(getFirebaseAuth());

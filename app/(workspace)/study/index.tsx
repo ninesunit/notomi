@@ -58,7 +58,7 @@ export default function StudyCenter() {
         const context = buildContext(
           snapshot.docs.map((document) => {
             const data = document.data() as SourceDocument;
-            return { title: data.fileName || data.title, text: data.text ?? '' };
+            return { title: data.fileName || data.title, text: data.rawText ?? '' };
           })
         );
 

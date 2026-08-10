@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { pickAndIngest, type IngestProgress, type IngestResult } from '@/lib/ingest';
+import { pickAndIngest, type IngestProgress, type IngestResult } from '@/services/ingestion';
 import { useAuth } from './useAuth';
 
 export type IngestSummary = {

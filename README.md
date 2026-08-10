@@ -13,34 +13,49 @@ reached through Firebase AI Logic, and document parsing happens on the device.
 | --- | --- |
 | Hosting (`notomii.web.app`) | Deployed |
 | Firestore rules | Deployed |
-| Auth: Email/Password + Anonymous | Enabled |
+| Auth: Email/Password, Google, Anonymous | Enabled |
 | Firestore composite indexes | None needed — every query is single-field |
-| **Cloud Storage for Firebase API** | **Not enabled — see below** |
+| Cloud Storage for Firebase | No longer used — replaced by Cloudflare R2 |
+| **R2 broker Worker** | **Not deployed — see below** |
 | **Firebase AI Logic API** | **Not enabled — see below** |
 
-Two Google APIs still have to be switched on by a project **Owner**. Until then
-the app runs, signs in and stores documents, but uploading the original file
-and every Gemini feature will fail with a clear in-app message.
+Two things are still outstanding, both needing access this environment does not
+have. Until they are done the app runs and signs in, documents are parsed and
+saved, and the UI says plainly what is unavailable.
 
-1. **Firebase AI Logic** — https://console.firebase.google.com/project/notomii/ailogic
-   Choose the **Gemini Developer API** backend. This enables
-   `firebasevertexai.googleapis.com` and is what powers metadata extraction,
-   chat, quizzes and audio overviews.
-2. **Cloud Storage** — https://console.firebase.google.com/project/notomii/storage
-   Click **Get started** to provision the default bucket
-   (`notomii.firebasestorage.app`). Then deploy the storage rules:
-   `npx firebase deploy --only storage`.
+1. **Deploy the R2 Worker.** `cd worker && npm install && npx wrangler deploy`
+   — see [`worker/README.md`](worker/README.md) for the three secrets and the
+   bucket CORS policy. Then set `EXPO_PUBLIC_R2_WORKER_URL` in `.env` and
+   redeploy. Until then originals are not stored; extracted text still is, so
+   chat, quizzes and audio overviews are unaffected.
 
-The Firebase **Admin SDK service account cannot enable APIs** — that needs
-`serviceusage.services.enable`, which is an Owner/Editor permission. Everything
-else in this project was deployed with that service account.
+2. **Enable Firebase AI Logic** —
+   https://console.firebase.google.com/project/notomii/ailogic — choose the
+   **Gemini Developer API** backend. This turns on
+   `firebasevertexai.googleapis.com`, which powers summaries, deadline
+   extraction, chat, quizzes and audio overviews. A project **Owner** must do
+   this: the Admin SDK service account lacks `serviceusage.services.enable`.
+
+## Where the R2 credential lives, and why
+
+The web app is a static bundle, so every `EXPO_PUBLIC_*` value is readable by
+anyone who opens the site. An R2 access key placed there would grant the public
+read, write and delete on the whole bucket.
+
+So the key lives in the Worker instead. The browser asks the Worker for a
+short-lived presigned URL and then talks to R2 directly; the Worker verifies
+the caller's Firebase ID token and refuses any key outside
+`users/{their-uid}/`. `src/services/r2Storage.ts` keeps a direct-signing path
+for native builds and local development, and deliberately refuses it in a
+production web build.
 
 ## How it works
 
 | Concern | Choice |
 | --- | --- |
 | UI | Expo Router + `react-native-web`, NativeWind (Tailwind) |
-| Auth / data / files | Firebase Auth, Cloud Firestore, Cloud Storage |
+| Auth / data | Firebase Auth (Email, Google, Anonymous), Cloud Firestore |
+| Original files | Cloudflare R2 (`notomi-materials`) via an S3-compatible client |
 | AI | Firebase AI Logic (`firebase/ai`) → Gemini. No OpenAI/Anthropic keys |
 | Parsing | `pdfjs-dist` and `mammoth` in the browser — nothing is uploaded to parse |
 | Retrieval | None. Gemini's long context takes the whole corpus verbatim |
@@ -70,11 +85,10 @@ In the [`notomii` project](https://console.firebase.google.com/u/0/project/notom
 
 1. **Project settings → General → Your apps** — add a **Web** app if there
    isn't one, and copy the SDK config.
-2. **Authentication → Sign-in method** — enable **Email/Password** and
-   **Anonymous** (the latter powers "Continue as guest").
+2. **Authentication → Sign-in method** — enable **Email/Password**, **Google**
+   and **Anonymous** (the last powers "Continue as guest").
 3. **Firestore Database** — create the database.
-4. **Storage** — enable it.
-5. **Build → AI Logic** — enable it and pick the **Gemini Developer API**
+4. **Build → AI Logic** — enable it and pick the **Gemini Developer API**
    backend. This is what lets the client call Gemini without a key.
 
 ### 2. Local config
@@ -90,22 +104,26 @@ which variables are missing rather than throwing an SDK error.
 
 The `EXPO_PUBLIC_*` values are inlined into the client bundle. That is expected
 for Firebase web config — they identify the project, they do not authorise
-anything. Access is enforced by `firestore.rules` and `storage.rules`. Restrict
+anything. Access is enforced by `firestore.rules`. Restrict
 the API key by HTTP referrer in the Google Cloud console before going public.
 
-### 3. Deploy the rules
+### 3. Cloudflare R2
+
+See [`worker/README.md`](worker/README.md). Deploy the Worker, set its three
+secrets, apply the bucket CORS policy, then put the Worker URL in `.env` as
+`EXPO_PUBLIC_R2_WORKER_URL`.
+
+### 4. Deploy the rules
 
 ```bash
 npx firebase login
 npx firebase use notomii
-npm run deploy:rules     # firestore rules + indexes + storage rules
+npm run deploy:rules     # firestore rules + indexes
 ```
 
 Nothing works without this — the default rules deny every read and write.
-(Firestore rules are already deployed; the storage half needs Storage enabled
-first.)
 
-### 4. Deploy the app
+### 5. Deploy the app
 
 ```bash
 npm run deploy:hosting   # builds dist/ and pushes to Firebase Hosting
@@ -122,12 +140,12 @@ the wrong project.
 ## Local development against emulators
 
 ```bash
-npx firebase emulators:start --only auth,firestore,storage
+npx firebase emulators:start --only auth,firestore
 ```
 
-Then set `EXPO_PUBLIC_USE_FIREBASE_EMULATORS=1` in `.env`. Auth, Firestore and
-Storage point at localhost; Gemini always calls the real service, since there
-is no local emulator for it.
+Then set `EXPO_PUBLIC_USE_FIREBASE_EMULATORS=1` in `.env`. Auth and Firestore
+point at localhost. Gemini and R2 always talk to the real services — neither
+has a local emulator.
 
 ## Data model
 
@@ -137,18 +155,21 @@ single ownership check.
 ```
 users/{uid}
   subjects/{subjectId}          name, moduleCode, color, documentCount
-    documents/{documentId}      text (full extracted source), summary,
-                                storagePath, downloadUrl, charCount
+    documents/{documentId}      title, rawText (full extracted source),
+                                r2FileKey, r2FileUrl, summary, charCount,
+                                createdAt
   todos/{todoId}                title, dueDate, isCompleted, priority,
                                 subTasks[], source: manual | syllabus
   weak_concepts/{conceptId}     concept, box (Leitner 0-4), nextReviewAt
 ```
 
-Original uploads live in Cloud Storage at
-`materials/{uid}/{subjectId}/{documentId}-{fileName}`.
+Originals live in Cloudflare R2 at `users/{userId}/{subjectId}/{fileName}`.
+The key carries a timestamp prefix so re-uploading a file with the same name
+cannot overwrite an object an older document still points at.
 
 ## Features
 
+- **Sign-in** — Email/Password, Google, or anonymous guest.
 - **Dashboard** — subjects, source counts, and the next deadlines.
 - **Library** — subject folders, each grouping its documents by module code.
 - **Easy Reader** — chat grounded in every source for a subject, answering with
@@ -161,7 +182,7 @@ Original uploads live in Cloud Storage at
 - **To-dos** — manual tasks and syllabus-extracted deadlines in one list,
   grouped Overdue / Today / Upcoming / No date, with nested subtasks.
 
-Ingestion is resilient by design: if Gemini or Cloud Storage is unreachable,
+Ingestion is resilient by design: if Gemini or R2 is unreachable,
 the extracted text is still saved and the document is flagged with what failed,
 rather than losing the upload.
 
@@ -173,7 +194,7 @@ rather than losing the upload.
 | `npm run ios` / `android` | Native dev (Expo Go / dev client) |
 | `npm run build:web` | Static export to `dist/` |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run deploy:rules` | Firestore rules + indexes, Storage rules |
+| `npm run deploy:rules` | Firestore rules + indexes |
 | `npm run deploy:hosting` | Build and deploy to Firebase Hosting |
 
 `postinstall` copies the pdf.js worker into `public/` so it is served

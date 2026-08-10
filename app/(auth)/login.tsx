@@ -1,20 +1,21 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { GoogleButton } from '@/components/GoogleButton';
 import { Button, Field, Notice } from '@/components/ui';
 import { authErrorMessage, useAuth } from '@/hooks/useAuth';
 
 type Mode = 'signIn' | 'signUp';
 
 export default function Login() {
-  const { signIn, signUp, continueAsGuest } = useAuth();
+  const { signIn, signUp, signInWithGoogle, continueAsGuest } = useAuth();
   const [mode, setMode] = useState<Mode>('signIn');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState<'form' | 'guest' | null>(null);
+  const [busy, setBusy] = useState<'form' | 'guest' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function run(action: () => Promise<void>, kind: 'form' | 'guest') {
+  async function run(action: () => Promise<void>, kind: 'form' | 'guest' | 'google') {
     setError(null);
     setBusy(kind);
     try {
@@ -101,14 +102,22 @@ export default function Login() {
             <View className="h-px flex-1 bg-line" />
           </View>
 
-          <Button
-            label="Continue as guest"
-            variant="secondary"
-            icon="user"
-            onPress={() => run(continueAsGuest, 'guest')}
-            loading={busy === 'guest'}
-            disabled={busy !== null}
-          />
+          <View className="gap-3">
+            <GoogleButton
+              onPress={() => run(signInWithGoogle, 'google')}
+              loading={busy === 'google'}
+              disabled={busy !== null}
+            />
+
+            <Button
+              label="Continue as guest"
+              variant="secondary"
+              icon="user"
+              onPress={() => run(continueAsGuest, 'guest')}
+              loading={busy === 'guest'}
+              disabled={busy !== null}
+            />
+          </View>
 
           <Pressable
             accessibilityRole="button"
