@@ -4,22 +4,36 @@ import { Feather } from '@expo/vector-icons';
 import { Button, Notice } from './ui';
 import { useUid } from '@/hooks/useAuth';
 import {
+  checkUploadSize,
   describeIngestError,
   pickMaterials,
   processUploadedMaterial,
-  STAGE_LABELS,
+  stageLabel,
   STAGE_ORDER,
   type IngestStage,
   type MaterialFile,
 } from '@/services/ingestion';
+import { classify, humanSize } from '@/services/fileProcessor';
 import { isR2Configured, r2ConfigHint } from '@/services/r2Storage';
+import type { FileKind } from '@/lib/schema';
 
 type FileState = {
   file: MaterialFile;
   stage: IngestStage | null;
+  kind: FileKind | null;
   status: 'queued' | 'working' | 'done' | 'failed';
   message?: string;
   deadlines?: number;
+};
+
+const KIND_ICON: Record<FileKind, 'file-text' | 'image' | 'film' | 'mic' | 'monitor'> = {
+  pdf: 'file-text',
+  docx: 'file-text',
+  text: 'file-text',
+  pptx: 'monitor',
+  image: 'image',
+  video: 'film',
+  audio: 'mic',
 };
 
 /**
@@ -55,7 +69,26 @@ export function AddMaterialModal({
     try {
       const picked = await pickMaterials();
       if (picked.length === 0) return;
-      setFiles(picked.map((file) => ({ file, stage: null, status: 'queued' })));
+
+      // Oversized files are rejected here rather than mid-upload, so the
+      // student can swap them out before starting a long batch.
+      setFiles(
+        picked.map((file) => {
+          const kind = classify(file.name, file.mimeType ?? '');
+          const entry: FileState = {
+            file,
+            stage: null,
+            kind: kind === 'unknown' ? null : kind,
+            status: 'queued',
+          };
+          try {
+            checkUploadSize(file);
+          } catch (caught) {
+            return { ...entry, status: 'failed', message: describeIngestError(caught) };
+          }
+          return entry;
+        })
+      );
     } catch (caught) {
       setError(describeIngestError(caught));
     }
@@ -71,13 +104,16 @@ export function AddMaterialModal({
           previous.map((entry, i) => (i === index ? { ...entry, ...patch } : entry))
         );
 
+      // Already rejected at pick time (oversized or unsupported).
+      if (files[index].status === 'failed') continue;
+
       update({ status: 'working' });
       try {
         const result = await processUploadedMaterial(
           files[index].file,
           subjectId,
           uid,
-          (stage) => update({ stage })
+          (stage, kind) => update(kind ? { stage, kind } : { stage })
         );
         update({
           status: 'done',
@@ -138,8 +174,9 @@ export function AddMaterialModal({
               <View className="items-center gap-4 rounded-xl border border-dashed border-line px-6 py-10">
                 <Feather name="file-plus" size={22} color="#9A9488" />
                 <Text className="text-center text-sm leading-5 text-muted">
-                  Choose PDF, DOCX, TXT or Markdown files. Notomi reads them on your device, stores
-                  the original in Cloudflare R2, and asks Gemini for a summary and any deadlines.
+                  Choose PDFs, Word docs, slide decks, notes, photos of a whiteboard, or a lecture
+                  recording. Notomi reads documents on your device and uses Gemini to OCR images
+                  and transcribe audio and video, then stores the original in Cloudflare R2.
                 </Text>
                 <Button label="Choose files" icon="folder" variant="secondary" onPress={() => void choose()} />
               </View>
@@ -212,7 +249,9 @@ function FileRow({ entry }: { entry: FileState }) {
               ? 'check-circle'
               : entry.status === 'failed'
                 ? 'alert-circle'
-                : 'file-text'
+                : entry.kind
+                  ? KIND_ICON[entry.kind]
+                  : 'file-text'
           }
           size={15}
           color={entry.status === 'done' ? '#2E6F5E' : entry.status === 'failed' ? '#B0443E' : '#6F6A5F'}
@@ -224,6 +263,8 @@ function FileRow({ entry }: { entry: FileState }) {
           <Text className="text-xs font-medium text-pine">
             +{entry.deadlines} deadline{entry.deadlines === 1 ? '' : 's'}
           </Text>
+        ) : entry.file.size ? (
+          <Text className="text-xs text-subtle">{humanSize(entry.file.size)}</Text>
         ) : null}
       </View>
 
@@ -240,7 +281,7 @@ function FileRow({ entry }: { entry: FileState }) {
           : entry.status === 'done'
             ? entry.message ?? 'Added to your library'
             : entry.stage
-              ? STAGE_LABELS[entry.stage]
+              ? stageLabel(entry.stage, entry.kind)
               : 'Ready to upload'}
       </Text>
     </View>

@@ -243,6 +243,95 @@ export async function summarizeDocument(text: string): Promise<string> {
   }
 }
 
+/**
+ * Free-form prose generation for callers that supply their own full prompt
+ * (see services/aiNotes). Goes through the same model fallback and error
+ * mapping as everything else.
+ */
+export async function generateProse(prompt: string, temperature = 0.4): Promise<string> {
+  return generate({ generationConfig: { temperature } }, prompt);
+}
+
+/* ------------------------------------------------------------------ *
+ * Multimodal input
+ * ------------------------------------------------------------------ */
+
+/**
+ * Gemini takes binary parts as base64. Chunked so a large file does not blow
+ * the call stack the way String.fromCharCode(...bytes) would.
+ */
+function toBase64(data: ArrayBuffer): string {
+  const bytes = new Uint8Array(data);
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+async function generateFromMedia(
+  data: ArrayBuffer,
+  mimeType: string,
+  prompt: string
+): Promise<string> {
+  try {
+    const result = await model({ generationConfig: { temperature: 0.1 } }).generateContent([
+      { inlineData: { data: toBase64(data), mimeType } },
+      { text: prompt },
+    ]);
+    return result.response.text();
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    if (/too large|payload|request entity/i.test(raw)) {
+      throw new AiError('That file is too large for a single Gemini request. Split it and retry.');
+    }
+    throw new AiError(describe(error), error);
+  }
+}
+
+/** OCR plus layout reading for an image of notes, slides or a whiteboard. */
+export async function readImage(data: ArrayBuffer, mimeType: string): Promise<string> {
+  return (
+    await generateFromMedia(
+      data,
+      mimeType,
+      `Transcribe every piece of text in this image exactly, preserving reading order.
+
+- Keep the structure: headings stay headings, bullets stay bullets, and tables
+  come out as Markdown tables.
+- Transcribe formulas in LaTeX between $ delimiters.
+- For a diagram or chart, transcribe its labels and then add one line beginning
+  "Figure:" describing what it shows.
+- Do not summarise, correct or comment. Output the content only.
+- If the image contains no text at all, reply with exactly: NO_TEXT_FOUND`
+    )
+  ).replace(/^NO_TEXT_FOUND$/m, '');
+}
+
+/** Transcript plus lecture takeaways for a recording. */
+export async function transcribeMedia(
+  data: ArrayBuffer,
+  mimeType: string,
+  kind: 'audio' | 'video'
+): Promise<string> {
+  return generateFromMedia(
+    data,
+    mimeType,
+    `This is a recorded lecture (${kind}). Produce two sections.
+
+## Transcript
+The full spoken content, lightly cleaned: drop filler words and false starts,
+keep every substantive sentence. Mark speaker changes as "Speaker 1:" when more
+than one voice is present. Insert [mm:ss] timestamps at each topic change.
+${kind === 'video' ? 'Include text visible on slides as "[Slide: …]" where it appears.\n' : ''}
+## Key Takeaways
+The main teaching points as bullets, in the order they were covered, with the
+timestamp each begins at. Cover what a student would need for an exam, not the
+administrative asides.`
+  );
+}
+
 /** Today's date, so the model can resolve "week 5" and bare day/month dates. */
 function todayContext(): string {
   const now = new Date();

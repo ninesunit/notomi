@@ -1,7 +1,7 @@
 import { Text, View } from 'react-native';
 import { Button } from './ui';
 import { useIngest } from '@/hooks/useIngest';
-import { STAGE_LABELS, type IngestResult } from '@/services/ingestion';
+import { stageLabel, type IngestResult } from '@/services/ingestion';
 
 type Props = {
   /** Pin every upload to one subject (used inside a subject folder). */
@@ -44,7 +44,7 @@ export function UploadButton({
       {busy && progress ? (
         <View className="gap-0.5">
           <Text className="text-xs font-medium text-muted">
-            {STAGE_LABELS[progress.stage]}
+            {stageLabel(progress.stage, progress.kind)}
             {progress.total > 1 ? ` (${progress.index}/${progress.total})` : ''}
           </Text>
           {progress.fileName ? (

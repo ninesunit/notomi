@@ -9,17 +9,12 @@ import { Badge, Button, Card, EmptyState, IconButton, Loading, Notice, PageHeade
 import { useUid } from '@/hooks/useAuth';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { formatDateTime } from '@/lib/dates';
+import { formatChars } from '@/lib/format';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { SourceDocument, Subject } from '@/lib/schema';
 import { deleteMaterial } from '@/services/ingestion';
 import { deleteR2File, getR2FileUrl } from '@/services/r2Storage';
-
-/** Rounding to "k" alone renders a short handout as a misleading "0k". */
-function formatChars(count: number): string {
-  if (count < 1000) return `${count} chars`;
-  return `${(count / 1000).toFixed(count < 10_000 ? 1 : 0)}k chars`;
-}
 
 export default function SubjectFolder() {
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>();
@@ -210,26 +205,35 @@ export default function SubjectFolder() {
                         />
                       </View>
 
-                      <View className="flex-1 gap-1">
-                        <Text className="text-[15px] font-semibold leading-5 text-ink">
-                          {document.fileName}
-                        </Text>
-                        <Text className="text-xs text-subtle">
-                          {[
-                            formatDateTime(document.createdAt),
-                            document.charCount
-                              ? formatChars(document.charCount)
-                              : null,
-                            document.sizeBytes
-                              ? `${(document.sizeBytes / 1024 / 1024).toFixed(1)} MB`
-                              : null,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </Text>
-                      </View>
+                      {/* The whole row opens the note reader — the icons beside
+                          it stay reserved for the destructive actions. */}
+                      <Link href={`/library/${subjectId}/${document.id}`} asChild>
+                        <Pressable className="flex-1 gap-1">
+                          <Text className="text-[15px] font-semibold leading-5 text-ink">
+                            {document.fileName}
+                          </Text>
+                          <Text className="text-xs text-subtle">
+                            {[
+                              formatDateTime(document.createdAt),
+                              document.charCount
+                                ? formatChars(document.charCount)
+                                : null,
+                              document.sizeBytes
+                                ? `${(document.sizeBytes / 1024 / 1024).toFixed(1)} MB`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </Text>
+                        </Pressable>
+                      </Link>
 
                       <View className="flex-row items-center">
+                        {document.notes ? (
+                          <View className="mr-1">
+                            <Badge label="Notes" tone="pine" />
+                          </View>
+                        ) : null}
                         {document.r2FileKey || document.r2FileUrl ? (
                           <IconButton
                             icon="download"

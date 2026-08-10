@@ -17,21 +17,26 @@ import { parseDueDate } from '@/lib/dates';
 import { getDb } from '@/services/firebase';
 import { stableId } from '@/lib/ids';
 import { paths } from '@/lib/paths';
-import { colorForSubject, type ExtractedDeadline, type ExtractedMetadata } from '@/lib/schema';
+import { colorForSubject, type ExtractedDeadline, type ExtractedMetadata, type FileKind } from '@/lib/schema';
 import {
   ACCEPTED_MIME_TYPES,
   canonicalMimeType,
+  classify,
   extractText,
+  humanSize,
   ParseError,
-} from './textExtractor';
+  SIZE_LIMITS,
+  type ParsedFile,
+} from './fileProcessor';
 import { deleteR2File, isR2Configured, r2ConfigHint, R2Error, uploadFileToR2 } from './r2Storage';
 
 /**
  * The ingestion pipeline.
  *
- * Parse on the device, push the original to Cloudflare R2, then write text and
- * metadata to Firestore and let Gemini summarise it. The file's bytes only
- * ever go to R2; the text goes to Firestore and Gemini.
+ * Extract text (locally where the format allows, via Gemini for images and
+ * media), push the original to Cloudflare R2, then write text and metadata to
+ * Firestore and let Gemini summarise it. The file's bytes only ever go to R2
+ * and — for images and A/V — to Gemini; the text goes to Firestore and Gemini.
  */
 
 export type IngestStage =
@@ -46,12 +51,23 @@ export type IngestStage =
 export const STAGE_LABELS: Record<IngestStage, string> = {
   picking: 'Choosing file…',
   reading: 'Reading file…',
-  extracting: 'Extracting text on your device…',
+  extracting: 'Extracting text…',
   uploading: 'Uploading the original to Cloudflare R2…',
   analyzing: 'Asking Gemini for the key details…',
   saving: 'Saving to your library…',
   done: 'Done',
 };
+
+/**
+ * The extract step means different things per format, and the slow ones (OCR,
+ * transcription) are exactly the ones a student needs told about.
+ */
+export function stageLabel(stage: IngestStage, kind?: FileKind | null): string {
+  if (stage !== 'extracting' || !kind) return STAGE_LABELS[stage];
+  if (kind === 'image') return 'Reading the image with Gemini OCR…';
+  if (kind === 'audio' || kind === 'video') return `Transcribing the ${kind} with Gemini…`;
+  return 'Extracting text on your device…';
+}
 
 /** Ordered for progress bars. `picking`/`done` are not real work. */
 export const STAGE_ORDER: IngestStage[] = [
@@ -64,6 +80,8 @@ export const STAGE_ORDER: IngestStage[] = [
 
 export type IngestProgress = {
   stage: IngestStage;
+  /** What the file turned out to be; drives the wording of the extract stage. */
+  kind: FileKind | null;
   fileName: string;
   index: number;
   total: number;
@@ -88,7 +106,42 @@ export type MaterialFile = {
   file?: File | null;
 };
 
+/**
+ * A parse, done once. Extraction for images and A/V costs a Gemini call, so the
+ * result is threaded through the pipeline rather than recomputed when a file
+ * has to be classified before it can be filed.
+ */
+type PreparedFile = {
+  bytes: ArrayBuffer;
+  parsed: ParsedFile;
+  metadata: ExtractedMetadata | null;
+  /** Set when metadata extraction failed, so it is not retried per stage. */
+  metadataError?: string;
+};
+
 export { ACCEPTED_MIME_TYPES };
+
+/**
+ * Rejects an oversized file before a byte is read. The picker reports a size on
+ * every platform, and reading a 400 MB video into memory just to refuse it is
+ * how a browser tab dies.
+ */
+export function checkUploadSize(file: MaterialFile): void {
+  const kind = classify(file.name, file.mimeType ?? '');
+  if (kind === 'unknown' || !file.size) return;
+
+  const limit = SIZE_LIMITS[kind];
+  if (file.size > limit) {
+    throw new ParseError(
+      `"${file.name}" is ${humanSize(file.size)}, over the ${humanSize(limit)} limit for ` +
+        `${kind} files. ${
+          kind === 'video' || kind === 'audio'
+            ? 'Trim the recording or split it into shorter parts.'
+            : 'Try compressing or splitting it.'
+        }`
+    );
+  }
+}
 
 /* ------------------------------------------------------------------ *
  * Single-file pipeline
@@ -97,7 +150,7 @@ export { ACCEPTED_MIME_TYPES };
 /**
  * Runs one file end to end into a known subject.
  *
- *   1. extract text locally (textExtractor)
+ *   1. extract text (fileProcessor — locally, or via Gemini for images and A/V)
  *   2. upload the original binary to R2 (r2Storage)
  *   3. write the document to users/{userId}/subjects/{subjectId}/documents
  *   4. summarise with Gemini and fan deadlines out into the to-do list
@@ -109,17 +162,16 @@ export async function processUploadedMaterial(
   file: MaterialFile,
   subjectId: string,
   userId: string,
-  onProgress?: (stage: IngestStage) => void
+  onProgress?: (stage: IngestStage, kind?: FileKind) => void,
+  prepared?: PreparedFile
 ): Promise<IngestResult> {
   const db = getDb();
-  const report = (stage: IngestStage) => onProgress?.(stage);
+  const report = (stage: IngestStage, kind?: FileKind) => onProgress?.(stage, kind);
 
-  report('reading');
-  const bytes = await readFileBytes(file);
-
-  report('extracting');
-  const { text, kind } = await extractText(bytes, file.name, file.mimeType ?? '');
-  const contentType = canonicalMimeType(kind);
+  const ready = prepared ?? (await prepareFile(file, report));
+  const { bytes, parsed } = ready;
+  const { text, kind } = parsed;
+  const contentType = canonicalMimeType(kind, file.mimeType);
 
   const documentRef = doc(paths.documents(db, userId, subjectId));
   const warnings: string[] = [];
@@ -151,16 +203,11 @@ export async function processUploadedMaterial(
   }
 
   report('analyzing');
-  let metadata: ExtractedMetadata | null = null;
+  let metadata = ready.metadata;
   let fallbackSummary: string | null = null;
-  try {
-    metadata = await extractMetadata(text);
-  } catch (error) {
-    warnings.push(
-      error instanceof AiError
-        ? `Gemini could not analyse it: ${error.message}`
-        : 'Automatic analysis failed.'
-    );
+
+  if (!metadata) {
+    if (ready.metadataError) warnings.push(ready.metadataError);
 
     // Structured extraction is the harder ask. If the schema defeated it, a
     // plain summary usually still works, so the student is not left with a
@@ -182,10 +229,15 @@ export async function processUploadedMaterial(
     sizeBytes: file.size ?? bytes.byteLength,
     rawText: text,
     charCount: text.length,
+    sourceKind: kind,
     r2FileKey,
     r2FileUrl,
     moduleCode: metadata?.moduleCode ?? null,
     summary: metadata?.summary ?? fallbackSummary,
+    // Notes are generated on demand from the reader — they are a much larger
+    // generation than a summary and not every upload needs them.
+    notes: null,
+    notesGeneratedAt: null,
     status: 'ready',
     error: warnings.join(' ') || null,
     createdAt: serverTimestamp(),
@@ -252,7 +304,7 @@ export async function pickMaterials(): Promise<MaterialFile[]> {
 export async function pickAndIngest(
   options: IngestOptions
 ): Promise<{ results: IngestResult[]; errors: { fileName: string; message: string }[] }> {
-  options.onProgress?.({ stage: 'picking', fileName: '', index: 0, total: 0 });
+  options.onProgress?.({ stage: 'picking', kind: null, fileName: '', index: 0, total: 0 });
 
   const files = await pickMaterials();
   if (files.length === 0) return { results: [], errors: [] };
@@ -269,43 +321,79 @@ export async function ingestFiles(
 
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
-    const report = (stage: IngestStage) =>
-      options.onProgress?.({ stage, fileName: file.name, index: index + 1, total: files.length });
+    const report = (stage: IngestStage, kind?: FileKind) =>
+      options.onProgress?.({
+        stage,
+        kind: kind ?? null,
+        fileName: file.name,
+        index: index + 1,
+        total: files.length,
+      });
 
     try {
-      // Without a fixed subject the file has to be classified before it can be
-      // filed, so the text is extracted once here and reused.
-      const subjectId = options.subjectId ?? (await resolveSubjectForFile(file, options.uid));
-      results.push(await processUploadedMaterial(file, subjectId, options.uid, report));
+      // Without a fixed subject the file has to be read and analysed before it
+      // can be filed, so the whole prepare step is done once and handed on.
+      const prepared = await prepareFile(file, report);
+      const subjectId = options.subjectId ?? (await subjectForFile(file, prepared, options.uid));
+      results.push(
+        await processUploadedMaterial(file, subjectId, options.uid, report, prepared)
+      );
     } catch (error) {
       errors.push({ fileName: file.name, message: describeIngestError(error) });
     }
   }
 
-  options.onProgress?.({ stage: 'done', fileName: '', index: 0, total: 0 });
+  options.onProgress?.({ stage: 'done', kind: null, fileName: '', index: 0, total: 0 });
   return { results, errors };
+}
+
+/**
+ * Reads and parses a file, then asks Gemini what it is. Runs at most once per
+ * upload — for an image or a lecture recording, extraction *is* a Gemini call.
+ */
+async function prepareFile(
+  file: MaterialFile,
+  report: (stage: IngestStage, kind?: FileKind) => void
+): Promise<PreparedFile> {
+  checkUploadSize(file);
+
+  report('reading');
+  const bytes = await readFileBytes(file);
+
+  const kind = classify(file.name, file.mimeType ?? '');
+  report('extracting', kind === 'unknown' ? undefined : kind);
+  const parsed = await extractText(bytes, file.name, file.mimeType ?? '');
+
+  report('analyzing', parsed.kind);
+  try {
+    return { bytes, parsed, metadata: await extractMetadata(parsed.text) };
+  } catch (error) {
+    return {
+      bytes,
+      parsed,
+      metadata: null,
+      metadataError:
+        error instanceof AiError
+          ? `Gemini could not analyse it: ${error.message}`
+          : 'Automatic analysis failed.',
+    };
+  }
 }
 
 /**
  * Picks the folder a loose upload belongs in. Gemini names the subject when it
  * can; otherwise the filename does.
  */
-async function resolveSubjectForFile(file: MaterialFile, uid: string): Promise<string> {
-  const bytes = await readFileBytes(file);
-  const { text } = await extractText(bytes, file.name, file.mimeType ?? '');
-
-  let metadata: ExtractedMetadata | null = null;
-  try {
-    metadata = await extractMetadata(text);
-  } catch {
-    // Filed under the filename instead; the upload still succeeds.
-  }
-
+async function subjectForFile(
+  file: MaterialFile,
+  prepared: PreparedFile,
+  uid: string
+): Promise<string> {
   const fallback = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
   return findOrCreateSubject(
     uid,
-    metadata?.subjectName || fallback || 'Untitled subject',
-    metadata?.moduleCode ?? null
+    prepared.metadata?.subjectName || fallback || 'Untitled subject',
+    prepared.metadata?.moduleCode ?? null
   );
 }
 
@@ -356,6 +444,10 @@ export async function findOrCreateSubject(
       moduleCode,
       color: colorForSubject(moduleCode || subjectName),
       documentCount: 0,
+      // Unfiled until the program planner assigns it a semester.
+      semesterId: null,
+      creditHours: 0,
+      grade: null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     },

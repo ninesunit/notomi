@@ -2,6 +2,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Link, usePathname } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
+import { GlobalSearch } from './GlobalSearch';
 import { isActive, NAV_ITEMS } from './nav';
 
 /**
@@ -28,6 +29,8 @@ export function Sidebar() {
               <Text className="text-lg font-bold tracking-tight text-ink">Notomi</Text>
             </Pressable>
           </Link>
+
+          <GlobalSearch />
 
           <View className="gap-1">
             {NAV_ITEMS.map((item) => {

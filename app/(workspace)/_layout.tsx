@@ -1,6 +1,7 @@
-import { ActivityIndicator, Platform, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, useWindowDimensions, View } from 'react-native';
 import { Slot } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GlobalSearch } from '@/components/GlobalSearch';
 import { IngestBanner } from '@/components/IngestBanner';
 import { BottomTabs, Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/hooks/useAuth';
@@ -56,6 +57,19 @@ export default function WorkspaceLayout() {
         <View
           className={`flex-1 min-w-0 h-full bg-paper ${Platform.OS === 'web' ? 'overflow-hidden' : ''}`}
         >
+          {/* Without the rail there is nowhere else for the wordmark or search
+              to live, so a compact bar carries both. */}
+          {showRail ? null : (
+            <View className="flex-row items-center gap-3 border-b border-line bg-sand px-4 py-2.5">
+              <View className="h-7 w-7 items-center justify-center rounded-lg bg-ink">
+                <Text className="text-xs font-bold text-paper">N</Text>
+              </View>
+              <View className="flex-1">
+                <GlobalSearch />
+              </View>
+            </View>
+          )}
+
           <IngestBanner />
           {/* min-h-0 lets this shrink below its content so the banner is never
               pushed off-screen and the scroller keeps its own bounds. */}

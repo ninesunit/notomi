@@ -14,8 +14,25 @@ service cloud.firestore {
       allow create, update: if isOwner(userId);
       allow delete: if false;
 
+      match /semesters/{semesterId} {
+        allow read, write: if isOwner(userId);
+      }
+
       match /subjects/{subjectId} {
         allow read, write: if isOwner(userId);
+
+        // Chat sessions and their messages are scoped to the owning subject.
+        match /chats/{chatId} {
+          allow read, write: if isOwner(userId);
+
+          match /messages/{messageId} {
+            allow read, delete: if isOwner(userId);
+            allow create, update: if isOwner(userId)
+              && request.resource.data.sender in ['user', 'ai']
+              && request.resource.data.text is string
+              && request.resource.data.text.size() < 100000;
+          }
+        }
 
         match /documents/{documentId} {
           allow read, delete: if isOwner(userId);

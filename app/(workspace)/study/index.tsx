@@ -12,6 +12,11 @@ import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import { isDue, recordHit, recordMiss } from '@/lib/srs';
 import type { QuizQuestion, SourceDocument, Subject, WeakConcept } from '@/lib/schema';
+import {
+  cardsFromQuiz,
+  cardsFromWeakConcepts,
+  downloadAnkiDeck,
+} from '@/services/ankiExport';
 
 type Phase = 'choosing' | 'generating' | 'active' | 'results';
 
@@ -34,6 +39,7 @@ export default function StudyCenter() {
   const [answers, setAnswers] = useState<(number | null)[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [reviewMode, setReviewMode] = useState(false);
+  const [exported, setExported] = useState<string | null>(null);
 
   const subject = useMemo(
     () => subjects.data.find((candidate) => candidate.id === subjectId) ?? null,
@@ -41,6 +47,21 @@ export default function StudyCenter() {
   );
 
   const dueConcepts = useMemo(() => weak.data.filter((concept) => isDue(concept)), [weak.data]);
+
+  /** Exports whatever the student is looking at: a finished quiz, or the pile. */
+  const exportDeck = useCallback(
+    async (cards: ReturnType<typeof cardsFromWeakConcepts>, name: string | null) => {
+      setError(null);
+      setExported(null);
+      try {
+        const count = await downloadAnkiDeck(cards, name);
+        setExported(`${count} card${count === 1 ? '' : 's'} exported. Import the .csv in Anki.`);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    },
+    []
+  );
 
   const start = useCallback(
     async (targetId: string, focusWeak: boolean) => {
@@ -298,6 +319,12 @@ export default function StudyCenter() {
           </View>
         )}
 
+        {exported ? (
+          <View className="mb-6">
+            <Notice tone="pine" title="Deck saved" body={exported} />
+          </View>
+        ) : null}
+
         <View className="flex-row flex-wrap gap-2">
           <Button
             label="Another quiz"
@@ -312,6 +339,14 @@ export default function StudyCenter() {
               onPress={() => subjectId && void start(subjectId, true)}
             />
           ) : null}
+          <Button
+            label="Export to Anki (.csv)"
+            icon="download"
+            variant="secondary"
+            onPress={() =>
+              void exportDeck(cardsFromQuiz(questions, subject?.name ?? null), subject?.name ?? null)
+            }
+          />
           <Button label="Done" variant="ghost" onPress={reset} />
         </View>
       </ScreenScroll>
@@ -325,11 +360,28 @@ export default function StudyCenter() {
       <PageHeader
         title="Study Center"
         subtitle="Quizzes written from your own uploads. Anything you miss comes back on a schedule."
+        actions={
+          weak.data.length > 0 ? (
+            <Button
+              label="Export to Anki (.csv)"
+              icon="download"
+              variant="secondary"
+              size="sm"
+              onPress={() => void exportDeck(cardsFromWeakConcepts(weak.data), null)}
+            />
+          ) : undefined
+        }
       />
 
       {error ? (
         <View className="mb-6">
           <Notice title="Could not build the quiz" body={error} />
+        </View>
+      ) : null}
+
+      {exported ? (
+        <View className="mb-6">
+          <Notice tone="pine" title="Deck saved" body={exported} />
         </View>
       ) : null}
 

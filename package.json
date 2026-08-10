@@ -17,6 +17,7 @@
     "expo-speech": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "firebase": "^12.17.1",
+    "jszip": "^3.10.1",
     "mammoth": "^1.12.1",
     "nativewind": "^4.2.6",
     "pdfjs-dist": "^5.7.284",
