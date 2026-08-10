@@ -3,6 +3,7 @@ import { Link, usePathname } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { GlobalSearch } from './GlobalSearch';
+import { Logo } from './Logo';
 import { isActive, NAV_ITEMS, TAB_ITEMS } from './nav';
 
 /**
@@ -25,9 +26,7 @@ export function Sidebar() {
         <View className="min-h-0 flex-1 gap-4">
           <Link href="/" asChild>
             <Pressable className="flex-row items-center gap-2.5 px-2 py-1">
-              <View className="h-8 w-8 items-center justify-center rounded-lg bg-ink">
-                <Text className="text-sm font-bold text-paper">N</Text>
-              </View>
+              <Logo size={30} />
               <Text className="text-lg font-bold tracking-tight text-ink">Notomi</Text>
             </Pressable>
           </Link>

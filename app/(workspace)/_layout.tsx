@@ -3,9 +3,11 @@ import { Slot } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { IngestBanner } from '@/components/IngestBanner';
+import { Logo } from '@/components/Logo';
 import { BottomTabs, Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/hooks/useAuth';
 import { IngestProvider } from '@/hooks/useIngest';
+import { UndoProvider } from '@/hooks/useUndo';
 
 /** Below this the rail becomes a bottom bar (iPhone portrait, split-view iPad). */
 export const RAIL_BREAKPOINT = 900;
@@ -48,6 +50,7 @@ export default function WorkspaceLayout() {
 
   return (
     <IngestProvider>
+      <UndoProvider>
       <View
         className={`w-full h-full min-h-screen bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}
         style={{ paddingTop: showRail ? 0 : insets.top }}
@@ -61,9 +64,7 @@ export default function WorkspaceLayout() {
               to live, so a compact bar carries both. */}
           {showRail ? null : (
             <View className="flex-row items-center gap-3 border-b border-line bg-sand px-4 py-2.5">
-              <View className="h-7 w-7 items-center justify-center rounded-lg bg-ink">
-                <Text className="text-xs font-bold text-paper">N</Text>
-              </View>
+              <Logo size={28} />
               <View className="flex-1">
                 <GlobalSearch />
               </View>
@@ -79,11 +80,18 @@ export default function WorkspaceLayout() {
         </View>
 
         {showRail ? null : (
-          <View style={{ paddingBottom: insets.bottom }} className="bg-sand">
+          // A minimum of 8px under the bar so it never sits flush on a device
+          // that reports no inset, and the full inset on one that does — the
+          // iPhone home indicator otherwise overlaps the last row of labels.
+          <View
+            style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+            className="bg-sand"
+          >
             <BottomTabs />
           </View>
         )}
       </View>
+      </UndoProvider>
     </IngestProvider>
   );
 }

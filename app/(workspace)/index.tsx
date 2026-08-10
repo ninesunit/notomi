@@ -4,6 +4,7 @@ import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
 import { CountdownChip } from '@/components/Countdown';
+import { ProgramMap } from '@/components/ProgramMap';
 import { CardGrid, GridItem, SubjectCard } from '@/components/SubjectCard';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { SubjectModal } from '@/components/SubjectModal';
@@ -11,20 +12,21 @@ import { UploadButton } from '@/components/UploadButton';
 import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
+import { useIngest } from '@/hooks/useIngest';
 import { bucketFor, countdown, formatDue, toDate } from '@/lib/dates';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import {
-  DAY_FULL,
   minutesToLabel,
   todayIndex,
   type ClassBlock,
+  type Semester,
   type StudySession,
   type Subject,
   type Todo,
 } from '@/lib/schema';
-import { formatMinutes, summarizeStreak } from '@/services/sessions';
-import { classesForDay } from '@/services/timetable';
+import { summarizeStreak } from '@/services/sessions';
+import { academicClasses, classesForDay } from '@/services/timetable';
 
 export default function Dashboard() {
   const uid = useUid();
@@ -45,16 +47,28 @@ export default function Dashboard() {
   const todos = useCollection<Todo>(query(paths.todos(db, uid), orderBy('dueDate', 'asc')), [uid]);
   const classes = useCollection<ClassBlock>(paths.classes(db, uid), [uid]);
   const sessions = useCollection<StudySession>(paths.sessions(db, uid), [uid]);
+  const semesters = useCollection<Semester>(
+    query(paths.semesters(db, uid), orderBy('order', 'asc')),
+    [uid]
+  );
 
   const [editing, setEditing] = useState<Subject | null>(null);
+  const { start } = useIngest();
 
   const open = useMemo(() => todos.data.filter((todo) => !todo.isCompleted), [todos.data]);
 
   const streak = useMemo(() => summarizeStreak(sessions.data), [sessions.data]);
   const today = todayIndex();
-  const todaysClasses = useMemo(
-    () => classesForDay(classes.data, today),
-    [classes.data, today]
+
+  /** Only classes tied to a live subject; a stale block is not a real class. */
+  const liveClasses = useMemo(
+    () => academicClasses(classes.data, subjects.data),
+    [classes.data, subjects.data]
+  );
+  const todaysClasses = useMemo(() => classesForDay(liveClasses, today), [liveClasses, today]);
+  const tomorrowsClasses = useMemo(
+    () => classesForDay(liveClasses, (today + 1) % 7),
+    [liveClasses, today]
   );
 
   /**
@@ -110,33 +124,37 @@ export default function Dashboard() {
         </View>
       ) : null}
 
+      {/* The hero answers the question a student actually opens the app with:
+          where do I need to be, and when. */}
+      <ClassHero classes={todaysClasses} tomorrow={tomorrowsClasses} loading={classes.loading} />
+
+      <MetricPills
+        streak={streak.current}
+        classesToday={todaysClasses.length}
+        pending={open.length}
+        overdue={overdueCount}
+      />
+
+      <QuickActions onUpload={() => void start()} />
+
       {nextExam?.due ? <ExamBanner title={nextExam.todo.title} due={nextExam.due} /> : null}
 
-      <View className="mb-6 flex-row flex-wrap gap-4">
-        <View className="flex-1 grow" style={{ minWidth: 240, flexBasis: 240 }}>
-          <StreakCard
-            current={streak.current}
-            longest={streak.longest}
-            studiedToday={streak.studiedToday}
-            minutesToday={streak.minutesToday}
+      {semesters.data.length > 0 ? (
+        <View className="mb-8 gap-3">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-lg font-semibold tracking-tight text-ink">Where you are</Text>
+            <Link href="/program" asChild>
+              <Button label="Full map" variant="ghost" size="sm" />
+            </Link>
+          </View>
+          <ProgramMap
+            compact
+            semesters={semesters.data}
+            subjects={subjects.data}
+            classes={classes.data}
           />
         </View>
-        <View className="flex-1 grow" style={{ minWidth: 280, flexBasis: 280 }}>
-          <TodayClasses classes={todaysClasses} day={today} loading={classes.loading} />
-        </View>
-      </View>
-
-      <View className="mb-8 flex-row flex-wrap gap-3">
-        <Stat icon="folder" value={subjects.data.length} label="Subjects" />
-        <Stat icon="file-text" value={sourceCount} label="Sources" />
-        <Stat icon="check-square" value={open.length} label="Open tasks" />
-        <Stat
-          icon="alert-circle"
-          value={overdueCount}
-          label="Overdue"
-          tone={overdueCount > 0 ? 'rose' : 'neutral'}
-        />
-      </View>
+      ) : null}
 
       <View className="mb-6 flex-row items-center justify-between">
         <Text className="text-lg font-semibold tracking-tight text-ink">Your subjects</Text>
@@ -233,6 +251,235 @@ export default function Dashboard() {
  * ------------------------------------------------------------------ */
 
 /**
+ * The hero: what is happening with classes right now.
+ *
+ * Three states, resolved against the wall clock — before the next class, inside
+ * one, or finished for the day. Each says something different and offers a
+ * different next step, which is the point: a card that always says the same
+ * thing is a header, not a hero.
+ */
+function ClassHero({
+  classes,
+  tomorrow,
+  loading,
+}: {
+  classes: ClassBlock[];
+  tomorrow: ClassBlock[];
+  loading: boolean;
+}) {
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+  const inProgress = classes.find(
+    (block) => block.startMinute <= nowMinutes && block.endMinute > nowMinutes
+  );
+  const next = classes.find((block) => block.startMinute > nowMinutes);
+
+  if (loading) {
+    return (
+      <View className="mb-5 h-28 justify-center rounded-2xl border border-line bg-surface px-5">
+        <Text className="text-sm text-muted">Checking your timetable…</Text>
+      </View>
+    );
+  }
+
+  if (classes.length === 0) {
+    return (
+      <Link href="/timetable" asChild>
+        <Pressable
+          accessibilityRole="link"
+          className="mb-5 flex-row items-center gap-4 rounded-2xl border border-dashed border-line bg-surface p-5"
+        >
+          <Text className="text-2xl">🗓️</Text>
+          <View className="flex-1 gap-0.5">
+            <Text className="text-[15px] font-semibold text-ink">No classes today</Text>
+            <Text className="text-[13px] text-muted">
+              Scan a screenshot of your schedule to fill in your week.
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={16} color="#9A9488" />
+        </Pressable>
+      </Link>
+    );
+  }
+
+  if (inProgress) {
+    const remaining = inProgress.endMinute - nowMinutes;
+    return (
+      <View
+        className="mb-5 overflow-hidden rounded-2xl border p-5"
+        style={{ backgroundColor: `${inProgress.color}1A`, borderColor: `${inProgress.color}59` }}
+      >
+        <View className="flex-row items-center gap-2">
+          <View className="h-2 w-2 rounded-full" style={{ backgroundColor: inProgress.color }} />
+          <Text className="text-[11px] font-bold uppercase tracking-wider" style={{ color: inProgress.color }}>
+            In class now
+          </Text>
+        </View>
+
+        <Text className="mt-2 text-[22px] font-bold leading-7 text-ink" numberOfLines={2}>
+          {inProgress.title}
+        </Text>
+        <Text className="mt-1 text-[13px] text-muted">
+          {[
+            `Ends at ${minutesToLabel(inProgress.endMinute)}`,
+            `${remaining} min left`,
+            inProgress.venue,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </Text>
+
+        {inProgress.subjectId ? (
+          <View className="mt-4 flex-row">
+            <Link href={`/library/${inProgress.subjectId}`} asChild>
+              <Button label="View class notes" icon="book-open" size="sm" />
+            </Link>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  if (next) {
+    const minutesAway = next.startMinute - nowMinutes;
+    const soon = minutesAway <= 30;
+
+    return (
+      <View
+        className="mb-5 overflow-hidden rounded-2xl border p-5"
+        style={{ backgroundColor: `${next.color}14`, borderColor: `${next.color}40` }}
+      >
+        <Text className="text-[11px] font-bold uppercase tracking-wider" style={{ color: next.color }}>
+          Next class
+        </Text>
+
+        <Text className="mt-2 text-[22px] font-bold leading-7 text-ink" numberOfLines={2}>
+          {next.title}
+        </Text>
+
+        <View className="mt-1 flex-row flex-wrap items-center gap-2">
+          <Text className={`text-[13px] font-semibold ${soon ? 'text-accent' : 'text-muted'}`}>
+            {minutesAway < 60
+              ? `in ${minutesAway} min`
+              : `at ${minutesToLabel(next.startMinute)}`}
+          </Text>
+          {next.venue ? <Text className="text-[13px] text-muted">· {next.venue}</Text> : null}
+          {next.kind ? <Text className="text-[13px] text-subtle">· {next.kind}</Text> : null}
+        </View>
+
+        {next.subjectId ? (
+          <View className="mt-4 flex-row">
+            <Link href={`/library/${next.subjectId}`} asChild>
+              <Button label="View class notes" icon="book-open" size="sm" />
+            </Link>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  return (
+    <View className="mb-5 rounded-2xl border border-pine/25 bg-pine-soft p-5">
+      <Text className="text-[22px] font-bold leading-7 text-ink">All done for today 🎉</Text>
+      <Text className="mt-1 text-[13px] text-muted">
+        {tomorrow.length === 0
+          ? 'Nothing scheduled tomorrow either.'
+          : `Tomorrow: ${tomorrow
+              .slice(0, 3)
+              .map((block) => `${block.title} at ${minutesToLabel(block.startMinute)}`)
+              .join(', ')}${tomorrow.length > 3 ? ` and ${tomorrow.length - 3} more` : ''}.`}
+      </Text>
+
+      <View className="mt-4 flex-row flex-wrap gap-2">
+        <Link href="/focus" asChild>
+          <Button label="Start a focus block" icon="target" size="sm" />
+        </Link>
+        <Link href="/study" asChild>
+          <Button label="Study" icon="zap" variant="secondary" size="sm" />
+        </Link>
+      </View>
+    </View>
+  );
+}
+
+/** One horizontal row of pills — denser than four stacked metric boxes. */
+function MetricPills({
+  streak,
+  classesToday,
+  pending,
+  overdue,
+}: {
+  streak: number;
+  classesToday: number;
+  pending: number;
+  overdue: number;
+}) {
+  return (
+    <View className="mb-5 flex-row flex-wrap gap-2">
+      <Pill href="/focus" emoji={streak > 0 ? '🔥' : '🌱'} value={streak} label="day streak" />
+      <Pill href="/timetable" emoji="🗓️" value={classesToday} label="classes today" />
+      <Pill href="/todos" emoji="✅" value={pending} label="tasks open" />
+      {overdue > 0 ? (
+        <Pill href="/todos" emoji="⚠️" value={overdue} label="overdue" tone="rose" />
+      ) : null}
+    </View>
+  );
+}
+
+function Pill({
+  href,
+  emoji,
+  value,
+  label,
+  tone = 'neutral',
+}: {
+  href: string;
+  emoji: string;
+  value: number;
+  label: string;
+  tone?: 'neutral' | 'rose';
+}) {
+  return (
+    <Link href={href as never} asChild>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${value} ${label}`}
+        className={`flex-row items-center gap-2 rounded-full border px-3.5 py-2 ${
+          tone === 'rose' ? 'border-rose/30 bg-rose-soft' : 'border-line bg-surface'
+        }`}
+      >
+        <Text className="text-sm">{emoji}</Text>
+        <Text className={`text-sm font-bold ${tone === 'rose' ? 'text-rose' : 'text-ink'}`}>
+          {value}
+        </Text>
+        <Text className="text-[13px] text-muted">{label}</Text>
+      </Pressable>
+    </Link>
+  );
+}
+
+function QuickActions({ onUpload }: { onUpload: () => void }) {
+  return (
+    <View className="mb-8 flex-row flex-wrap gap-2">
+      <Link href="/timetable" asChild>
+        <Button label="Scan schedule" icon="camera" variant="secondary" size="sm" />
+      </Link>
+      <Button
+        label="Upload material"
+        icon="upload-cloud"
+        variant="secondary"
+        size="sm"
+        onPress={onUpload}
+      />
+      <Link href="/todos" asChild>
+        <Button label="New task" icon="plus" variant="secondary" size="sm" />
+      </Link>
+    </View>
+  );
+}
+
+/**
  * Exam countdown.
  *
  * Only shown when something exam-shaped is actually coming, and it leads the
@@ -271,122 +518,6 @@ function ExamBanner({ title, due }: { title: string; due: Date }) {
         <CountdownChip due={due} />
       </Pressable>
     </Link>
-  );
-}
-
-function StreakCard({
-  current,
-  longest,
-  studiedToday,
-  minutesToday,
-}: {
-  current: number;
-  longest: number;
-  studiedToday: boolean;
-  minutesToday: number;
-}) {
-  return (
-    <Link href="/focus" asChild>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={`${current} day study streak`}
-        className="h-full gap-3 rounded-2xl border border-line bg-accent-soft/50 p-5"
-      >
-        <View className="flex-row items-center gap-2">
-          <Text className="text-2xl">{current > 0 ? '🔥' : '🌱'}</Text>
-          <Text className="text-[11px] font-bold uppercase tracking-wider text-muted">
-            Study streak
-          </Text>
-        </View>
-
-        <Text className="text-[32px] font-bold leading-9 text-ink">
-          {current} <Text className="text-base font-semibold text-muted">day{current === 1 ? '' : 's'}</Text>
-        </Text>
-
-        <Text className="text-[13px] leading-5 text-muted">
-          {studiedToday
-            ? `${formatMinutes(minutesToday)} today${longest > current ? ` · best run ${longest} days` : ' · keep it going'}`
-            : current > 0
-              ? 'Study today to keep the run alive.'
-              : 'Finish a focus block to start a streak.'}
-        </Text>
-      </Pressable>
-    </Link>
-  );
-}
-
-/**
- * Today's classes, straight off the timetable. A student's first question in
- * the morning is "where do I have to be", and it should not need a click.
- */
-function TodayClasses({
-  classes,
-  day,
-  loading,
-}: {
-  classes: ClassBlock[];
-  day: number;
-  loading: boolean;
-}) {
-  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
-
-  return (
-    <View className="h-full gap-3 rounded-2xl border border-line bg-surface p-5">
-      <View className="flex-row items-center justify-between">
-        <Text className="text-[11px] font-bold uppercase tracking-wider text-muted">
-          {DAY_FULL[day]}
-        </Text>
-        <Link href="/timetable" asChild>
-          <Pressable accessibilityRole="link" hitSlop={6}>
-            <Text className="text-xs font-medium text-accent">Timetable</Text>
-          </Pressable>
-        </Link>
-      </View>
-
-      {loading ? (
-        <Text className="text-sm text-muted">Loading…</Text>
-      ) : classes.length === 0 ? (
-        <View className="flex-1 justify-center gap-1 py-2">
-          <Text className="text-sm text-muted">No classes today.</Text>
-          <Text className="text-xs text-subtle">
-            Scan a screenshot of your schedule to fill this in.
-          </Text>
-        </View>
-      ) : (
-        <View className="gap-2">
-          {classes.slice(0, 4).map((block) => {
-            const done = block.endMinute <= nowMinutes;
-            const now = block.startMinute <= nowMinutes && block.endMinute > nowMinutes;
-
-            return (
-              <View key={block.id} className={`flex-row items-center gap-3 ${done ? 'opacity-45' : ''}`}>
-                <View
-                  className="h-8 w-1 rounded-full"
-                  style={{ backgroundColor: block.color }}
-                />
-                <View className="flex-1">
-                  <Text className="text-[13px] font-semibold text-ink" numberOfLines={1}>
-                    {block.title}
-                  </Text>
-                  <Text className="text-[11px] text-subtle" numberOfLines={1}>
-                    {[minutesToLabel(block.startMinute), block.venue].filter(Boolean).join(' · ')}
-                  </Text>
-                </View>
-                {now ? (
-                  <View className="rounded-full bg-accent px-2 py-0.5">
-                    <Text className="text-[10px] font-bold text-paper">NOW</Text>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-
-          {classes.length > 4 ? (
-            <Text className="text-[11px] text-subtle">+{classes.length - 4} more today</Text>
-          ) : null}
-        </View>
-      )}
-    </View>
   );
 }
 

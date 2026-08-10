@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
+import { ImportReview } from '@/components/ImportReview';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { Sheet } from '@/components/Sheet';
 import { Button, Card, EmptyState, Field, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
@@ -14,20 +16,28 @@ import {
   minutesToClock,
   minutesToLabel,
   parseClock,
+  ROUTINE_CATEGORIES,
   todayIndex,
   type ClassBlock,
+  type RoutineBlock,
+  type Semester,
   type Subject,
 } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { pickMaterials, type MaterialFile } from '@/services/ingestion';
 import {
+  academicClasses,
   classesForDay,
   clearTimetable,
   deleteClass,
+  deleteRoutine,
+  routinesForDay,
   saveClass,
-  saveClassBlocks,
+  saveRoutine,
   scanTimetableImage,
+  unlinkedClasses,
   type ClassInput,
+  type StagedImport,
 } from '@/services/timetable';
 
 /**
@@ -55,11 +65,41 @@ export default function Timetable() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [selectedDay, setSelectedDay] = useState(todayIndex());
 
-  const classes = useCollection<ClassBlock>(
+  const [showRoutines, setShowRoutines] = useState(true);
+  const [editingRoutine, setEditingRoutine] = useState<RoutineBlock | 'new' | null>(null);
+  const [staged, setStaged] = useState<StagedImport | null>(null);
+
+  const semesters = useCollection<Semester>(
+    query(paths.semesters(db, uid), orderBy('order', 'asc')),
+    [uid]
+  );
+
+  const allClasses = useCollection<ClassBlock>(
     query(paths.classes(db, uid), orderBy('startMinute', 'asc')),
     [uid]
   );
+  const routines = useCollection<RoutineBlock>(
+    query(paths.routines(db, uid), orderBy('startMinute', 'asc')),
+    [uid]
+  );
   const subjects = useCollection<Subject>(paths.subjects(db, uid), [uid]);
+
+  /**
+   * The grid renders academic blocks only, and only for subjects that still
+   * exist. A block whose subject was deleted is surfaced separately rather
+   * than drawn as a class the student no longer takes.
+   */
+  const classes = useMemo(
+    () => ({
+      ...allClasses,
+      data: academicClasses(allClasses.data, subjects.data),
+    }),
+    [allClasses, subjects.data]
+  );
+  const unlinked = useMemo(
+    () => unlinkedClasses(allClasses.data, subjects.data),
+    [allClasses.data, subjects.data]
+  );
 
   const grid = width >= GRID_BREAKPOINT;
 
@@ -69,11 +109,15 @@ export default function Timetable() {
    * ocean of empty night.
    */
   const [firstHour, lastHour] = useMemo(() => {
-    if (classes.data.length === 0) return [8, 18];
-    const start = Math.min(...classes.data.map((block) => block.startMinute));
-    const end = Math.max(...classes.data.map((block) => block.endMinute));
+    const blocks = [
+      ...classes.data,
+      ...(showRoutines ? routines.data : []),
+    ];
+    if (blocks.length === 0) return [8, 18];
+    const start = Math.min(...blocks.map((block) => block.startMinute));
+    const end = Math.max(...blocks.map((block) => block.endMinute));
     return [Math.max(0, Math.floor(start / 60) - 1), Math.min(24, Math.ceil(end / 60) + 1)];
-  }, [classes.data]);
+  }, [classes.data, routines.data, showRoutines]);
 
   const scan = useCallback(async () => {
     setError(null);
@@ -92,28 +136,16 @@ export default function Timetable() {
     try {
       const file = picked[0];
       const bytes = file.file ? await file.file.arrayBuffer() : await (await fetch(file.uri)).arrayBuffer();
-      const result = await scanTimetableImage(
-        bytes,
-        file.name,
-        file.mimeType ?? '',
-        subjects.data
-      );
-
-      await saveClassBlocks(uid, result.blocks);
-      setNotice(
-        `Added ${result.imported} class${result.imported === 1 ? '' : 'es'} from your screenshot.` +
-          (result.skipped > 0
-            ? ` ${result.skipped} row${result.skipped === 1 ? '' : 's'} could not be read and ${
-                result.skipped === 1 ? 'was' : 'were'
-              } skipped — add ${result.skipped === 1 ? 'it' : 'them'} by hand.`
-            : ' Check the times before you rely on them.')
+      // Staged, not saved: the student reviews before anything is written.
+      setStaged(
+        await scanTimetableImage(bytes, file.name, file.mimeType ?? '', subjects.data)
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setScanning(false);
     }
-  }, [subjects.data, uid]);
+  }, [subjects.data]);
 
   const remove = useCallback(
     async (classId: string) => {
@@ -187,22 +219,99 @@ export default function Timetable() {
             />
           }
         />
-      ) : grid ? (
-        <WeekGrid
-          classes={classes.data}
-          firstHour={firstHour}
-          lastHour={lastHour}
-          onSelect={(block) => setEditing(block)}
-        />
       ) : (
-        <DayAgenda
-          classes={classes.data}
-          day={selectedDay}
-          onDay={setSelectedDay}
-          onSelect={(block) => setEditing(block)}
-          onDelete={(id) => void remove(id)}
-        />
+        <View className="gap-4">
+          {/* The overlay is a layer, not a filter on one list: routines have
+              their own collection, so hiding them is a render decision. */}
+          <View className="flex-row flex-wrap items-center gap-2">
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityState={{ checked: showRoutines }}
+              onPress={() => setShowRoutines((value) => !value)}
+              className={`flex-row items-center gap-2 rounded-lg border px-3 py-1.5 ${
+                showRoutines ? 'border-line bg-sand' : 'border-line bg-surface'
+              }`}
+            >
+              <Feather
+                name={showRoutines ? 'eye' : 'eye-off'}
+                size={13}
+                color={showRoutines ? '#1B1A17' : '#9A9488'}
+              />
+              <Text
+                className={`text-xs font-semibold ${showRoutines ? 'text-ink' : 'text-subtle'}`}
+              >
+                Routines{routines.data.length > 0 ? ` (${routines.data.length})` : ''}
+              </Text>
+            </Pressable>
+
+            <Button
+              label="Add routine"
+              icon="plus"
+              variant="ghost"
+              size="sm"
+              onPress={() => setEditingRoutine('new')}
+            />
+          </View>
+
+          {grid ? (
+            <WeekGrid
+              classes={classes.data}
+              routines={showRoutines ? routines.data : []}
+              firstHour={firstHour}
+              lastHour={lastHour}
+              onSelect={(block) => setEditing(block)}
+              onSelectRoutine={(block) => setEditingRoutine(block)}
+            />
+          ) : (
+            <DayAgenda
+              classes={classes.data}
+              routines={showRoutines ? routines.data : []}
+              day={selectedDay}
+              onDay={setSelectedDay}
+              onSelect={(block) => setEditing(block)}
+              onSelectRoutine={(block) => setEditingRoutine(block)}
+              onDelete={(id) => void remove(id)}
+            />
+          )}
+
+          {unlinked.length > 0 ? (
+            <Notice
+              tone="amber"
+              title={`${unlinked.length} class${unlinked.length === 1 ? '' : 'es'} not linked to a subject`}
+              body={`The timetable only shows classes tied to a subject in your library: ${unlinked
+                .map((block) => block.title)
+                .slice(0, 4)
+                .join(', ')}. Open each one and pick its subject, or delete it.`}
+            />
+          ) : null}
+        </View>
       )}
+
+      {unlinked.length > 0 ? (
+        <View className="mt-4 gap-2">
+          {unlinked.map((block) => (
+            <View
+              key={block.id}
+              className="flex-row items-center gap-3 rounded-xl border border-dashed border-line p-3"
+            >
+              <Feather name="link-2" size={14} color="#9A9488" />
+              <Text className="flex-1 text-sm text-ink" numberOfLines={1}>
+                {block.title}
+              </Text>
+              <Text className="text-xs text-subtle">
+                {DAY_LABELS[block.day]} {minutesToLabel(block.startMinute)}
+              </Text>
+              <IconButton icon="edit-2" label={`Link ${block.title}`} onPress={() => setEditing(block)} />
+              <IconButton
+                icon="trash-2"
+                tone="rose"
+                label={`Delete ${block.title}`}
+                onPress={() => void remove(block.id)}
+              />
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       {classes.data.length > 0 ? (
         <View className="mt-10 gap-3 border-t border-line pt-6">
@@ -260,6 +369,44 @@ export default function Timetable() {
           void remove(id);
         }}
       />
+
+      {staged ? (
+        <ImportReview
+          uid={uid}
+          rows={staged.rows}
+          skipped={staged.skipped}
+          semesters={semesters.data}
+          onClose={() => setStaged(null)}
+          onDone={(outcome) => {
+            setStaged(null);
+            setNotice(
+              `Imported ${outcome.classesAdded} class${
+                outcome.classesAdded === 1 ? '' : 'es'
+              } across ${outcome.subjectsCreated + outcome.subjectsReused} subject${
+                outcome.subjectsCreated + outcome.subjectsReused === 1 ? '' : 's'
+              }` +
+                (outcome.subjectsCreated > 0
+                  ? ` — ${outcome.subjectsCreated} new library folder${
+                      outcome.subjectsCreated === 1 ? '' : 's'
+                    } created.`
+                  : '.')
+            );
+          }}
+        />
+      ) : null}
+
+      {editingRoutine !== null ? (
+        <RoutineForm
+          key={editingRoutine === 'new' ? 'new-routine' : editingRoutine.id}
+          uid={uid}
+          block={editingRoutine === 'new' ? null : editingRoutine}
+          onClose={() => setEditingRoutine(null)}
+          onDelete={(id) => {
+            setEditingRoutine(null);
+            void deleteRoutine(uid, id).catch((caught) => setError(String(caught)));
+          }}
+        />
+      ) : null}
     </ScreenScroll>
   );
 }
@@ -270,14 +417,18 @@ export default function Timetable() {
 
 function WeekGrid({
   classes,
+  routines,
   firstHour,
   lastHour,
   onSelect,
+  onSelectRoutine,
 }: {
   classes: ClassBlock[];
+  routines: RoutineBlock[];
   firstHour: number;
   lastHour: number;
   onSelect: (block: ClassBlock) => void;
+  onSelectRoutine: (block: RoutineBlock) => void;
 }) {
   const hours = Array.from({ length: lastHour - firstHour }, (_, index) => firstHour + index);
   const height = hours.length * HOUR_HEIGHT;
@@ -324,6 +475,41 @@ function WeekGrid({
             {hours.map((hour) => (
               <View key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-line/60" />
             ))}
+
+            {/* Routines are drawn first and inset, so an academic class always
+                reads as the thing in front. */}
+            {routinesForDay(routines, day).map((block) => {
+              const top = ((block.startMinute - firstHour * 60) / 60) * HOUR_HEIGHT;
+              const blockHeight = Math.max(
+                18,
+                ((block.endMinute - block.startMinute) / 60) * HOUR_HEIGHT - 3
+              );
+              const meta = ROUTINE_CATEGORIES.find((entry) => entry.id === block.category);
+
+              return (
+                <Pressable
+                  key={block.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
+                    block.startMinute
+                  )}`}
+                  onPress={() => onSelectRoutine(block)}
+                  className="absolute left-1 right-1 overflow-hidden rounded-lg px-1.5 py-1"
+                  style={{
+                    top: top + 1,
+                    height: blockHeight,
+                    backgroundColor: `${block.color}14`,
+                    borderWidth: 1,
+                    borderStyle: 'dashed',
+                    borderColor: `${block.color}59`,
+                  }}
+                >
+                  <Text className="text-[10px] leading-tight text-muted" numberOfLines={1}>
+                    {meta?.emoji ?? '📌'} {block.title}
+                  </Text>
+                </Pressable>
+              );
+            })}
 
             {classesForDay(classes, day).map((block) => {
               const top = ((block.startMinute - firstHour * 60) / 60) * HOUR_HEIGHT;
@@ -373,19 +559,39 @@ function WeekGrid({
 
 function DayAgenda({
   classes,
+  routines,
   day,
   onDay,
   onSelect,
+  onSelectRoutine,
   onDelete,
 }: {
   classes: ClassBlock[];
+  routines: RoutineBlock[];
   day: number;
   onDay: (day: number) => void;
   onSelect: (block: ClassBlock) => void;
+  onSelectRoutine: (block: RoutineBlock) => void;
   onDelete: (classId: string) => void;
 }) {
-  const items = classesForDay(classes, day);
   const today = todayIndex();
+
+  /**
+   * The two layers are interleaved by time here rather than shown as separate
+   * lists: on a phone the question is "what is next", not "what kind of thing
+   * is next".
+   */
+  const items = useMemo(() => {
+    const academic = classesForDay(classes, day).map((block) => ({
+      kind: 'class' as const,
+      block,
+    }));
+    const routine = routinesForDay(routines, day).map((block) => ({
+      kind: 'routine' as const,
+      block,
+    }));
+    return [...academic, ...routine].sort((a, b) => a.block.startMinute - b.block.startMinute);
+  }, [classes, routines, day]);
 
   return (
     <View className="gap-4">
@@ -426,37 +632,59 @@ function DayAgenda({
         </Card>
       ) : (
         <View className="gap-2.5">
-          {items.map((block) => (
-            <View
-              key={block.id}
-              className="flex-row items-center gap-3 overflow-hidden rounded-xl border border-line bg-surface p-3.5"
-              style={{ borderLeftWidth: 4, borderLeftColor: block.color }}
-            >
-              <View className="w-[68px]">
-                <Text className="text-[13px] font-bold text-ink">
-                  {minutesToLabel(block.startMinute)}
-                </Text>
-                <Text className="text-[11px] text-subtle">{minutesToLabel(block.endMinute)}</Text>
-              </View>
+          {items.map((entry) => {
+            const { block } = entry;
+            const routine = entry.kind === 'routine';
+            const meta = routine
+              ? ROUTINE_CATEGORIES.find((option) => option.id === entry.block.category)
+              : null;
 
-              <Pressable className="flex-1 gap-0.5" onPress={() => onSelect(block)}>
-                <Text className="text-sm font-semibold text-ink" numberOfLines={2}>
-                  {block.title}
-                </Text>
-                <Text className="text-xs text-muted" numberOfLines={1}>
-                  {[block.kind, block.venue].filter(Boolean).join(' · ') || 'No room set'}
-                </Text>
+            return (
+              <Pressable
+                key={`${entry.kind}-${block.id}`}
+                onPress={() =>
+                  entry.kind === 'routine' ? onSelectRoutine(entry.block) : onSelect(entry.block)
+                }
+                className={`flex-row items-center gap-3 overflow-hidden rounded-xl border p-3.5 ${
+                  routine ? 'border-dashed border-line bg-paper' : 'border-line bg-surface'
+                }`}
+                style={{ borderLeftWidth: 4, borderLeftColor: block.color }}
+              >
+                <View className="w-[68px]">
+                  <Text className="text-[13px] font-bold text-ink">
+                    {minutesToLabel(block.startMinute)}
+                  </Text>
+                  <Text className="text-[11px] text-subtle">{minutesToLabel(block.endMinute)}</Text>
+                </View>
+
+                <View className="flex-1 gap-0.5">
+                  <Text className="text-sm font-semibold text-ink" numberOfLines={2}>
+                    {meta ? `${meta.emoji} ` : ''}
+                    {block.title}
+                  </Text>
+                  <Text className="text-xs text-muted" numberOfLines={1}>
+                    {(entry.kind === 'class'
+                      ? [entry.block.kind, entry.block.venue]
+                      : [meta?.label, entry.block.venue]
+                    )
+                      .filter(Boolean)
+                      .join(' · ') || 'No room set'}
+                  </Text>
+                </View>
+
+                {entry.kind === 'class' ? (
+                  <IconButton
+                    icon="trash-2"
+                    tone="rose"
+                    label={`Delete ${block.title}`}
+                    onPress={() => onDelete(block.id)}
+                  />
+                ) : (
+                  <Feather name="chevron-right" size={15} color="#9A9488" />
+                )}
               </Pressable>
-
-              <IconButton icon="edit-2" label={`Edit ${block.title}`} onPress={() => onSelect(block)} />
-              <IconButton
-                icon="trash-2"
-                tone="rose"
-                label={`Delete ${block.title}`}
-                onPress={() => onDelete(block.id)}
-              />
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
     </View>
@@ -482,21 +710,17 @@ function ClassModal({
   onClose: () => void;
   onDelete: (classId: string) => void;
 }) {
+  if (!visible || block === null) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 items-center justify-center bg-ink/40 px-5">
-        {block !== null ? (
-          <ClassForm
-            key={block === 'new' ? 'new' : block.id}
-            uid={uid}
-            block={block === 'new' ? null : block}
-            subjects={subjects}
-            onClose={onClose}
-            onDelete={onDelete}
-          />
-        ) : null}
-      </View>
-    </Modal>
+    <ClassForm
+      key={block === 'new' ? 'new' : block.id}
+      uid={uid}
+      block={block === 'new' ? null : block}
+      subjects={subjects}
+      onClose={onClose}
+      onDelete={onDelete}
+    />
   );
 }
 
@@ -556,18 +780,34 @@ function ClassForm({
   }
 
   return (
-    <View className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface">
-      <View className="flex-row items-center gap-3 border-b border-line px-5 py-4">
-        <View className="h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
-          <Feather name="calendar" size={16} color="#B4552D" />
-        </View>
-        <Text className="flex-1 text-[15px] font-semibold text-ink">
-          {block ? 'Edit class' : 'Add class'}
-        </Text>
-        <IconButton icon="x" label="Close" onPress={onClose} />
-      </View>
-
-      <ScrollView className="max-h-[440px]" contentContainerClassName="gap-4 p-5">
+    <Sheet
+      visible
+      onClose={onClose}
+      title={block ? 'Edit class' : 'Add class'}
+      icon="calendar"
+      footer={
+        <>
+          {block ? (
+            <Button
+              label="Delete"
+              variant="danger"
+              size="sm"
+              icon="trash-2"
+              onPress={() => onDelete(block.id)}
+            />
+          ) : null}
+          <View className="flex-1" />
+          <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} disabled={saving} />
+          <Button
+            label={block ? 'Save' : 'Add class'}
+            size="sm"
+            loading={saving}
+            disabled={!valid || saving}
+            onPress={() => void save()}
+          />
+        </>
+      }
+    >
         <Field label="Class" value={title} onChangeText={setTitle} placeholder="CS2040 Lecture" />
 
         <View className="gap-2">
@@ -652,29 +892,167 @@ function ClassForm({
           </View>
         ) : null}
 
-        {error ? <Text className="text-xs text-rose">{error}</Text> : null}
-      </ScrollView>
+      {error ? <Text className="text-xs text-rose">{error}</Text> : null}
+    </Sheet>
+  );
+}
 
-      <View className="flex-row items-center gap-2 border-t border-line px-5 py-4">
-        {block ? (
+/* ------------------------------------------------------------------ *
+ * Routine editor — the non-academic overlay
+ * ------------------------------------------------------------------ */
+
+function RoutineForm({
+  uid,
+  block,
+  onClose,
+  onDelete,
+}: {
+  uid: string;
+  block: RoutineBlock | null;
+  onClose: () => void;
+  onDelete: (routineId: string) => void;
+}) {
+  const [title, setTitle] = useState(block?.title ?? '');
+  const [category, setCategory] = useState(block?.category ?? ROUTINE_CATEGORIES[0].id);
+  const [venue, setVenue] = useState(block?.venue ?? '');
+  const [day, setDay] = useState(block?.day ?? todayIndex());
+  const [start, setStart] = useState(minutesToClock(block?.startMinute ?? 18 * 60));
+  const [end, setEnd] = useState(minutesToClock(block?.endMinute ?? 19 * 60));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startMinute = parseClock(start);
+  const endMinute = parseClock(end);
+  const timesValid = startMinute !== null && endMinute !== null && endMinute > startMinute;
+  const valid = title.trim().length > 0 && timesValid;
+
+  const meta = ROUTINE_CATEGORIES.find((option) => option.id === category);
+
+  async function save() {
+    if (!valid || startMinute === null || endMinute === null) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await saveRoutine(
+        uid,
+        {
+          title: title.trim(),
+          category,
+          day,
+          startMinute,
+          endMinute,
+          venue: venue.trim() || null,
+          color: meta?.color ?? '#6F6A5F',
+        },
+        block?.id
+      );
+      onClose();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Sheet
+      visible
+      onClose={onClose}
+      title={block ? 'Edit routine' : 'Add routine'}
+      icon="clock"
+      footer={
+        <>
+          {block ? (
+            <Button
+              label="Delete"
+              variant="danger"
+              size="sm"
+              icon="trash-2"
+              onPress={() => onDelete(block.id)}
+            />
+          ) : null}
+          <View className="flex-1" />
+          <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} disabled={saving} />
           <Button
-            label="Delete"
-            variant="danger"
+            label={block ? 'Save' : 'Add routine'}
             size="sm"
-            icon="trash-2"
-            onPress={() => onDelete(block.id)}
+            loading={saving}
+            disabled={!valid || saving}
+            onPress={() => void save()}
           />
-        ) : null}
-        <View className="flex-1" />
-        <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} disabled={saving} />
-        <Button
-          label={block ? 'Save' : 'Add class'}
-          size="sm"
-          loading={saving}
-          disabled={!valid || saving}
-          onPress={() => void save()}
-        />
+        </>
+      }
+    >
+      <Text className="text-xs leading-5 text-subtle">
+        Routines sit over your timetable as a separate layer. They are not subjects, so they never
+        appear in your library, your GPA or your notes.
+      </Text>
+
+      <Field label="What" value={title} onChangeText={setTitle} placeholder="Gym · Study block" />
+
+      <View className="gap-2">
+        <Text className="text-sm font-medium text-muted">Type</Text>
+        <View className="flex-row flex-wrap gap-1.5">
+          {ROUTINE_CATEGORIES.map((option) => (
+            <Pressable
+              key={option.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: category === option.id }}
+              onPress={() => setCategory(option.id)}
+              className={`flex-row items-center gap-1.5 rounded-lg px-3 py-2 ${
+                category === option.id ? 'bg-ink' : 'bg-sand'
+              }`}
+            >
+              <Text className="text-xs">{option.emoji}</Text>
+              <Text
+                className={`text-xs font-semibold ${
+                  category === option.id ? 'text-paper' : 'text-ink'
+                }`}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
-    </View>
+
+      <View className="gap-2">
+        <Text className="text-sm font-medium text-muted">Day</Text>
+        <View className="flex-row flex-wrap gap-1.5">
+          {DAY_LABELS.map((label, index) => (
+            <Pressable
+              key={label}
+              accessibilityRole="button"
+              accessibilityState={{ selected: day === index }}
+              onPress={() => setDay(index)}
+              className={`rounded-lg px-3 py-2 ${day === index ? 'bg-ink' : 'bg-sand'}`}
+            >
+              <Text className={`text-xs font-semibold ${day === index ? 'text-paper' : 'text-ink'}`}>
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View className="flex-row gap-3">
+        <View className="flex-1">
+          <Field label="Starts" value={start} onChangeText={setStart} placeholder="18:00" autoCapitalize="none" />
+        </View>
+        <View className="flex-1">
+          <Field
+            label="Ends"
+            value={end}
+            onChangeText={setEnd}
+            placeholder="19:00"
+            autoCapitalize="none"
+            hint={!timesValid ? 'Use 24-hour HH:MM, ending after it starts.' : undefined}
+          />
+        </View>
+      </View>
+
+      <Field label="Where (optional)" value={venue} onChangeText={setVenue} placeholder="Sports hall" />
+
+      {error ? <Text className="text-xs text-rose">{error}</Text> : null}
+    </Sheet>
   );
 }

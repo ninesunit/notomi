@@ -21,17 +21,27 @@ export function SubjectCard({
   const count = subject.documentCount ?? 0;
   const color = subject.color || '#B4552D';
 
+  /**
+   * The menu button is a sibling of the link, not a child of it.
+   *
+   * Nesting it inside <Link asChild> put it inside an <a> on web, so a tap
+   * bubbled to the anchor and navigated a beat after the menu opened.
+   * stopPropagation is not a reliable cure across react-native-web's synthetic
+   * events and expo-router's own handler — removing the bubbling path is.
+   */
   return (
-    <Link href={`/library/${subject.id}`} asChild>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={`Open ${subject.name}`}
-        className="overflow-hidden rounded-2xl border border-line"
-        style={{ backgroundColor: `${color}0F` }}
-      >
-        <View className="h-1.5 w-full" style={{ backgroundColor: color }} />
+    <View
+      className="overflow-hidden rounded-2xl border border-line"
+      style={{ backgroundColor: `${color}0F` }}
+    >
+      <View className="h-1.5 w-full" style={{ backgroundColor: color }} />
 
-        <View className="gap-3.5 p-5">
+      <Link href={`/library/${subject.id}`} asChild>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={`Open ${subject.name}`}
+          className="gap-3.5 p-5"
+        >
           <View className="flex-row items-start justify-between gap-3">
             <View
               className="h-11 w-11 items-center justify-center rounded-xl"
@@ -44,23 +54,9 @@ export function SubjectCard({
               )}
             </View>
 
-            <View className="flex-row items-center gap-1">
-              {onEdit ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit ${subject.name}`}
-                  hitSlop={8}
-                  onPress={(event) => {
-                    // The card is a link; without this the row navigates before
-                    // the editor can open.
-                    event.stopPropagation?.();
-                    onEdit();
-                  }}
-                  className="h-7 w-7 items-center justify-center rounded-lg"
-                >
-                  <Feather name="more-horizontal" size={15} color="#6F6A5F" />
-                </Pressable>
-              ) : null}
+            {/* Space reserved for the overlaid menu button so the arrow never
+                sits underneath it. */}
+            <View className="flex-row items-center gap-1" style={{ paddingRight: onEdit ? 30 : 0 }}>
               <Feather name="arrow-up-right" size={16} color="#9A9488" />
             </View>
           </View>
@@ -105,9 +101,21 @@ export function SubjectCard({
               </View>
             ) : null}
           </View>
-        </View>
-      </Pressable>
-    </Link>
+        </Pressable>
+      </Link>
+
+      {onEdit ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${subject.name}`}
+          hitSlop={10}
+          onPress={onEdit}
+          className="absolute right-3.5 top-6 h-8 w-8 items-center justify-center rounded-lg"
+        >
+          <Feather name="more-horizontal" size={16} color="#6F6A5F" />
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 

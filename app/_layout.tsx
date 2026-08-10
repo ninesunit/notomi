@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SetupScreen } from '@/components/SetupScreen';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { registerServiceWorker } from '@/services/appUpdate';
 import { isFirebaseConfigured } from '@/services/firebase';
 import '../global.css';
 
@@ -41,6 +42,10 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
+  // Registered once, at the top of the tree: an installed home-screen app has
+  // no other moment where it reliably checks whether a deploy has landed.
+  useEffect(() => registerServiceWorker(), []);
+
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />

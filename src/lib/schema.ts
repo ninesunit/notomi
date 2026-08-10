@@ -15,7 +15,34 @@ export type Semester = {
   createdAt: Timestamp | null;
 };
 
-export const TERMS = ['Semester 1', 'Semester 2', 'Summer', 'Winter'] as const;
+/**
+ * Suggestions, not an enum.
+ *
+ * Universities do not agree on what a term is called — trimesters, phases,
+ * blocks, quarters — so the term is a free string. These are offered as chips
+ * to save typing, alongside whatever the student has already used.
+ */
+export const TERM_SUGGESTIONS = [
+  'Semester 1',
+  'Semester 2',
+  'Trimester 1',
+  'Quarter 1',
+  'Summer',
+  'Winter',
+];
+
+/** Terms already in use, newest first, for the picker. */
+export function knownTerms(semesters: { term: string }[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const semester of semesters) {
+    const term = semester.term?.trim();
+    if (!term || seen.has(term.toLowerCase())) continue;
+    seen.add(term.toLowerCase());
+    out.push(term);
+  }
+  return out;
+}
 
 /**
  * 4.0-scale grade points. Kept here rather than in the UI so the planner and
@@ -158,12 +185,20 @@ export type ChatRecord = {
  * Timetable
  * ------------------------------------------------------------------ */
 
-/** users/{uid}/classes/{classId} */
+/**
+ * users/{uid}/classes/{classId} — the academic timetable.
+ *
+ * Every block here belongs to a real subject in the library. Gym sessions and
+ * study blocks live in a separate collection (RoutineBlock) so academic logic —
+ * "what class am I in", "which subject's notes do I need" — never has to filter
+ * out a swim.
+ */
 export type ClassBlock = {
   id: string;
   title: string;
   /** Lecture, tutorial, lab… whatever the schedule called it. */
   kind: string | null;
+  /** The subject this class teaches. Blocks without one are not rendered. */
   subjectId: string | null;
   subjectName: string | null;
   /** 0 = Monday … 6 = Sunday, matching DAY_LABELS. */
@@ -175,6 +210,36 @@ export type ClassBlock = {
   color: string;
   createdAt: Timestamp | null;
 };
+
+/**
+ * users/{uid}/routines/{routineId} — the non-academic overlay.
+ *
+ * Deliberately a separate collection rather than a `kind` field on ClassBlock:
+ * a routine has no subject, no notes and no bearing on GPA, and mixing the two
+ * would put "is this actually a class?" checks through every academic query.
+ * The overlay can be toggled off without touching the timetable underneath.
+ */
+export type RoutineBlock = {
+  id: string;
+  title: string;
+  /** gym | study | meal | commute | work | other — drives the icon. */
+  category: string;
+  day: number;
+  startMinute: number;
+  endMinute: number;
+  venue: string | null;
+  color: string;
+  createdAt: Timestamp | null;
+};
+
+export const ROUTINE_CATEGORIES: { id: string; label: string; emoji: string; color: string }[] = [
+  { id: 'study', label: 'Study', emoji: '📖', color: '#4C5FA8' },
+  { id: 'gym', label: 'Gym', emoji: '🏋️', color: '#2E6F5E' },
+  { id: 'meal', label: 'Meal', emoji: '🍽️', color: '#B4832A' },
+  { id: 'commute', label: 'Commute', emoji: '🚌', color: '#4A5568' },
+  { id: 'work', label: 'Work', emoji: '💼', color: '#8A4B86' },
+  { id: 'other', label: 'Other', emoji: '📌', color: '#6F6A5F' },
+];
 
 export const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export const DAY_FULL = [
@@ -325,6 +390,8 @@ export type PodcastLine = {
 /** One class block as Gemini reads it off a schedule screenshot. */
 export type ExtractedClass = {
   title: string;
+  /** Module/course code where the schedule prints one, e.g. "CS2040". */
+  code: string | null;
   kind: string | null;
   /** Day name as printed on the schedule; mapped to an index on import. */
   day: string;

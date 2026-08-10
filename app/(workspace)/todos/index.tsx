@@ -13,10 +13,12 @@ import {
 } from 'firebase/firestore';
 import { DatePicker } from '@/components/DatePicker';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { SwipeableRow } from '@/components/Swipeable';
 import { nextPriority, TodoRow, type TodoActions } from '@/components/TodoRow';
 import { Button, Card, EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
+import { useUndo } from '@/hooks/useUndo';
 import { bucketFor, dayKey, toDate, type DueBucket } from '@/lib/dates';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
@@ -35,8 +37,17 @@ export default function Todos() {
   const uid = useUid();
   const db = getDb();
 
-  const todos = useCollection<Todo>(query(paths.todos(db, uid), orderBy('dueDate', 'asc')), [uid]);
+  const { schedule, hidden } = useUndo();
+
+  const all = useCollection<Todo>(query(paths.todos(db, uid), orderBy('dueDate', 'asc')), [uid]);
   const subjects = useCollection<Subject>(paths.subjects(db, uid), [uid]);
+
+  // A row swiped away is gone from the list immediately, even though its
+  // Firestore delete has not run yet.
+  const todos = useMemo(
+    () => ({ ...all, data: all.data.filter((todo) => !hidden.has(todo.id)) }),
+    [all, hidden]
+  );
 
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState<Date | null>(null);
@@ -172,7 +183,12 @@ export default function Todos() {
       }).catch((caught) => setError(String(caught)));
     },
     remove: (todo) => {
-      void deleteDoc(paths.todo(db, uid, todo.id)).catch((caught) => setError(String(caught)));
+      // The row goes now; the write goes in five seconds unless undone.
+      schedule({
+        key: todo.id,
+        label: `“${todo.title.slice(0, 32)}${todo.title.length > 32 ? '…' : ''}” deleted`,
+        commit: () => deleteDoc(paths.todo(db, uid, todo.id)),
+      });
     },
     cyclePriority: (todo) => {
       void updateDoc(paths.todo(db, uid, todo.id), {
@@ -342,12 +358,14 @@ export default function Todos() {
 
                 <View className="overflow-hidden rounded-2xl border border-line bg-surface">
                   {items.map((todo) => (
-                    <TodoRow
+                    <SwipeableRow
                       key={todo.id}
-                      todo={todo}
-                      actions={actions}
-                      overdue={group.key === 'overdue'}
-                    />
+                      onSwipeLeft={() => actions.remove(todo)}
+                      onSwipeRight={() => actions.toggle(todo)}
+                      rightLabel="Complete"
+                    >
+                      <TodoRow todo={todo} actions={actions} overdue={group.key === 'overdue'} />
+                    </SwipeableRow>
                   ))}
                 </View>
               </View>
@@ -373,7 +391,14 @@ export default function Todos() {
               {showCompleted ? (
                 <View className="overflow-hidden rounded-2xl border border-line bg-surface">
                   {completed.map((todo) => (
-                    <TodoRow key={todo.id} todo={todo} actions={actions} overdue={false} />
+                    <SwipeableRow
+                      key={todo.id}
+                      onSwipeLeft={() => actions.remove(todo)}
+                      onSwipeRight={() => actions.toggle(todo)}
+                      rightLabel="Reopen"
+                    >
+                      <TodoRow todo={todo} actions={actions} overdue={false} />
+                    </SwipeableRow>
                   ))}
                 </View>
               ) : null}

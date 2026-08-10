@@ -33,6 +33,11 @@ export const paths = {
   class: (db: Firestore, uid: string, classId: string) =>
     doc(db, 'users', uid, 'classes', classId),
 
+  /** Non-academic overlay: gym, study blocks, commutes. */
+  routines: (db: Firestore, uid: string) => collection(db, 'users', uid, 'routines'),
+  routine: (db: Firestore, uid: string, routineId: string) =>
+    doc(db, 'users', uid, 'routines', routineId),
+
   sessions: (db: Firestore, uid: string) => collection(db, 'users', uid, 'sessions'),
   session: (db: Firestore, uid: string, sessionId: string) =>
     doc(db, 'users', uid, 'sessions', sessionId),

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { Sheet } from './Sheet';
 import { Button, Notice } from './ui';
 import { useUid } from '@/hooks/useAuth';
 import {
@@ -133,33 +134,47 @@ export function AddMaterialModal({
   const succeeded = files.filter((f) => f.status === 'done').length;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      {/* Scrim is a normal flex parent, so the sheet is centred without any
-          absolutely positioned layer that could escape the viewport. */}
-      <View className="flex-1 items-center justify-center bg-ink/40 px-5">
-        <View className="w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-surface">
-          <View className="flex-row items-center gap-3 border-b border-line px-5 py-4">
-            <View className="h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
-              <Feather name="upload-cloud" size={16} color="#B4552D" />
-            </View>
-            <View className="flex-1 gap-0.5">
-              <Text className="text-[15px] font-semibold text-ink">Add material</Text>
-              <Text className="text-xs text-muted" numberOfLines={1}>
-                to {subjectName}
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              onPress={onClose}
-              disabled={running}
-              className="h-8 w-8 items-center justify-center rounded-lg"
-            >
-              <Feather name="x" size={16} color="#6F6A5F" />
-            </Pressable>
-          </View>
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title={`Add material to ${subjectName}`}
+      icon="upload-cloud"
+      footer={
+        files.length > 0 ? (
+          <>
+            <Text className="flex-1 text-xs text-muted">
+              {allDone
+                ? `${succeeded} of ${files.length} added`
+                : running
+                  ? 'Working — keep this open'
+                  : `${files.length} file${files.length === 1 ? '' : 's'} ready`}
+            </Text>
 
-          <ScrollView className="max-h-[420px]" contentContainerClassName="gap-4 p-5">
+            {allDone ? (
+              <Button label="Done" onPress={onClose} size="sm" />
+            ) : (
+              <>
+                <Button
+                  label="Change"
+                  variant="ghost"
+                  size="sm"
+                  disabled={running}
+                  onPress={() => void choose()}
+                />
+                <Button
+                  label="Upload"
+                  icon="upload"
+                  size="sm"
+                  loading={running}
+                  disabled={running}
+                  onPress={() => void run()}
+                />
+              </>
+            )}
+          </>
+        ) : undefined
+      }
+    >
             {!isR2Configured() ? (
               <Notice
                 tone="amber"
@@ -187,44 +202,7 @@ export function AddMaterialModal({
                 ))}
               </View>
             )}
-          </ScrollView>
-
-          {files.length > 0 ? (
-            <View className="flex-row items-center justify-between gap-3 border-t border-line px-5 py-4">
-              <Text className="flex-1 text-xs text-muted">
-                {allDone
-                  ? `${succeeded} of ${files.length} added`
-                  : running
-                    ? 'Working — keep this open'
-                    : `${files.length} file${files.length === 1 ? '' : 's'} ready`}
-              </Text>
-
-              {allDone ? (
-                <Button label="Done" onPress={onClose} size="sm" />
-              ) : (
-                <>
-                  <Button
-                    label="Change"
-                    variant="ghost"
-                    size="sm"
-                    disabled={running}
-                    onPress={() => void choose()}
-                  />
-                  <Button
-                    label="Upload"
-                    icon="upload"
-                    size="sm"
-                    loading={running}
-                    disabled={running}
-                    onPress={() => void run()}
-                  />
-                </>
-              )}
-            </View>
-          ) : null}
-        </View>
-      </View>
-    </Modal>
+    </Sheet>
   );
 }
 

@@ -612,14 +612,15 @@ ${context}`,
 const timetableSchema = Schema.array({
   items: Schema.object({
     properties: {
-      title: Schema.string({ description: 'Course or class name as printed.' }),
+      title: Schema.string({ description: 'Course name without the code.' }),
+      code: Schema.string({ description: 'Module code such as "CS2040". Empty if absent.' }),
       kind: Schema.string({ description: 'Lecture, Tutorial, Lab, Seminar… or empty.' }),
       day: Schema.string({ description: 'Full weekday name in English, e.g. "Monday".' }),
       start: Schema.string({ description: '24-hour HH:MM.' }),
       end: Schema.string({ description: '24-hour HH:MM.' }),
       venue: Schema.string({ description: 'Room or building. Empty string if absent.' }),
     },
-    optionalProperties: ['kind', 'venue'],
+    optionalProperties: ['code', 'kind', 'venue'],
   }),
 });
 
@@ -648,7 +649,9 @@ Read the grid carefully:
   one-hour rows is one class of two hours, not two classes.
 - Convert every time to 24-hour HH:MM. A timetable running 9-6 is 09:00-18:00,
   never 09:00-06:00.
-- "title" is the course name or code as printed. Keep the code if both appear.
+- Split the identifier: "code" is the module code (letters then digits, e.g.
+  CS2040, MA1101R, BIO 210) and "title" is the course name with the code
+  removed. If only one is printed, fill that field and leave the other empty.
 - "kind" is the session type if shown (Lecture, Tutorial, Lab, Seminar,
   Practical); empty string if not.
 - "venue" is the room or building; empty string if not shown.

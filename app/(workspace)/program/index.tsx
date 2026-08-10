@@ -1,9 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
+import { ProgramMap } from '@/components/ProgramMap';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { Sheet } from '@/components/Sheet';
 import {
   Badge,
   Button,
@@ -19,7 +21,15 @@ import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
-import { calculateGpa, GRADE_OPTIONS, TERMS, type Semester, type Subject } from '@/lib/schema';
+import {
+  calculateGpa,
+  GRADE_OPTIONS,
+  knownTerms,
+  TERM_SUGGESTIONS,
+  type ClassBlock,
+  type Semester,
+  type Subject,
+} from '@/lib/schema';
 import {
   assignSubject,
   createSemester,
@@ -45,6 +55,8 @@ export default function Program() {
   const db = getDb();
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Semester | 'new' | null>(null);
+  /** The map is the default: structure first, editing second. */
+  const [view, setView] = useState<'map' | 'planner'>('map');
 
   const semesters = useCollection<Semester>(
     query(paths.semesters(db, uid), orderBy('order', 'asc')),
@@ -54,6 +66,7 @@ export default function Program() {
     query(paths.subjects(db, uid), orderBy('name', 'asc')),
     [uid]
   );
+  const classes = useCollection<ClassBlock>(paths.classes(db, uid), [uid]);
 
   const ordered = useMemo(() => sortSemesters(semesters.data), [semesters.data]);
   const unassigned = useMemo(
@@ -92,22 +105,17 @@ export default function Program() {
         title="Program"
         subtitle={
           ordered.length
-            ? `${ordered.length} ${ordered.length === 1 ? 'semester' : 'semesters'} · ${
+            ? `${ordered.length} ${ordered.length === 1 ? 'term' : 'terms'} · ${
                 overall.credits
               } credit hours planned`
-            : 'Plan your degree semester by semester and track where your GPA is heading.'
+            : 'Map your degree term by term and track where your GPA is heading.'
         }
         actions={
           <>
             <Link href="/program/gpa" asChild>
               <Button label="GPA calculator" icon="trending-up" variant="secondary" size="sm" />
             </Link>
-            <Button
-              label="New semester"
-              icon="plus"
-              size="sm"
-              onPress={() => setEditing('new')}
-            />
+            <Button label="New term" icon="plus" size="sm" onPress={() => setEditing('new')} />
           </>
         }
       />
@@ -130,14 +138,34 @@ export default function Program() {
         <View className="gap-6">
           {ordered.length > 0 ? <OverviewBar subjects={subjects.data} semesters={ordered} /> : null}
 
+          {ordered.length > 0 ? (
+            <View className="flex-row gap-1.5">
+              <ViewChip label="Map" icon="git-merge" active={view === 'map'} onPress={() => setView('map')} />
+              <ViewChip
+                label="Planner"
+                icon="list"
+                active={view === 'planner'}
+                onPress={() => setView('planner')}
+              />
+            </View>
+          ) : null}
+
+          {view === 'map' && ordered.length > 0 ? (
+            <ProgramMap
+              semesters={ordered}
+              subjects={subjects.data}
+              classes={classes.data}
+            />
+          ) : null}
+
           {ordered.length === 0 ? (
             <EmptyState
               icon="layers"
-              title="No semesters yet"
-              body="Add a semester, then file your subjects into it. Notomi uses credit hours and grades to keep a running GPA."
-              action={<Button label="Add your first semester" icon="plus" onPress={() => setEditing('new')} />}
+              title="No terms yet"
+              body="Add a term, then file your subjects into it. Notomi uses credit hours and grades to keep a running GPA."
+              action={<Button label="Add your first term" icon="plus" onPress={() => setEditing('new')} />}
             />
-          ) : (
+          ) : view === 'map' ? null : (
             ordered.map((semester, index) => (
               <SemesterCard
                 key={semester.id}
@@ -156,7 +184,7 @@ export default function Program() {
             ))
           )}
 
-          {unassigned.length > 0 ? (
+          {unassigned.length > 0 && view === 'planner' ? (
             <UnassignedShelf
               subjects={unassigned}
               semesters={ordered}
@@ -171,6 +199,7 @@ export default function Program() {
       <SemesterModal
         semester={editing}
         existingCount={semesters.data.length}
+        usedTerms={knownTerms(semesters.data)}
         onSave={(input) => void run(save(input))}
         onClose={() => setEditing(null)}
       />
@@ -579,97 +608,118 @@ function UnassignedShelf({
 function SemesterModal({
   semester,
   existingCount,
+  usedTerms,
   onSave,
   onClose,
 }: {
   semester: Semester | 'new' | null;
   existingCount: number;
+  usedTerms: string[];
   onSave: (input: SemesterInput) => void;
   onClose: () => void;
 }) {
+  if (semester === null) return null;
   const isNew = semester === 'new';
-  const record = isNew ? null : semester;
 
   // Remounting on every open is what keeps the fields in step with whichever
-  // semester was clicked, without an effect that syncs props into state.
+  // term was clicked, without an effect that syncs props into state.
   return (
-    <Modal
-      visible={semester !== null}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View className="flex-1 items-center justify-center bg-ink/40 px-5">
-        {semester !== null ? (
-          <SemesterForm
-            key={isNew ? 'new' : record!.id}
-            record={record}
-            existingCount={existingCount}
-            onSave={onSave}
-            onClose={onClose}
-          />
-        ) : null}
-      </View>
-    </Modal>
+    <SemesterForm
+      key={isNew ? 'new' : semester.id}
+      record={isNew ? null : semester}
+      existingCount={existingCount}
+      usedTerms={usedTerms}
+      onSave={onSave}
+      onClose={onClose}
+    />
   );
 }
 
 function SemesterForm({
   record,
   existingCount,
+  usedTerms,
   onSave,
   onClose,
 }: {
   record: Semester | null;
   existingCount: number;
+  /** Terms this student already uses, offered ahead of the generic defaults. */
+  usedTerms: string[];
   onSave: (input: SemesterInput) => void;
   onClose: () => void;
 }) {
   const thisYear = new Date().getFullYear();
-  const [name, setName] = useState(record?.name ?? `Semester ${existingCount + 1}`);
+  const [name, setName] = useState(record?.name ?? `Term ${existingCount + 1}`);
   const [year, setYear] = useState(String(record?.year ?? thisYear));
-  const [term, setTerm] = useState<string>(record?.term ?? TERMS[0]);
+  const [term, setTerm] = useState<string>(record?.term ?? usedTerms[0] ?? '');
   const [target, setTarget] = useState(record?.gpaTarget ? String(record.gpaTarget) : '');
+
+  const termOptions = useMemo(() => {
+    const seen = new Set(usedTerms.map((value) => value.toLowerCase()));
+    return [...usedTerms, ...TERM_SUGGESTIONS.filter((value) => !seen.has(value.toLowerCase()))];
+  }, [usedTerms]);
 
   const parsedYear = Number.parseInt(year, 10);
   const parsedTarget = target.trim() ? Number.parseFloat(target) : null;
   const targetInvalid =
     parsedTarget !== null && (Number.isNaN(parsedTarget) || parsedTarget <= 0 || parsedTarget > 4);
-  const valid = name.trim().length > 0 && Number.isFinite(parsedYear) && !targetInvalid;
+  const valid =
+    name.trim().length > 0 && term.trim().length > 0 && Number.isFinite(parsedYear) && !targetInvalid;
 
   return (
-    <View className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface">
-      <View className="flex-row items-center gap-3 border-b border-line px-5 py-4">
-        <View className="h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
-          <Feather name="layers" size={16} color="#B4552D" />
-        </View>
-        <Text className="flex-1 text-[15px] font-semibold text-ink">
-          {record ? 'Edit semester' : 'New semester'}
-        </Text>
-        <IconButton icon="x" label="Close" onPress={onClose} />
-      </View>
+    <Sheet
+      visible
+      onClose={onClose}
+      title={record ? 'Edit term' : 'New term'}
+      icon="layers"
+      footer={
+        <>
+          <View className="flex-1" />
+          <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} />
+          <Button
+            label={record ? 'Save' : 'Add term'}
+            size="sm"
+            disabled={!valid}
+            onPress={() =>
+              onSave({
+                name: name.trim(),
+                year: parsedYear,
+                term: term.trim(),
+                gpaTarget: parsedTarget,
+              })
+            }
+          />
+        </>
+      }
+    >
+      <Field label="Name" value={name} onChangeText={setName} placeholder="Year 2 · Semester 1" />
 
-      <ScrollView className="max-h-[420px]" contentContainerClassName="gap-4 p-5">
-        <Field label="Name" value={name} onChangeText={setName} placeholder="Year 2 · Semester 1" />
-
-        <View className="gap-1.5">
-          <Text className="text-sm font-medium text-muted">Term</Text>
-          <View className="flex-row flex-wrap gap-1.5">
-            {TERMS.map((option) => (
-              <Pressable
-                key={option}
-                accessibilityRole="button"
-                onPress={() => setTerm(option)}
-                className={`rounded-lg px-3 py-2 ${term === option ? 'bg-ink' : 'bg-sand'}`}
+        {/* Free text, not a fixed list: a student on trimesters or clinical
+            phases should not have to pretend they are on semesters. The chips
+            are shortcuts — whatever they have used before, then defaults. */}
+        <Field
+          label="Term"
+          value={term}
+          onChangeText={setTerm}
+          placeholder="Trimester 1 · Pre-Med Phase A · Year 2 Fall"
+        />
+        <View className="flex-row flex-wrap gap-1.5">
+          {termOptions.map((option) => (
+            <Pressable
+              key={option}
+              accessibilityRole="button"
+              accessibilityState={{ selected: term === option }}
+              onPress={() => setTerm(option)}
+              className={`rounded-lg px-3 py-1.5 ${term === option ? 'bg-ink' : 'bg-sand'}`}
+            >
+              <Text
+                className={`text-xs font-semibold ${term === option ? 'text-paper' : 'text-muted'}`}
               >
-                <Text
-                  className={`text-xs font-semibold ${term === option ? 'text-paper' : 'text-ink'}`}
-                >
-                  {option}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+                {option}
+              </Text>
+            </Pressable>
+          ))}
         </View>
 
         <Field
@@ -692,24 +742,32 @@ function SemesterForm({
               : 'Shown as a progress bar against your cumulative GPA.'
           }
         />
-      </ScrollView>
+    </Sheet>
+  );
+}
 
-      <View className="flex-row items-center justify-end gap-2 border-t border-line px-5 py-4">
-        <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} />
-        <Button
-          label={record ? 'Save' : 'Add semester'}
-          size="sm"
-          disabled={!valid}
-          onPress={() =>
-            onSave({
-              name: name.trim(),
-              year: parsedYear,
-              term,
-              gpaTarget: parsedTarget,
-            })
-          }
-        />
-      </View>
-    </View>
+function ViewChip({
+  label,
+  icon,
+  active,
+  onPress,
+}: {
+  label: string;
+  icon: React.ComponentProps<typeof Feather>['name'];
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${active ? 'bg-ink' : 'bg-sand'}`}
+    >
+      <Feather name={icon} size={13} color={active ? '#F7F5EE' : '#6F6A5F'} />
+      <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }

@@ -63,6 +63,19 @@ service cloud.firestore {
           && request.resource.data.startMinute < request.resource.data.endMinute;
       }
 
+      // The non-academic overlay. Same shape rules as a class, but kept in its
+      // own collection so academic queries never see it.
+      match /routines/{routineId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.day is int
+          && request.resource.data.day >= 0
+          && request.resource.data.day <= 6
+          && request.resource.data.startMinute is int
+          && request.resource.data.endMinute is int
+          && request.resource.data.startMinute < request.resource.data.endMinute;
+      }
+
       match /sessions/{sessionId} {
         allow read, delete: if isOwner(userId);
         // Minutes are capped so a runaway timer cannot inflate a streak.

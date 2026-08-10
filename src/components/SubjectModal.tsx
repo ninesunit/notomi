@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Pressable, Text, View } from 'react-native';
 import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { Button, Field, IconButton } from './ui';
+import { Sheet } from './Sheet';
+import { Button, Field } from './ui';
 import { paths } from '@/lib/paths';
 import { colorForSubject, SUBJECT_EMOJI, SUBJECT_PALETTE, type Subject } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
@@ -28,22 +28,18 @@ export function SubjectModal({
   onClose: () => void;
   onCreated?: (subjectId: string) => void;
 }) {
+  // Remounting per open keeps the fields in step with the subject that was
+  // clicked, without an effect syncing props into state.
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 items-center justify-center bg-ink/40 px-5">
-        {visible ? (
-          // Remounting per open keeps the fields in step with the subject that
-          // was clicked, without an effect syncing props into state.
-          <SubjectForm
-            key={subject?.id ?? 'new'}
-            uid={uid}
-            subject={subject}
-            onClose={onClose}
-            onCreated={onCreated}
-          />
-        ) : null}
-      </View>
-    </Modal>
+    <SubjectForm
+      key={subject?.id ?? 'new'}
+      uid={uid}
+      subject={subject}
+      onClose={onClose}
+      onCreated={onCreated}
+    />
   );
 }
 
@@ -110,21 +106,25 @@ function SubjectForm({
   }
 
   return (
-    <View className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface">
-      <View className="flex-row items-center gap-3 border-b border-line px-5 py-4">
-        <View
-          className="h-9 w-9 items-center justify-center rounded-lg"
-          style={{ backgroundColor: `${color}24` }}
-        >
-          <Text className="text-base">{emoji ?? '📘'}</Text>
-        </View>
-        <Text className="flex-1 text-[15px] font-semibold text-ink">
-          {subject ? 'Edit subject' : 'New subject'}
-        </Text>
-        <IconButton icon="x" label="Close" onPress={onClose} />
-      </View>
-
-      <ScrollView className="max-h-[440px]" contentContainerClassName="gap-4 p-5">
+    <Sheet
+      visible
+      onClose={onClose}
+      title={subject ? 'Edit subject' : 'New subject'}
+      icon="folder"
+      footer={
+        <>
+          <View className="flex-1" />
+          <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} disabled={saving} />
+          <Button
+            label={subject ? 'Save' : 'Create subject'}
+            size="sm"
+            loading={saving}
+            disabled={!valid || saving}
+            onPress={() => void save()}
+          />
+        </>
+      }
+    >
         <Field
           label="Name"
           value={name}
@@ -213,19 +213,7 @@ function SubjectForm({
           </View>
         </View>
 
-        {error ? <Text className="text-xs text-rose">{error}</Text> : null}
-      </ScrollView>
-
-      <View className="flex-row items-center justify-end gap-2 border-t border-line px-5 py-4">
-        <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} disabled={saving} />
-        <Button
-          label={subject ? 'Save' : 'Create subject'}
-          size="sm"
-          loading={saving}
-          disabled={!valid || saving}
-          onPress={() => void save()}
-        />
-      </View>
-    </View>
+      {error ? <Text className="text-xs text-rose">{error}</Text> : null}
+    </Sheet>
   );
 }
