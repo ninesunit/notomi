@@ -14,7 +14,7 @@ import {
   type User,
 } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { getDb, getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase';
+import { getDb, getFirebaseAuth, isFirebaseConfigured } from '@/services/firebase';
 
 type AuthValue = {
   user: User | null;

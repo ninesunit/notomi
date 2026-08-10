@@ -1,6 +1,6 @@
 import { ScrollView, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { missingFirebaseConfigKeys } from '@/lib/firebase';
+import { missingFirebaseConfigKeys } from '@/services/firebase';
 
 const STEPS = [
   'Open the Firebase console for project "notomii" and go to Project settings > General.',

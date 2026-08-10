@@ -10,7 +10,7 @@ import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/compone
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { bucketFor, formatDue, toDate } from '@/lib/dates';
-import { getDb } from '@/lib/firebase';
+import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { Subject, Todo } from '@/lib/schema';
 

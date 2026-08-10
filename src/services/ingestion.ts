@@ -12,9 +12,9 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import { AiError, extractMetadata } from '@/lib/ai';
+import { AiError, extractMetadata, summarizeDocument } from '@/lib/ai';
 import { parseDueDate } from '@/lib/dates';
-import { getDb } from '@/lib/firebase';
+import { getDb } from '@/services/firebase';
 import { stableId } from '@/lib/ids';
 import { paths } from '@/lib/paths';
 import { colorForSubject, type ExtractedDeadline, type ExtractedMetadata } from '@/lib/schema';
@@ -152,6 +152,7 @@ export async function processUploadedMaterial(
 
   report('analyzing');
   let metadata: ExtractedMetadata | null = null;
+  let fallbackSummary: string | null = null;
   try {
     metadata = await extractMetadata(text);
   } catch (error) {
@@ -160,6 +161,15 @@ export async function processUploadedMaterial(
         ? `Gemini could not analyse it: ${error.message}`
         : 'Automatic analysis failed.'
     );
+
+    // Structured extraction is the harder ask. If the schema defeated it, a
+    // plain summary usually still works, so the student is not left with a
+    // blank card.
+    try {
+      fallbackSummary = await summarizeDocument(text);
+    } catch {
+      /* Both AI paths are down; the text itself is still saved. */
+    }
   }
 
   const fallbackTitle = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
@@ -175,7 +185,7 @@ export async function processUploadedMaterial(
     r2FileKey,
     r2FileUrl,
     moduleCode: metadata?.moduleCode ?? null,
-    summary: metadata?.summary ?? null,
+    summary: metadata?.summary ?? fallbackSummary,
     status: 'ready',
     error: warnings.join(' ') || null,
     createdAt: serverTimestamp(),

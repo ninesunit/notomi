@@ -4,7 +4,7 @@ import {
   type GenerativeModel,
   type ModelParams,
 } from 'firebase/ai';
-import { GEMINI_MODEL, getAiClient } from './firebase';
+import { GEMINI_MODEL, getAiClient, getModel } from '@/services/firebase';
 import type { ExtractedMetadata, PodcastLine, QuizQuestion } from './schema';
 
 /**
@@ -149,6 +149,27 @@ async function generateJson<T>(
   throw lastError instanceof Error
     ? lastError
     : new AiError('Gemini returned an unusable response.');
+}
+
+/**
+ * Plain-prose summary using the shared model exported from services/firebase.
+ *
+ * Used as the fallback when structured extraction fails: a JSON-schema call is
+ * strictly harder than free text, so a document that defeats the schema can
+ * usually still be summarised. Without this a parse failure left the student
+ * with an untitled, unsummarised document.
+ */
+export async function summarizeDocument(text: string): Promise<string> {
+  try {
+    const result = await getModel().generateContent(
+      `Summarise this study document for a university student in 2-4 sentences. ` +
+        `Describe what it teaches, not what kind of document it is. ` +
+        `Plain prose, no markdown, no preamble.\n\n${text.slice(0, MAX_CONTEXT_CHARS)}`
+    );
+    return result.response.text().trim();
+  } catch (error) {
+    throw new AiError(describe(error), error);
+  }
 }
 
 /** Today's date, so the model can resolve "week 5" and bare day/month dates. */

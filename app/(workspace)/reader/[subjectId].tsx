@@ -17,7 +17,7 @@ import { Badge, Button, EmptyState, Loading, Notice } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { askSources, buildContext, MAX_CONTEXT_CHARS, type ChatTurn } from '@/lib/ai';
-import { getDb } from '@/lib/firebase';
+import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { ChatMessage, SourceDocument, Subject } from '@/lib/schema';
 

@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SetupScreen } from '@/components/SetupScreen';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
-import { isFirebaseConfigured } from '@/lib/firebase';
+import { isFirebaseConfigured } from '@/services/firebase';
 import '../global.css';
 
 function Splash() {

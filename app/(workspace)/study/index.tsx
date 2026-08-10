@@ -8,7 +8,7 @@ import { Badge, Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { buildContext, generateQuiz } from '@/lib/ai';
-import { getDb } from '@/lib/firebase';
+import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import { isDue, recordHit, recordMiss } from '@/lib/srs';
 import type { QuizQuestion, SourceDocument, Subject, WeakConcept } from '@/lib/schema';

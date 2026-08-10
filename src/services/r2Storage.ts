@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import type { S3Client } from '@aws-sdk/client-s3';
-import { getFirebaseAuth } from '@/lib/firebase';
+import { getFirebaseAuth } from '@/services/firebase';
 
 /**
  * Cloudflare R2 storage for original study materials.

@@ -17,7 +17,7 @@ import { Button, Card, EmptyState, Field, Loading, Notice, PageHeader } from '@/
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { bucketFor, dayKey, toDate, type DueBucket } from '@/lib/dates';
-import { getDb } from '@/lib/firebase';
+import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { Priority, SubTask, Subject, Todo } from '@/lib/schema';
 

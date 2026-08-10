@@ -1,6 +1,6 @@
 import { deleteDoc, getDoc, increment, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
 import { nextReviewDate } from './dates';
-import { getDb } from './firebase';
+import { getDb } from '@/services/firebase';
 import { stableId } from './ids';
 import { paths } from './paths';
 import type { QuizQuestion, WeakConcept } from './schema';

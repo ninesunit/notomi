@@ -9,7 +9,7 @@ import { Badge, Button, Card, EmptyState, IconButton, Loading, Notice, PageHeade
 import { useUid } from '@/hooks/useAuth';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { formatDateTime } from '@/lib/dates';
-import { getDb } from '@/lib/firebase';
+import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { SourceDocument, Subject } from '@/lib/schema';
 import { deleteMaterial } from '@/services/ingestion';

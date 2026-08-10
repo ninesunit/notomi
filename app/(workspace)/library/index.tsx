@@ -7,7 +7,7 @@ import { UploadButton } from '@/components/UploadButton';
 import { EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
-import { getDb } from '@/lib/firebase';
+import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { Subject } from '@/lib/schema';
 
