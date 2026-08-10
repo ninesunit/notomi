@@ -4,7 +4,7 @@ import {
   type GenerativeModel,
   type ModelParams,
 } from 'firebase/ai';
-import { GEMINI_MODEL, getAiClient, getModel } from '@/services/firebase';
+import { GEMINI_MODEL, getAiClient, getModel, isAppCheckEnabled } from '@/services/firebase';
 import type { ExtractedMetadata, PodcastLine, QuizQuestion } from './schema';
 
 /**
@@ -37,6 +37,17 @@ function model(params: Omit<ModelParams, 'model'> = {}): GenerativeModel {
   );
 }
 
+/**
+ * Firebase now auto-enforces App Check for AI Logic during the console's guided
+ * setup. An app that sends no App Check token then has every Gemini call
+ * rejected — and because the rejection fails CORS, the browser reports only
+ * "Failed to fetch". Naming the likely cause saves a long hunt.
+ */
+const APP_CHECK_HINT =
+  'App Check is enforced for AI Logic on this project but the app is not sending a token. ' +
+  'Set EXPO_PUBLIC_APP_CHECK_SITE_KEY to your reCAPTCHA v3 site key and redeploy, ' +
+  'or unenforce App Check for AI Logic in the Firebase console.';
+
 /** Turns an unknown SDK failure into something worth showing a student. */
 function describe(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -47,9 +58,21 @@ function describe(error: unknown): string {
   if (/quota|RESOURCE_EXHAUSTED|429/i.test(raw)) {
     return 'Gemini rate limit reached. Wait a moment and try again.';
   }
-  if (/permission|403/i.test(raw)) return 'Permission denied by Firebase AI Logic.';
+  if (/app.?check|attestation|unattested/i.test(raw)) return APP_CHECK_HINT;
+  if (/permission|403|PERMISSION_DENIED|unauthenticated|401/i.test(raw)) {
+    return isAppCheckEnabled()
+      ? 'Permission denied by Firebase AI Logic.'
+      : `Firebase AI Logic rejected the request. ${APP_CHECK_HINT}`;
+  }
   if (/timed? ?out|deadline/i.test(raw)) return 'Gemini took too long to respond. Try again.';
-  if (/network|fetch|Failed to fetch|ERR_/i.test(raw)) return 'Network error talking to Gemini.';
+  if (/network|fetch|Failed to fetch|ERR_/i.test(raw)) {
+    // A blocked App Check request comes back as an opaque CORS failure, which
+    // the browser reports as a plain "Failed to fetch" — indistinguishable
+    // from a real outage unless we know App Check is not set up.
+    return isAppCheckEnabled()
+      ? 'Network error talking to Gemini.'
+      : `Could not reach Gemini. ${APP_CHECK_HINT}`;
+  }
   return raw;
 }
 
