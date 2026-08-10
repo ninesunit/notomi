@@ -100,6 +100,11 @@ function setUpAppCheck(app: FirebaseApp): void {
       provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY),
       isTokenAutoRefreshEnabled: true,
     });
+    // Logged deliberately: "did App Check start?" is the first question when
+    // AI Logic rejects a call, and it is otherwise invisible from outside.
+    console.info(
+      `[firebase] App Check initialized with site key ${APP_CHECK_SITE_KEY.slice(0, 12)}…`
+    );
   } catch (error) {
     // A misconfigured App Check must not stop the app from loading; the
     // affected calls will surface their own errors.

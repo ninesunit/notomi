@@ -63,6 +63,17 @@ const APP_CHECK_HINT =
   'Set EXPO_PUBLIC_APP_CHECK_SITE_KEY to your reCAPTCHA v3 site key and redeploy, ' +
   'or unenforce App Check for AI Logic in the Firebase console.';
 
+/**
+ * App Check started on our side but Google refused the token. The usual cause
+ * is a mismatched reCAPTCHA pair — the secret stored in the Firebase console
+ * has to belong to the same key as the site key compiled into this build — or
+ * a site key whose allowed domains do not include this origin.
+ */
+const APP_CHECK_TOKEN_REJECTED =
+  'App Check started but its token was refused. Check that the reCAPTCHA secret saved in ' +
+  'Firebase console > App Check matches this build’s site key, and that the key’s ' +
+  'domain list includes this site.';
+
 /** Turns an unknown SDK failure into something worth showing a student. */
 function describe(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -73,19 +84,23 @@ function describe(error: unknown): string {
   if (/quota|RESOURCE_EXHAUSTED|429/i.test(raw)) {
     return 'Gemini rate limit reached. Wait a moment and try again.';
   }
-  if (/app.?check|attestation|unattested/i.test(raw)) return APP_CHECK_HINT;
+  // Two very different failures both mention App Check, and telling a user to
+  // "set the site key" when the key is already set sends them the wrong way.
+  if (/app.?check|attestation|unattested/i.test(raw)) {
+    return isAppCheckEnabled() ? `${APP_CHECK_TOKEN_REJECTED} (${raw.slice(0, 120)})` : APP_CHECK_HINT;
+  }
   if (/permission|403|PERMISSION_DENIED|unauthenticated|401/i.test(raw)) {
     return isAppCheckEnabled()
-      ? 'Permission denied by Firebase AI Logic.'
+      ? `${APP_CHECK_TOKEN_REJECTED} (${raw.slice(0, 120)})`
       : `Firebase AI Logic rejected the request. ${APP_CHECK_HINT}`;
   }
   if (/timed? ?out|deadline/i.test(raw)) return 'Gemini took too long to respond. Try again.';
   if (/network|fetch|Failed to fetch|ERR_/i.test(raw)) {
     // A blocked App Check request comes back as an opaque CORS failure, which
     // the browser reports as a plain "Failed to fetch" — indistinguishable
-    // from a real outage unless we know App Check is not set up.
+    // from a real outage unless we know whether App Check started.
     return isAppCheckEnabled()
-      ? 'Network error talking to Gemini.'
+      ? `Could not reach Gemini. ${APP_CHECK_TOKEN_REJECTED}`
       : `Could not reach Gemini. ${APP_CHECK_HINT}`;
   }
   return raw;
