@@ -151,8 +151,8 @@ export default function Library() {
         />
       ) : (
         <CardGrid>
-          {filtered.map((subject) => (
-            <GridItem key={subject.id}>
+          {filtered.map((subject, index) => (
+            <GridItem key={subject.id} index={index}>
               <SubjectCard subject={subject} onEdit={() => setEditing(subject)} />
             </GridItem>
           ))}

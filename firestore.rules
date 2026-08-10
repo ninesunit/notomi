@@ -42,6 +42,27 @@ service cloud.firestore {
             && request.resource.data.front.size() > 0;
         }
 
+        // One entry per class attended. Rules do not cascade into
+        // subcollections, so this needs its own block even though the parent
+        // subject already checks ownership.
+        match /lectures/{lectureId} {
+          allow read, delete: if isOwner(userId);
+          allow create, update: if isOwner(userId)
+            && request.resource.data.entry is string
+            && request.resource.data.entry.size() > 0
+            && request.resource.data.entry.size() <= 5000;
+        }
+
+        match /assignments/{assignmentId} {
+          allow read, delete: if isOwner(userId);
+          allow create, update: if isOwner(userId)
+            && request.resource.data.title is string
+            && request.resource.data.title.size() > 0
+            && request.resource.data.title.size() <= 500
+            && request.resource.data.kind in ['assignment', 'tutorial', 'lab', 'project']
+            && request.resource.data.status in ['todo', 'in_progress', 'done'];
+        }
+
         match /documents/{documentId} {
           allow read, delete: if isOwner(userId);
           // Source text is passed wholesale into Gemini's context window, but a

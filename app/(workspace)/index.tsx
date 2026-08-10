@@ -4,12 +4,15 @@ import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
 import { CountdownChip } from '@/components/Countdown';
+import { LogComposer } from '@/components/LectureLog';
 import { ProgramMap } from '@/components/ProgramMap';
+import { RemindersCard } from '@/components/Reminders';
 import { CardGrid, GridItem, SubjectCard } from '@/components/SubjectCard';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { SubjectModal } from '@/components/SubjectModal';
 import { defaultScope, filterByTerm } from '@/components/TermFilter';
 import { UploadButton } from '@/components/UploadButton';
+import { Reveal } from '@/components/motion';
 import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
@@ -157,6 +160,14 @@ export default function Dashboard() {
 
       <QuickActions onUpload={() => void start()} />
 
+      {/* The log sits high on the page on purpose: it is used walking out of a
+          lecture theatre, and anything below the fold does not get used then. */}
+      {currentSubjects.length > 0 ? (
+        <QuickLog uid={uid} subjects={currentSubjects} classes={liveClasses} />
+      ) : null}
+
+      <RemindersCard />
+
       {nextExam?.due ? <ExamBanner title={nextExam.todo.title} due={nextExam.due} /> : null}
 
       {semesters.data.length > 0 ? (
@@ -221,8 +232,8 @@ export default function Dashboard() {
         />
       ) : (
         <CardGrid>
-          {currentSubjects.map((subject) => (
-            <GridItem key={subject.id}>
+          {currentSubjects.map((subject, index) => (
+            <GridItem key={subject.id} index={index}>
               <SubjectCard subject={subject} onEdit={() => setEditing(subject)} />
             </GridItem>
           ))}
@@ -569,27 +580,109 @@ function ExamBanner({ title, due }: { title: string; due: Date }) {
   );
 }
 
-function Stat({
-  icon,
-  value,
-  label,
-  tone = 'neutral',
+/**
+ * Log a class from the dashboard.
+ *
+ * The subject is guessed from the timetable — the class happening now, else the
+ * last one that finished today — because the student has just walked out of it.
+ * The guess is a chip row, not a hidden default: guessing wrong and filing a
+ * lecture under the wrong subject is worse than one extra tap.
+ */
+function QuickLog({
+  uid,
+  subjects,
+  classes,
 }: {
-  icon: React.ComponentProps<typeof Feather>['name'];
-  value: number;
-  label: string;
-  tone?: 'neutral' | 'rose';
+  uid: string;
+  subjects: Subject[];
+  classes: ClassBlock[];
 }) {
+  const today = todayIndex();
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+
+  const suggestedId = useMemo(() => {
+    const todays = classes
+      .filter((block) => block.day === today && block.subjectId)
+      .sort((a, b) => a.startMinute - b.startMinute);
+
+    const current = todays.find(
+      (block) => block.startMinute <= nowMinutes && block.endMinute > nowMinutes
+    );
+    if (current?.subjectId) return current.subjectId;
+
+    const finished = [...todays].reverse().find((block) => block.endMinute <= nowMinutes);
+    return finished?.subjectId ?? null;
+  }, [classes, today, nowMinutes]);
+
+  const [subjectId, setSubjectId] = useState<string | null>(null);
+  const active = subjects.find((subject) => subject.id === (subjectId ?? suggestedId)) ?? subjects[0];
+  const [open, setOpen] = useState(false);
+
+  if (!active) return null;
+
   return (
-    <View
-      className="flex-1 grow gap-2 rounded-2xl border border-line bg-surface p-4"
-      style={{ minWidth: 140, flexBasis: 140 }}
-    >
-      <Feather name={icon} size={15} color={tone === 'rose' ? '#B0443E' : '#9A9488'} />
-      <Text className={`text-2xl font-bold ${tone === 'rose' ? 'text-rose' : 'text-ink'}`}>
-        {value}
-      </Text>
-      <Text className="text-[13px] text-muted">{label}</Text>
+    <View className="mb-8 gap-3">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen((value) => !value)}
+        className="flex-row items-center gap-3 rounded-2xl border border-line bg-surface p-4"
+      >
+        <View className="h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
+          <Feather name="edit-3" size={15} color="#B4552D" />
+        </View>
+        <View className="flex-1">
+          <Text className="text-[15px] font-semibold text-ink">Log a class</Text>
+          <Text className="text-xs text-muted" numberOfLines={1}>
+            {open
+              ? `Writing up ${active.name}`
+              : 'Say what you covered and Gemini writes the notes'}
+          </Text>
+        </View>
+        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
+      </Pressable>
+
+      <Reveal open={open}>
+        <View className="gap-3">
+          {subjects.length > 1 ? (
+            <View className="flex-row flex-wrap gap-1.5">
+              {subjects.map((subject) => {
+                const selected = subject.id === active.id;
+                return (
+                  <Pressable
+                    key={subject.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setSubjectId(subject.id)}
+                    className={`rounded-lg border px-3 py-1.5 ${
+                      selected ? 'border-accent bg-accent-soft' : 'border-line bg-surface'
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-medium ${selected ? 'text-accent' : 'text-muted'}`}
+                    >
+                      {subject.emoji ? `${subject.emoji} ` : ''}
+                      {subject.moduleCode || subject.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          <LogComposer
+            key={active.id}
+            dense
+            uid={uid}
+            subjectId={active.id}
+            subjectName={active.name}
+          />
+
+          <Link href={`/library/${active.id}`} asChild>
+            <Button label="Open the full log" icon="book-open" variant="ghost" size="sm" />
+          </Link>
+        </View>
+      </Reveal>
     </View>
   );
 }

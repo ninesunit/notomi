@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
 import { ImportReview } from '@/components/ImportReview';
+import { FadeIn } from '@/components/motion';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import {
@@ -11,7 +12,7 @@ import {
   TermFilter,
   type TermScope,
 } from '@/components/TermFilter';
-import { Button, Card, EmptyState, Field, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
+import { Button, EmptyState, Field, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { paths } from '@/lib/paths';
@@ -29,6 +30,7 @@ import {
   type Semester,
   type Subject,
 } from '@/lib/schema';
+import { feedback } from '@/lib/sound';
 import { getDb } from '@/services/firebase';
 import { pickMaterials, type MaterialFile } from '@/services/ingestion';
 import {
@@ -49,15 +51,23 @@ import {
 /**
  * The weekly timetable.
  *
- * On a wide screen this is a real grid — seven day columns against an hour
- * ruler, because that is the shape a student already has in their head. Below
- * that it collapses to a day-by-day agenda, since seven columns on a phone are
- * seven unreadable slivers.
+ * It is a real grid at every width — seven day columns against an hour ruler,
+ * because that is the shape a student already has in their head, and seeing the
+ * whole week at once is the point of a timetable. On a phone the columns take a
+ * fixed width and the grid scrolls sideways under a pinned hour ruler, rather
+ * than collapsing to one day at a time.
  */
 
+/** Above this width the seven columns share the available space. */
 const GRID_BREAKPOINT = 900;
 /** Pixels per hour in the grid. Enough for a title and a room at 45 minutes. */
 const HOUR_HEIGHT = 56;
+/** Width of one day column when the grid scrolls. ~3.5 days visible on a phone. */
+const COMPACT_DAY_WIDTH = 96;
+/** Width of the pinned hour ruler. */
+const RULER_WIDTH = 46;
+/** Height of the day-name header, needed to offset the ruler by the same amount. */
+const HEADER_HEIGHT = 38;
 
 export default function Timetable() {
   const uid = useUid();
@@ -69,7 +79,6 @@ export default function Timetable() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [selectedDay, setSelectedDay] = useState(todayIndex());
 
   const [showRoutines, setShowRoutines] = useState(true);
   const [editingRoutine, setEditingRoutine] = useState<RoutineBlock | 'new' | null>(null);
@@ -281,26 +290,15 @@ export default function Timetable() {
             />
           </View>
 
-          {grid ? (
-            <WeekGrid
-              classes={classes.data}
-              routines={showRoutines ? routines.data : []}
-              firstHour={firstHour}
-              lastHour={lastHour}
-              onSelect={(block) => setEditing(block)}
-              onSelectRoutine={(block) => setEditingRoutine(block)}
-            />
-          ) : (
-            <DayAgenda
-              classes={classes.data}
-              routines={showRoutines ? routines.data : []}
-              day={selectedDay}
-              onDay={setSelectedDay}
-              onSelect={(block) => setEditing(block)}
-              onSelectRoutine={(block) => setEditingRoutine(block)}
-              onDelete={(id) => void remove(id)}
-            />
-          )}
+          <WeekGrid
+            classes={classes.data}
+            routines={showRoutines ? routines.data : []}
+            firstHour={firstHour}
+            lastHour={lastHour}
+            compact={!grid}
+            onSelect={(block) => setEditing(block)}
+            onSelectRoutine={(block) => setEditingRoutine(block)}
+          />
 
           {unlinked.length > 0 ? (
             <Notice
@@ -440,14 +438,31 @@ export default function Timetable() {
 }
 
 /* ------------------------------------------------------------------ *
- * Wide layout: the grid
+ * The week
  * ------------------------------------------------------------------ */
+
+/** Minutes since midnight, ticking once a minute so the "now" line moves. */
+function useNowMinute(): number {
+  const read = () => {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  };
+  const [minute, setMinute] = useState(read);
+
+  useEffect(() => {
+    const id = setInterval(() => setMinute(read()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return minute;
+}
 
 function WeekGrid({
   classes,
   routines,
   firstHour,
   lastHour,
+  compact,
   onSelect,
   onSelectRoutine,
 }: {
@@ -455,21 +470,47 @@ function WeekGrid({
   routines: RoutineBlock[];
   firstHour: number;
   lastHour: number;
+  /** Fixed-width columns that scroll sideways, for phone widths. */
+  compact: boolean;
   onSelect: (block: ClassBlock) => void;
   onSelectRoutine: (block: RoutineBlock) => void;
 }) {
   const hours = Array.from({ length: lastHour - firstHour }, (_, index) => firstHour + index);
   const height = hours.length * HOUR_HEIGHT;
   const today = todayIndex();
+  const now = useNowMinute();
+  const scroller = useRef<ScrollView>(null);
 
-  return (
-    <View className="overflow-hidden rounded-2xl border border-line bg-surface">
+  /**
+   * Open on today rather than on Monday. Yesterday is kept in view so the
+   * column does not look like the left edge of the week.
+   */
+  useEffect(() => {
+    if (!compact) return;
+    const target = Math.max(0, (today - 1) * COMPACT_DAY_WIDTH);
+    const id = setTimeout(() => scroller.current?.scrollTo({ x: target, animated: false }), 0);
+    return () => clearTimeout(id);
+  }, [compact, today]);
+
+  const nowOffset =
+    now >= firstHour * 60 && now <= lastHour * 60
+      ? ((now - firstHour * 60) / 60) * HOUR_HEIGHT
+      : null;
+
+  // Fixed width when scrolling, an equal share of the row when not.
+  const columnWidth = compact ? { width: COMPACT_DAY_WIDTH } : undefined;
+  const columnFlex = compact ? '' : 'flex-1';
+
+  const week = (
+    <View className={compact ? '' : 'flex-1'}>
       <View className="flex-row border-b border-line bg-sand">
-        <View className="w-14 shrink-0" />
         {DAY_LABELS.map((label, index) => (
           <View
             key={label}
-            className={`flex-1 items-center py-2.5 ${index === today ? 'bg-accent-soft' : ''}`}
+            style={[columnWidth, { height: HEADER_HEIGHT }]}
+            className={`${columnFlex} items-center justify-center ${
+              index === today ? 'bg-accent-soft' : ''
+            }`}
           >
             <Text
               className={`text-xs font-bold uppercase tracking-wider ${
@@ -483,21 +524,13 @@ function WeekGrid({
       </View>
 
       <View className="flex-row" style={{ height }}>
-        {/* Hour ruler */}
-        <View className="w-14 shrink-0 border-r border-line">
-          {hours.map((hour) => (
-            <View key={hour} style={{ height: HOUR_HEIGHT }} className="items-end pr-2 pt-1">
-              <Text className="text-[10px] font-medium text-subtle">
-                {minutesToLabel(hour * 60)}
-              </Text>
-            </View>
-          ))}
-        </View>
-
         {DAY_LABELS.map((label, day) => (
           <View
             key={label}
-            className={`flex-1 border-l border-line ${day === today ? 'bg-accent-soft/25' : ''}`}
+            style={columnWidth}
+            className={`${columnFlex} border-l border-line ${
+              day === today ? 'bg-accent-soft/25' : ''
+            }`}
           >
             {/* Hour lines sit behind the blocks as ordinary rows. */}
             {hours.map((hour) => (
@@ -521,7 +554,10 @@ function WeekGrid({
                   accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
                     block.startMinute
                   )}`}
-                  onPress={() => onSelectRoutine(block)}
+                  onPress={() => {
+                    feedback('tap');
+                    onSelectRoutine(block);
+                  }}
                   className="absolute left-1 right-1 overflow-hidden rounded-lg px-1.5 py-1"
                   style={{
                     top: top + 1,
@@ -553,7 +589,10 @@ function WeekGrid({
                   accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
                     block.startMinute
                   )} to ${minutesToLabel(block.endMinute)}`}
-                  onPress={() => onSelect(block)}
+                  onPress={() => {
+                    feedback('tap');
+                    onSelect(block);
+                  }}
                   className="absolute left-1 right-1 overflow-hidden rounded-lg px-1.5 py-1"
                   style={{
                     top: top + 1,
@@ -574,148 +613,64 @@ function WeekGrid({
                 </Pressable>
               );
             })}
+
+            {/* Where the day has got to. Drawn last so it crosses the blocks. */}
+            {day === today && nowOffset !== null ? (
+              <View
+                pointerEvents="none"
+                className="absolute left-0 right-0 flex-row items-center"
+                style={{ top: nowOffset }}
+              >
+                <View className="h-1.5 w-1.5 rounded-full bg-accent" />
+                <View className="h-px flex-1 bg-accent/70" />
+              </View>
+            ) : null}
           </View>
         ))}
       </View>
     </View>
   );
-}
-
-/* ------------------------------------------------------------------ *
- * Narrow layout: one day at a time
- * ------------------------------------------------------------------ */
-
-function DayAgenda({
-  classes,
-  routines,
-  day,
-  onDay,
-  onSelect,
-  onSelectRoutine,
-  onDelete,
-}: {
-  classes: ClassBlock[];
-  routines: RoutineBlock[];
-  day: number;
-  onDay: (day: number) => void;
-  onSelect: (block: ClassBlock) => void;
-  onSelectRoutine: (block: RoutineBlock) => void;
-  onDelete: (classId: string) => void;
-}) {
-  const today = todayIndex();
-
-  /**
-   * The two layers are interleaved by time here rather than shown as separate
-   * lists: on a phone the question is "what is next", not "what kind of thing
-   * is next".
-   */
-  const items = useMemo(() => {
-    const academic = classesForDay(classes, day).map((block) => ({
-      kind: 'class' as const,
-      block,
-    }));
-    const routine = routinesForDay(routines, day).map((block) => ({
-      kind: 'routine' as const,
-      block,
-    }));
-    return [...academic, ...routine].sort((a, b) => a.block.startMinute - b.block.startMinute);
-  }, [classes, routines, day]);
 
   return (
-    <View className="gap-4">
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View className="flex-row gap-1.5">
-          {DAY_LABELS.map((label, index) => {
-            const count = classes.filter((block) => block.day === index).length;
-            const active = index === day;
-            return (
-              <Pressable
-                key={label}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                onPress={() => onDay(index)}
-                className={`min-w-[52px] items-center gap-0.5 rounded-xl px-3 py-2 ${
-                  active ? 'bg-ink' : index === today ? 'bg-accent-soft' : 'bg-sand'
-                }`}
-              >
-                <Text
-                  className={`text-xs font-bold ${
-                    active ? 'text-paper' : index === today ? 'text-accent' : 'text-muted'
-                  }`}
-                >
-                  {label}
-                </Text>
-                <Text className={`text-[10px] ${active ? 'text-paper/70' : 'text-subtle'}`}>
-                  {count || '—'}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </ScrollView>
-
-      {items.length === 0 ? (
-        <Card className="items-start">
-          <Text className="text-sm text-muted">Nothing scheduled on {DAY_FULL[day]}.</Text>
-        </Card>
-      ) : (
-        <View className="gap-2.5">
-          {items.map((entry) => {
-            const { block } = entry;
-            const routine = entry.kind === 'routine';
-            const meta = routine
-              ? ROUTINE_CATEGORIES.find((option) => option.id === entry.block.category)
-              : null;
-
-            return (
-              <Pressable
-                key={`${entry.kind}-${block.id}`}
-                onPress={() =>
-                  entry.kind === 'routine' ? onSelectRoutine(entry.block) : onSelect(entry.block)
-                }
-                className={`flex-row items-center gap-3 overflow-hidden rounded-xl border p-3.5 ${
-                  routine ? 'border-dashed border-line bg-paper' : 'border-line bg-surface'
-                }`}
-                style={{ borderLeftWidth: 4, borderLeftColor: block.color }}
-              >
-                <View className="w-[68px]">
-                  <Text className="text-[13px] font-bold text-ink">
-                    {minutesToLabel(block.startMinute)}
-                  </Text>
-                  <Text className="text-[11px] text-subtle">{minutesToLabel(block.endMinute)}</Text>
-                </View>
-
-                <View className="flex-1 gap-0.5">
-                  <Text className="text-sm font-semibold text-ink" numberOfLines={2}>
-                    {meta ? `${meta.emoji} ` : ''}
-                    {block.title}
-                  </Text>
-                  <Text className="text-xs text-muted" numberOfLines={1}>
-                    {(entry.kind === 'class'
-                      ? [entry.block.kind, entry.block.venue]
-                      : [meta?.label, entry.block.venue]
-                    )
-                      .filter(Boolean)
-                      .join(' · ') || 'No room set'}
+    <FadeIn>
+      <View className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <View className="flex-row">
+          {/* The ruler is a sibling of the scroller, not inside it: the hours
+              have to stay put while the days slide under them. */}
+          <View className="shrink-0" style={{ width: RULER_WIDTH }}>
+            <View
+              className="border-b border-r border-line bg-sand"
+              style={{ height: HEADER_HEIGHT }}
+            />
+            <View className="border-r border-line" style={{ height }}>
+              {hours.map((hour) => (
+                <View key={hour} style={{ height: HOUR_HEIGHT }} className="items-end pr-1.5 pt-1">
+                  <Text className="text-[10px] font-medium text-subtle">
+                    {minutesToLabel(hour * 60)}
                   </Text>
                 </View>
+              ))}
+            </View>
+          </View>
 
-                {entry.kind === 'class' ? (
-                  <IconButton
-                    icon="trash-2"
-                    tone="rose"
-                    label={`Delete ${block.title}`}
-                    onPress={() => onDelete(block.id)}
-                  />
-                ) : (
-                  <Feather name="chevron-right" size={15} color="#9A9488" />
-                )}
-              </Pressable>
-            );
-          })}
+          {compact ? (
+            <ScrollView
+              ref={scroller}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              className="flex-1"
+              // Without an explicit height the scroller collapses to its
+              // intrinsic content height on web and clips the grid.
+              contentContainerStyle={{ height: HEADER_HEIGHT + height }}
+            >
+              {week}
+            </ScrollView>
+          ) : (
+            week
+          )}
         </View>
-      )}
-    </View>
+      </View>
+    </FadeIn>
   );
 }
 

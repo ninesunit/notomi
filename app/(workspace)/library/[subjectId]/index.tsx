@@ -4,8 +4,11 @@ import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
 import { AddMaterialModal } from '@/components/AddMaterialModal';
+import { AssignmentsPanel } from '@/components/Assignments';
+import { LectureLogPanel } from '@/components/LectureLog';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { SubjectModal } from '@/components/SubjectModal';
+import { Tabs, TabPanel, type Tab } from '@/components/Tabs';
 import { Badge, Button, Card, EmptyState, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
@@ -13,10 +16,12 @@ import { formatDateTime } from '@/lib/dates';
 import { formatChars } from '@/lib/format';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
-import type { SourceDocument, StudySession, Subject } from '@/lib/schema';
+import type { Assignment, LectureLog, SourceDocument, StudySession, Subject } from '@/lib/schema';
 import { deleteMaterial, deleteSubject } from '@/services/ingestion';
 import { getR2FileUrl } from '@/services/r2Storage';
 import { describeLastStudied, formatMinutes, studyBySubject } from '@/services/sessions';
+
+type TabId = 'sources' | 'tasks' | 'log';
 
 export default function SubjectFolder() {
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>();
@@ -29,6 +34,7 @@ export default function SubjectFolder() {
   const [editOpen, setEditOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [tab, setTab] = useState<TabId>('sources');
 
   const subject = useDocument<Subject>(paths.subject(db, uid, subjectId), [uid, subjectId]);
   const documents = useCollection<SourceDocument>(
@@ -36,6 +42,14 @@ export default function SubjectFolder() {
     [uid, subjectId]
   );
   const sessions = useCollection<StudySession>(paths.sessions(db, uid), [uid]);
+
+  // Subscribed here only for the tab counts. The panels open their own
+  // listeners on the same queries, which the SDK serves from one watch.
+  const assignments = useCollection<Assignment>(paths.assignments(db, uid, subjectId), [
+    uid,
+    subjectId,
+  ]);
+  const lectures = useCollection<LectureLog>(paths.lectures(db, uid, subjectId), [uid, subjectId]);
 
   const study = useMemo(
     () => studyBySubject(sessions.data).get(subjectId) ?? null,
@@ -127,6 +141,19 @@ export default function SubjectFolder() {
   }
 
   const hasText = documents.data.some((document) => (document.charCount ?? 0) > 0);
+
+  const TABS: Tab<TabId>[] = [
+    { id: 'sources', label: 'Sources', icon: 'file-text', count: documents.data.length },
+    {
+      id: 'tasks',
+      label: 'Tutorials & assignments',
+      icon: 'clipboard',
+      // The badge counts what is still outstanding, not the total: a student
+      // wants to know what is left, not what they have ever handed in.
+      count: assignments.data.filter((row) => row.status !== 'done').length,
+    },
+    { id: 'log', label: 'Lecture log', icon: 'book-open', count: lectures.data.length },
+  ];
 
   return (
     <ScreenScroll>
@@ -229,141 +256,155 @@ export default function SubjectFolder() {
         </Link>
       </View>
 
-      {documents.loading ? (
-        <Loading label="Loading sources…" />
-      ) : documents.data.length === 0 ? (
-        <EmptyState
-          icon="file-plus"
-          title="No sources in this subject"
-          body="Add lecture slides, notes or a syllabus and they will show up here."
-        />
-      ) : (
-        <View className="gap-8">
-          {modules.map(([moduleCode, moduleDocuments]) => (
-            <View key={moduleCode} className="gap-3">
-              <View className="flex-row items-center gap-2">
-                <Text className="text-xs font-bold uppercase tracking-wider text-muted">
-                  {moduleCode}
-                </Text>
-                <View className="h-px flex-1 bg-line" />
-                <Text className="text-xs text-subtle">{moduleDocuments.length}</Text>
-              </View>
+      <Tabs tabs={TABS} value={tab} onChange={setTab} />
 
-              <View className="gap-3">
-                {moduleDocuments.map((document) => (
-                  <Card key={document.id} className="gap-3">
-                    <View className="flex-row items-start gap-3">
-                      <View className="mt-0.5 h-9 w-9 items-center justify-center rounded-lg bg-sand">
-                        <Feather
-                          name={document.mimeType?.includes('pdf') ? 'file-text' : 'file'}
-                          size={15}
-                          color="#6F6A5F"
-                        />
-                      </View>
+      {tab === 'sources' ? (
+        <TabPanel id="sources">
+          {documents.loading ? (
+            <Loading label="Loading sources…" />
+          ) : documents.data.length === 0 ? (
+            <EmptyState
+              icon="file-plus"
+              title="No sources in this subject"
+              body="Add lecture slides, notes or a syllabus and they will show up here."
+            />
+          ) : (
+            <View className="gap-8">
+              {modules.map(([moduleCode, moduleDocuments]) => (
+                <View key={moduleCode} className="gap-3">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-xs font-bold uppercase tracking-wider text-muted">
+                      {moduleCode}
+                    </Text>
+                    <View className="h-px flex-1 bg-line" />
+                    <Text className="text-xs text-subtle">{moduleDocuments.length}</Text>
+                  </View>
 
-                      {/* The whole row opens the note reader — the icons beside
-                          it stay reserved for the destructive actions. */}
-                      <Link href={`/library/${subjectId}/${document.id}`} asChild>
-                        <Pressable className="flex-1 gap-1">
-                          <Text className="text-[15px] font-semibold leading-5 text-ink">
-                            {document.fileName}
-                          </Text>
-                          <Text className="text-xs text-subtle">
-                            {[
-                              formatDateTime(document.createdAt),
-                              document.charCount
-                                ? formatChars(document.charCount)
-                                : null,
-                              document.sizeBytes
-                                ? `${(document.sizeBytes / 1024 / 1024).toFixed(1)} MB`
-                                : null,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </Text>
-                        </Pressable>
-                      </Link>
-
-                      <View className="flex-row items-center">
-                        {document.notes ? (
-                          <View className="mr-1">
-                            <Badge label="Notes" tone="pine" />
+                  <View className="gap-3">
+                    {moduleDocuments.map((document) => (
+                      <Card key={document.id} className="gap-3">
+                        <View className="flex-row items-start gap-3">
+                          <View className="mt-0.5 h-9 w-9 items-center justify-center rounded-lg bg-sand">
+                            <Feather
+                              name={document.mimeType?.includes('pdf') ? 'file-text' : 'file'}
+                              size={15}
+                              color="#6F6A5F"
+                            />
                           </View>
-                        ) : null}
-                        {document.r2FileKey || document.r2FileUrl ? (
-                          <IconButton
-                            icon="download"
-                            label={`Open ${document.fileName}`}
-                            onPress={() => void openOriginal(document)}
-                          />
-                        ) : null}
-                        <IconButton
-                          icon={removing === document.id ? 'loader' : 'trash-2'}
-                          tone="rose"
-                          label={`Remove ${document.fileName}`}
-                          onPress={() => void removeDocument(document)}
-                        />
-                      </View>
-                    </View>
 
-                    {document.summary ? (
-                      <Text className="text-sm leading-6 text-ink/75">{document.summary}</Text>
-                    ) : null}
+                          {/* The whole row opens the note reader — the icons beside
+                              it stay reserved for the destructive actions. */}
+                          <Link href={`/library/${subjectId}/${document.id}`} asChild>
+                            <Pressable className="flex-1 gap-1">
+                              <Text className="text-[15px] font-semibold leading-5 text-ink">
+                                {document.fileName}
+                              </Text>
+                              <Text className="text-xs text-subtle">
+                                {[
+                                  formatDateTime(document.createdAt),
+                                  document.charCount
+                                    ? formatChars(document.charCount)
+                                    : null,
+                                  document.sizeBytes
+                                    ? `${(document.sizeBytes / 1024 / 1024).toFixed(1)} MB`
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </Text>
+                            </Pressable>
+                          </Link>
 
-                    {document.error ? <Badge label="Analysed with warnings" tone="amber" /> : null}
-                  </Card>
-                ))}
+                          <View className="flex-row items-center">
+                            {document.notes ? (
+                              <View className="mr-1">
+                                <Badge label="Notes" tone="pine" />
+                              </View>
+                            ) : null}
+                            {document.r2FileKey || document.r2FileUrl ? (
+                              <IconButton
+                                icon="download"
+                                label={`Open ${document.fileName}`}
+                                onPress={() => void openOriginal(document)}
+                              />
+                            ) : null}
+                            <IconButton
+                              icon={removing === document.id ? 'loader' : 'trash-2'}
+                              tone="rose"
+                              label={`Remove ${document.fileName}`}
+                              onPress={() => void removeDocument(document)}
+                            />
+                          </View>
+                        </View>
+
+                        {document.summary ? (
+                          <Text className="text-sm leading-6 text-ink/75">{document.summary}</Text>
+                        ) : null}
+
+                        {document.error ? <Badge label="Analysed with warnings" tone="amber" /> : null}
+                      </Card>
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View className="mt-10 gap-3 border-t border-line pt-6">
+            {confirmingDelete ? (
+              <>
+                <Notice
+                  tone="rose"
+                  title={`Delete “${subject.data.name}” and everything in it?`}
+                  body={`This removes ${documents.data.length} source${
+                    documents.data.length === 1 ? '' : 's'
+                  }, their uploaded files, every note and saved chat, and any to-dos created from them. It cannot be undone.`}
+                />
+                <View className="flex-row items-center gap-2">
+                  <Button
+                    label={deleting ? 'Deleting…' : 'Yes, delete everything'}
+                    variant="danger"
+                    size="sm"
+                    icon="trash-2"
+                    loading={deleting}
+                    disabled={deleting}
+                    onPress={() => void removeSubject()}
+                  />
+                  <Button
+                    label="Cancel"
+                    variant="ghost"
+                    size="sm"
+                    disabled={deleting}
+                    onPress={() => setConfirmingDelete(false)}
+                  />
+                </View>
+              </>
+            ) : (
+              <View className="items-start">
+                <Button
+                  label="Delete subject"
+                  variant="danger"
+                  size="sm"
+                  icon="trash-2"
+                  onPress={() => setConfirmingDelete(true)}
+                />
+                <Text className="mt-2 text-xs text-subtle">
+                  Removes this folder and everything derived from it — sources, notes, chats and
+                  deadlines.
+                </Text>
               </View>
-            </View>
-          ))}
-        </View>
-      )}
-
-      <View className="mt-10 gap-3 border-t border-line pt-6">
-        {confirmingDelete ? (
-          <>
-            <Notice
-              tone="rose"
-              title={`Delete “${subject.data.name}” and everything in it?`}
-              body={`This removes ${documents.data.length} source${
-                documents.data.length === 1 ? '' : 's'
-              }, their uploaded files, every note and saved chat, and any to-dos created from them. It cannot be undone.`}
-            />
-            <View className="flex-row items-center gap-2">
-              <Button
-                label={deleting ? 'Deleting…' : 'Yes, delete everything'}
-                variant="danger"
-                size="sm"
-                icon="trash-2"
-                loading={deleting}
-                disabled={deleting}
-                onPress={() => void removeSubject()}
-              />
-              <Button
-                label="Cancel"
-                variant="ghost"
-                size="sm"
-                disabled={deleting}
-                onPress={() => setConfirmingDelete(false)}
-              />
-            </View>
-          </>
-        ) : (
-          <View className="items-start">
-            <Button
-              label="Delete subject"
-              variant="danger"
-              size="sm"
-              icon="trash-2"
-              onPress={() => setConfirmingDelete(true)}
-            />
-            <Text className="mt-2 text-xs text-subtle">
-              Removes this folder and everything derived from it — sources, notes, chats and
-              deadlines.
-            </Text>
+            )}
           </View>
-        )}
-      </View>
+        </TabPanel>
+      ) : tab === 'tasks' ? (
+        <TabPanel id="tasks">
+          <AssignmentsPanel uid={uid} subjectId={subjectId} subjectName={subject.data.name} />
+        </TabPanel>
+      ) : (
+        <TabPanel id="log">
+          <LectureLogPanel uid={uid} subjectId={subjectId} subjectName={subject.data.name} />
+        </TabPanel>
+      )}
 
       <AddMaterialModal
         subjectId={subjectId}

@@ -335,6 +335,128 @@ export type Flashcard = {
   lastSeenAt: Timestamp | null;
 };
 
+/* ------------------------------------------------------------------ *
+ * Lecture log
+ * ------------------------------------------------------------------ */
+
+/**
+ * users/{uid}/subjects/{subjectId}/lectures/{lectureId}
+ *
+ * One class, as the student describes it in a sentence — "today we did topic 4
+ * and got to 4.2". Everything structured hangs off that sentence: the topic and
+ * the section are what let the log be filed under a topic rather than a date,
+ * and the rundown is what makes it worth reading back before an exam.
+ */
+export type LectureLog = {
+  id: string;
+  subjectId: string;
+  subjectName: string | null;
+  /** Verbatim, so a bad reading can always be re-run against the original. */
+  entry: string;
+  title: string;
+  /** The chapter or topic covered, normalised by Gemini from the entry. */
+  topic: string | null;
+  /** How far inside the topic the class reached, e.g. "4.2". */
+  reachedSection: string | null;
+  /** Markdown rundown of what the class covered. */
+  notes: string | null;
+  keyPoints: string[];
+  /** What to read or revise before the next class. */
+  followUps: string[];
+  /** Set when the entry was logged against a timetable block. */
+  classId: string | null;
+  /** Local YYYY-MM-DD of the class, so a term's logs sort without dates. */
+  dayKey: string;
+  createdAt: Timestamp | null;
+};
+
+/** Gemini's read of one lecture log entry. */
+export type LectureRundown = {
+  title: string;
+  topic: string | null;
+  reachedSection: string | null;
+  notes: string;
+  keyPoints: string[];
+  followUps: string[];
+};
+
+/* ------------------------------------------------------------------ *
+ * Tutorials, labs and assignments
+ * ------------------------------------------------------------------ */
+
+export type AssignmentKind = 'assignment' | 'tutorial' | 'lab' | 'project';
+
+export const ASSIGNMENT_KINDS: {
+  id: AssignmentKind;
+  label: string;
+  emoji: string;
+  color: string;
+}[] = [
+  { id: 'assignment', label: 'Assignment', emoji: '📝', color: '#B4552D' },
+  { id: 'tutorial', label: 'Tutorial', emoji: '✏️', color: '#4C5FA8' },
+  { id: 'lab', label: 'Lab', emoji: '🧪', color: '#2E6F5E' },
+  { id: 'project', label: 'Project', emoji: '🚀', color: '#8A4B86' },
+];
+
+export type AssignmentStep = {
+  id: string;
+  title: string;
+  detail: string | null;
+  isCompleted: boolean;
+};
+
+/** users/{uid}/subjects/{subjectId}/assignments/{assignmentId} */
+export type Assignment = {
+  id: string;
+  subjectId: string;
+  subjectName: string | null;
+  title: string;
+  kind: AssignmentKind;
+  /** Gemini's rundown of what the brief actually asks for. */
+  brief: string | null;
+  /** Extracted text of the brief, kept so it can be re-analysed offline. */
+  sourceText: string | null;
+  sourceFileName: string | null;
+  steps: AssignmentStep[];
+  deliverables: string[];
+  markingNotes: string | null;
+  estimatedHours: number | null;
+  dueDate: Timestamp | null;
+  /** The to-do created for the deadline, so deleting this can clean it up. */
+  todoId: string | null;
+  status: 'todo' | 'in_progress' | 'done';
+  createdAt: Timestamp | null;
+  updatedAt: Timestamp | null;
+};
+
+/** What Gemini returns for an uploaded brief. */
+export type AssignmentBreakdown = {
+  title: string;
+  /** assignment | tutorial | lab | project */
+  kind: string | null;
+  summary: string;
+  steps: { title: string; detail: string | null }[];
+  deliverables: string[];
+  markingNotes: string | null;
+  estimatedHours: number | null;
+  /** ISO YYYY-MM-DD. */
+  dueDate: string | null;
+  /** 24-hour HH:MM. */
+  dueTime: string | null;
+};
+
+export function assignmentKind(raw: string | null | undefined): AssignmentKind {
+  const value = (raw ?? '').toLowerCase();
+  const match = ASSIGNMENT_KINDS.find((option) => value.includes(option.id));
+  if (match) return match.id;
+  // "Practical" and "workshop" are what a lab is called at half of all
+  // universities; "problem set" is a tutorial by another name.
+  if (/practical|workshop|experiment/.test(value)) return 'lab';
+  if (/problem set|exercise|worksheet|tutorial/.test(value)) return 'tutorial';
+  if (/project|capstone|dissertation|thesis/.test(value)) return 'project';
+  return 'assignment';
+}
+
 /** users/{uid}/todos/{todoId} */
 export type SubTask = {
   id: string;

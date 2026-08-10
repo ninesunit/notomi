@@ -2,6 +2,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import type { Subject } from '@/lib/schema';
+import { FadeIn } from './motion';
 
 /**
  * A subject folder tile.
@@ -128,16 +129,19 @@ export function GridItem({
   children,
   minWidth = 260,
   maxWidth = 420,
+  index = 0,
 }: {
   children: React.ReactNode;
   minWidth?: number;
   maxWidth?: number;
+  /** Position in the grid, used to stagger the entrance. */
+  index?: number;
 }) {
   // Capped as well as floored: without a ceiling a single subject stretches to
   // the full width of a desktop pane and stops reading as a card.
   return (
     <View className="flex-1 grow" style={{ minWidth, maxWidth, flexBasis: minWidth }}>
-      {children}
+      <FadeIn index={index}>{children}</FadeIn>
     </View>
   );
 }

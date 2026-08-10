@@ -1,12 +1,13 @@
 import { ActivityIndicator, Platform, Text, useWindowDimensions, View } from 'react-native';
 import { Slot } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeArea } from '@/hooks/useSafeArea';
 import { GlobalSearch } from '@/components/GlobalSearch';
 import { IngestBanner } from '@/components/IngestBanner';
 import { Logo } from '@/components/Logo';
 import { BottomTabs, Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/hooks/useAuth';
 import { IngestProvider } from '@/hooks/useIngest';
+import { ReminderProvider } from '@/hooks/useReminders';
 import { UndoProvider } from '@/hooks/useUndo';
 
 /** Below this the rail becomes a bottom bar (iPhone portrait, split-view iPad). */
@@ -34,7 +35,7 @@ export const RAIL_BREAKPOINT = 900;
  */
 export default function WorkspaceLayout() {
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const insets = useSafeArea();
   const { user } = useAuth();
   const showRail = width >= RAIL_BREAKPOINT;
 
@@ -51,10 +52,11 @@ export default function WorkspaceLayout() {
   return (
     <IngestProvider>
       <UndoProvider>
-      <View
-        className={`w-full h-full min-h-screen bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}
-        style={{ paddingTop: showRail ? 0 : insets.top }}
-      >
+      <ReminderProvider>
+      {/* No padding on the root: the top bar carries the inset itself so its
+          own background fills the notch area, rather than leaving a bare strip
+          of paper above a floating bar. */}
+      <View className={`w-full h-full min-h-screen bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}>
         {showRail ? <Sidebar /> : null}
 
         <View
@@ -63,10 +65,19 @@ export default function WorkspaceLayout() {
           {/* Without the rail there is nowhere else for the wordmark or search
               to live, so a compact bar carries both. */}
           {showRail ? null : (
-            <View className="flex-row items-center gap-3 border-b border-line bg-sand px-4 py-2.5">
-              <Logo size={28} />
-              <View className="flex-1">
-                <GlobalSearch />
+            <View
+              className="border-b border-line bg-sand"
+              style={{
+                paddingTop: insets.top,
+                paddingLeft: insets.left,
+                paddingRight: insets.right,
+              }}
+            >
+              <View className="flex-row items-center gap-3 px-4 py-2.5">
+                <Logo size={28} />
+                <View className="flex-1">
+                  <GlobalSearch />
+                </View>
               </View>
             </View>
           )}
@@ -91,6 +102,7 @@ export default function WorkspaceLayout() {
           </View>
         )}
       </View>
+      </ReminderProvider>
       </UndoProvider>
     </IngestProvider>
   );

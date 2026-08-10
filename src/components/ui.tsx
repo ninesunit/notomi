@@ -1,13 +1,17 @@
-import { forwardRef, type ReactNode } from 'react';
+import { forwardRef, useRef, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Platform,
   Pressable,
   Text,
   TextInput,
   View,
+  type GestureResponderEvent,
   type TextInputProps,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { feedback } from '@/lib/sound';
 
 type IconName = keyof typeof Feather.glyphMap;
 
@@ -15,7 +19,13 @@ type IconName = keyof typeof Feather.glyphMap;
 
 type ButtonProps = {
   label: string;
-  onPress?: () => void;
+  /**
+   * The press event is part of the signature even though most callers ignore
+   * it: `<Link asChild><Button/></Link>` injects expo-router's own handler
+   * here, and that handler reads the event to decide whether to navigate.
+   * Swallowing the argument turns every button inside a Link into a no-op.
+   */
+  onPress?: (event: GestureResponderEvent) => void;
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   size?: 'sm' | 'md';
   icon?: IconName;
@@ -51,15 +61,36 @@ export function Button({
   const isDisabled = disabled || loading;
   const iconColor = variant === 'primary' ? '#F7F5EE' : variant === 'danger' ? '#B0443E' : '#1B1A17';
 
+  // Scale is applied here rather than in a wrapper so every button in the app
+  // responds to touch without each screen opting in.
+  const scale = useRef(new Animated.Value(1)).current;
+  const spring = (toValue: number) =>
+    Animated.spring(scale, {
+      toValue,
+      speed: 40,
+      bounciness: 0,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled, busy: loading }}
       disabled={isDisabled}
-      onPress={onPress}
+      onPressIn={() => spring(0.97)}
+      onPressOut={() => spring(1)}
+      onPress={
+        onPress
+          ? (event) => {
+              feedback(variant === 'danger' ? 'toggle' : 'tap');
+              onPress(event);
+            }
+          : undefined
+      }
       className={`flex-row items-center justify-center gap-2 rounded-xl ${
         size === 'sm' ? 'px-3 py-2' : 'px-4 py-3'
       } ${BUTTON_SURFACE[variant]} ${isDisabled ? 'opacity-40' : ''} ${className}`}
+      style={{ transform: [{ scale }] }}
     >
       {loading ? (
         <ActivityIndicator size="small" color={iconColor} />

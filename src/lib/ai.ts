@@ -7,9 +7,11 @@ import {
 import { GEMINI_MODEL, getAiClient, getModel, isAppCheckEnabled } from '@/services/firebase';
 import type {
   AnswerGrade,
+  AssignmentBreakdown,
   ExtractedClass,
   ExtractedMetadata,
   GeneratedCard,
+  LectureRundown,
   OpenQuestion,
   PodcastLine,
   QuizQuestion,
@@ -899,5 +901,232 @@ ${context.slice(0, 120_000)}`,
     whatWentWell: parsed.whatWentWell?.trim() || '',
     whatWasMissing: parsed.whatWasMissing?.trim() || '',
     followUp: parsed.followUp?.trim() || null,
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Lecture log
+ * ------------------------------------------------------------------ */
+
+const lectureSchema = Schema.object({
+  properties: {
+    title: Schema.string({ description: 'Short title for the class, max 8 words.' }),
+    topic: Schema.string({ description: 'Chapter or topic covered, as named by the course.' }),
+    reachedSection: Schema.string({
+      description: 'How far inside the topic the class reached, e.g. "4.2". Empty if unstated.',
+    }),
+    notes: Schema.string({ description: 'Markdown rundown of what the class covered.' }),
+    keyPoints: Schema.array({ items: Schema.string() }),
+    followUps: Schema.array({ items: Schema.string() }),
+  },
+  optionalProperties: ['topic', 'reachedSection'],
+});
+
+/**
+ * Turns "today we did topic 4 and got to 4.2" into a set of notes.
+ *
+ * The student's sentence carries almost no content — the content is in the
+ * subject's uploaded material, which is why the corpus is passed alongside it.
+ * The model's job is to find the stated range inside that material and write it
+ * up, not to invent a lecture from the sentence.
+ */
+export async function summariseLecture(input: {
+  subjectName: string;
+  entry: string;
+  /** The subject's own material; the notes are written from this. */
+  context: string;
+  /** What earlier classes covered, so the rundown starts where they stopped. */
+  previous?: string[];
+}): Promise<LectureRundown> {
+  const parsed = await generateJson<LectureRundown>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: lectureSchema,
+        temperature: 0.3,
+      },
+    },
+    `A student has just come out of a ${input.subjectName} class and written down
+what was covered. Write up that class for them.
+
+WHAT THE STUDENT WROTE
+${input.entry}
+
+${
+  input.previous?.length
+    ? `WHAT EARLIER CLASSES COVERED (most recent first)\n${input.previous
+        .slice(0, 8)
+        .map((line) => `- ${line}`)
+        .join('\n')}\n`
+    : ''
+}
+Produce:
+- "topic": the chapter or topic covered, named the way the course material names
+  it. If the student wrote "topic 4" and the material calls it "4. Normalisation",
+  return "4. Normalisation". Empty only if nothing identifies it.
+- "reachedSection": the furthest point reached, exactly as the student states it
+  ("4.2", "slide 31", "the end of the chapter"). Empty if they did not say.
+- "title": a short human title for this class.
+- "notes": the actual rundown, in Markdown, and this is the part that matters.
+  Teach the range the student says was covered, drawn from the SOURCE MATERIAL
+  below — definitions, the reasoning, worked steps, and any formula written out.
+  Use "## " headings and short paragraphs. Aim for something a student can
+  revise from without reopening the slides. Do not describe the class ("the
+  lecturer explained…"); write the content itself.
+- "keyPoints": 3-6 one-line takeaways.
+- "followUps": what to read or practise before the next class, based on where
+  this one stopped. 2-4 items, specific.
+
+Rules:
+- Stay inside the range the student states. If they stopped at 4.2, do not write
+  up 4.3.
+- Everything factual must come from the source material. Where the material does
+  not cover something the student mentions, say so in one line inside "notes"
+  rather than inventing it.
+- If there is no source material at all, write the best general rundown you can
+  for the stated topic and open "notes" with one line saying it was written
+  without the course material.
+
+SOURCE MATERIAL
+${input.context.slice(0, 300_000) || '(none uploaded for this subject yet)'}`,
+    (value): value is LectureRundown => !!value && typeof (value as LectureRundown).notes === 'string'
+  );
+
+  return {
+    title: parsed.title?.trim() || 'Class notes',
+    topic: parsed.topic?.trim() || null,
+    reachedSection: parsed.reachedSection?.trim() || null,
+    notes: parsed.notes?.trim() || '',
+    keyPoints: (parsed.keyPoints ?? []).map((line) => String(line).trim()).filter(Boolean),
+    followUps: (parsed.followUps ?? []).map((line) => String(line).trim()).filter(Boolean),
+  };
+}
+
+/**
+ * The question a student would rather not interrupt the lecturer with.
+ *
+ * Deliberately terse: this is answered mid-class on a phone, so a wall of text
+ * is worse than no answer. Prose, not JSON — it is read, never parsed.
+ */
+export async function askInClass(input: {
+  subjectName: string;
+  question: string;
+  context: string;
+  /** What the class is on right now, when the log knows. */
+  topic?: string | null;
+}): Promise<string> {
+  return generateProse(
+    `A student is sitting in a ${input.subjectName} lecture${
+      input.topic ? ` on "${input.topic}"` : ''
+    } and does not want to interrupt to ask this. Answer it.
+
+QUESTION
+${input.question}
+
+- Answer in under 150 words. Lead with the answer, then the reason.
+- Markdown, but no headings — bullets and bold at most.
+- Use the course's own notation and terminology, from the material below.
+- A formula goes in LaTeX between $ delimiters.
+- If the material does not settle it, answer from general knowledge of the
+  field and say in one short line that it is not in their material.
+
+COURSE MATERIAL
+${input.context.slice(0, 200_000) || '(none uploaded yet)'}`,
+    0.3
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Assignments, tutorials and labs
+ * ------------------------------------------------------------------ */
+
+const assignmentSchema = Schema.object({
+  properties: {
+    title: Schema.string({ description: 'The task as the brief names it.' }),
+    kind: Schema.string({ description: 'assignment | tutorial | lab | project' }),
+    summary: Schema.string({ description: 'Markdown rundown of what is being asked.' }),
+    steps: Schema.array({
+      items: Schema.object({
+        properties: {
+          title: Schema.string({ description: 'One actionable step.' }),
+          detail: Schema.string({ description: 'What doing it involves.' }),
+        },
+        optionalProperties: ['detail'],
+      }),
+    }),
+    deliverables: Schema.array({ items: Schema.string() }),
+    markingNotes: Schema.string({ description: 'How it is graded, if stated.' }),
+    estimatedHours: Schema.number({ description: 'Realistic total hours of work.' }),
+    dueDate: Schema.string({ description: 'ISO YYYY-MM-DD, or empty if not stated.' }),
+    dueTime: Schema.string({ description: '24-hour HH:MM, or empty.' }),
+  },
+  optionalProperties: ['kind', 'markingNotes', 'estimatedHours', 'dueDate', 'dueTime'],
+});
+
+/**
+ * Reads an assignment, tutorial or lab brief into a plan with a deadline.
+ *
+ * Today's date is passed in because briefs say "due next Friday" far more often
+ * than they print an ISO date, and the model has no clock.
+ */
+export async function breakDownAssignment(input: {
+  subjectName: string;
+  /** Extracted text of the brief. */
+  text: string;
+  fileName?: string | null;
+  /** ISO YYYY-MM-DD of today, for resolving relative deadlines. */
+  today: string;
+}): Promise<AssignmentBreakdown> {
+  const parsed = await generateJson<AssignmentBreakdown>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: assignmentSchema,
+        temperature: 0.2,
+      },
+    },
+    `This is a brief for a piece of assessed work in ${input.subjectName}${
+      input.fileName ? ` (file: ${input.fileName})` : ''
+    }. Today is ${input.today}.
+
+Read it and produce a plan the student can start from.
+
+- "title": what the brief calls this task.
+- "kind": one of assignment, tutorial, lab, project — whichever it actually is.
+- "summary": Markdown. What is being asked, in the student's terms. Open with
+  one sentence stating the deliverable, then cover the requirements, the
+  constraints (word count, language, group size, format) and anything easy to
+  miss. Quote exact figures from the brief rather than paraphrasing them.
+- "steps": the work broken into 4-10 ordered, actually-actionable steps. "Read
+  the brief" is not a step. Each "detail" says what doing it involves.
+- "deliverables": every artefact to hand in — report, code, video, log sheet —
+  with its format where stated.
+- "markingNotes": how marks are allocated, if the brief says. Empty if not.
+- "estimatedHours": your honest estimate of total work.
+- "dueDate": the deadline as ISO YYYY-MM-DD. Resolve relative dates against
+  today's date above. Empty if the brief states none — never guess one.
+- "dueTime": 24-hour HH:MM if a time of day is stated, else empty.
+
+BRIEF
+${input.text.slice(0, MAX_CONTEXT_CHARS)}`,
+    (value): value is AssignmentBreakdown =>
+      !!value && typeof (value as AssignmentBreakdown).summary === 'string'
+  );
+
+  return {
+    title: parsed.title?.trim() || 'Untitled task',
+    kind: parsed.kind?.trim() || null,
+    summary: parsed.summary?.trim() || '',
+    steps: (parsed.steps ?? [])
+      .filter((step) => step && typeof step.title === 'string' && step.title.trim())
+      .map((step) => ({ title: step.title.trim(), detail: step.detail?.trim() || null })),
+    deliverables: (parsed.deliverables ?? []).map((line) => String(line).trim()).filter(Boolean),
+    markingNotes: parsed.markingNotes?.trim() || null,
+    estimatedHours:
+      typeof parsed.estimatedHours === 'number' && parsed.estimatedHours > 0
+        ? Math.round(parsed.estimatedHours * 10) / 10
+        : null,
+    dueDate: parsed.dueDate?.trim() || null,
+    dueTime: parsed.dueTime?.trim() || null,
   };
 }

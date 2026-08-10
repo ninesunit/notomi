@@ -29,6 +29,17 @@ export const paths = {
   flashcard: (db: Firestore, uid: string, subjectId: string, cardId: string) =>
     doc(db, 'users', uid, 'subjects', subjectId, 'flashcards', cardId),
 
+  /** One entry per class attended, filed under the subject it belongs to. */
+  lectures: (db: Firestore, uid: string, subjectId: string) =>
+    collection(db, 'users', uid, 'subjects', subjectId, 'lectures'),
+  lecture: (db: Firestore, uid: string, subjectId: string, lectureId: string) =>
+    doc(db, 'users', uid, 'subjects', subjectId, 'lectures', lectureId),
+
+  assignments: (db: Firestore, uid: string, subjectId: string) =>
+    collection(db, 'users', uid, 'subjects', subjectId, 'assignments'),
+  assignment: (db: Firestore, uid: string, subjectId: string, assignmentId: string) =>
+    doc(db, 'users', uid, 'subjects', subjectId, 'assignments', assignmentId),
+
   classes: (db: Firestore, uid: string) => collection(db, 'users', uid, 'classes'),
   class: (db: Firestore, uid: string, classId: string) =>
     doc(db, 'users', uid, 'classes', classId),

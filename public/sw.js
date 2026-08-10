@@ -51,6 +51,33 @@ self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') void self.skipWaiting();
 });
 
+/**
+ * Tapping a reminder focuses the app instead of opening a second copy.
+ *
+ * An installed PWA can already have a window open behind the notification, and
+ * clients.openWindow() there gives the student two of the app.
+ */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      });
+      for (const client of clients) {
+        if ('focus' in client) {
+          if ('navigate' in client && target !== '/') await client.navigate(target).catch(() => undefined);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target);
+    })()
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;

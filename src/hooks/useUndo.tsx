@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Animated, Easing, Platform, Pressable, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeArea } from '@/hooks/useSafeArea';
 import { Feather } from '@expo/vector-icons';
 
 /**
@@ -127,7 +127,7 @@ export function useUndo(): UndoValue {
 }
 
 function UndoToast({ label, onUndo }: { label: string; onUndo: () => void }) {
-  const insets = useSafeAreaInsets();
+  const insets = useSafeArea();
   const rise = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {

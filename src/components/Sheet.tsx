@@ -6,11 +6,12 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeArea } from '@/hooks/useSafeArea';
 import { Feather } from '@expo/vector-icons';
 
 /**
@@ -52,7 +53,7 @@ export function Sheet({
   dismissOnScrim?: boolean;
 }) {
   const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const insets = useSafeArea();
   const sheet = width < SHEET_BREAKPOINT;
 
   const slide = useRef(new Animated.Value(0)).current;
@@ -80,15 +81,30 @@ export function Sheet({
       animationType={sheet ? 'none' : 'fade'}
       onRequestClose={onClose}
     >
-      <Pressable
-        accessibilityRole={dismissOnScrim ? 'button' : 'none'}
-        accessibilityLabel={dismissOnScrim ? 'Close' : undefined}
-        onPress={dismissOnScrim ? onClose : undefined}
-        className={`flex-1 bg-ink/40 ${sheet ? 'justify-end' : 'items-center justify-center px-5'}`}
+      {/*
+        The scrim is a SIBLING behind the panel, never an ancestor of it.
+
+        react-native-web renders Pressable as a <button>, and a button treats
+        Space and Enter as activation. With the panel nested inside the scrim,
+        every space typed into a field bubbled up and dismissed the sheet — you
+        could not put a space in a subject's name.
+      */}
+      <View
+        className={`flex-1 ${sheet ? 'justify-end' : 'items-center justify-center px-5'}`}
       >
-        {/* The scrim closes; the panel must not, so it swallows its own press. */}
         <Pressable
-          onPress={() => undefined}
+          accessibilityRole={dismissOnScrim ? 'button' : 'none'}
+          accessibilityLabel={dismissOnScrim ? 'Close' : undefined}
+          onPress={dismissOnScrim ? onClose : undefined}
+          // Keyboard activation is what caused the bug; the scrim is a
+          // pointer target only, and Escape already closes the modal.
+          focusable={false}
+          style={StyleSheet.absoluteFill}
+          className="bg-ink/40"
+        />
+
+        <View
+          pointerEvents="box-none"
           className={sheet ? 'w-full' : 'w-full max-w-md'}
           style={sheet ? undefined : { maxWidth: 448 }}
         >
@@ -148,8 +164,8 @@ export function Sheet({
             ) : null}
           </View>
           </Animated.View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

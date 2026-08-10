@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
@@ -234,17 +235,20 @@ export function GlobalSearch() {
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close search"
-          onPress={() => setOpen(false)}
-          className="flex-1 items-center bg-ink/40 px-5 pt-16"
-        >
-          {/* Inner press must not bubble to the scrim and close the palette. */}
+        {/* Scrim behind, panel beside it — never nested. A Pressable is a
+            <button> on web and activates on Space, so a space typed into the
+            search field used to close the palette. */}
+        <View className="flex-1 items-center px-5 pt-16">
           <Pressable
-            onPress={() => undefined}
-            className="w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-surface"
-          >
+            accessibilityRole="button"
+            accessibilityLabel="Close search"
+            onPress={() => setOpen(false)}
+            focusable={false}
+            style={StyleSheet.absoluteFill}
+            className="bg-ink/40"
+          />
+
+          <View className="w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-surface">
             <View className="flex-row items-center gap-3 border-b border-line px-4 py-3">
               <Feather name="search" size={16} color="#6F6A5F" />
               <TextInput
@@ -327,8 +331,8 @@ export function GlobalSearch() {
                 </Pressable>
               </View>
             ) : null}
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </>
   );
