@@ -21,6 +21,7 @@ export type TodoActions = {
   cyclePriority: (todo: Todo) => void;
   setSubTasks: (todo: Todo, subTasks: SubTask[]) => void;
   setDueDate: (todo: Todo, due: Date | null) => void;
+  rename: (todo: Todo, title: string) => void;
 };
 
 export function TodoRow({
@@ -34,6 +35,9 @@ export function TodoRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(todo.title);
+  const [confirming, setConfirming] = useState(false);
 
   const subTasks = todo.subTasks ?? [];
   const doneCount = subTasks.filter((subTask) => subTask.isCompleted).length;
@@ -58,6 +62,18 @@ export function TodoRow({
     );
   }
 
+  /** Blur and submit both land here, so an edit is never lost by clicking away. */
+  function commitTitle() {
+    if (!editing) return;
+    setEditing(false);
+    const next = titleDraft.trim();
+    if (!next || next === todo.title) {
+      setTitleDraft(todo.title);
+      return;
+    }
+    actions.rename(todo, next);
+  }
+
   return (
     <View className="border-t border-line first:border-t-0">
       <View className="flex-row items-start gap-3 px-4 py-3.5">
@@ -74,13 +90,26 @@ export function TodoRow({
         </Pressable>
 
         <Pressable className="flex-1 gap-1.5" onPress={() => setExpanded((value) => !value)}>
-          <Text
-            className={`text-[15px] leading-6 ${
-              todo.isCompleted ? 'text-subtle line-through' : 'text-ink'
-            }`}
-          >
-            {todo.title}
-          </Text>
+          {editing ? (
+            <TextInput
+              value={titleDraft}
+              onChangeText={setTitleDraft}
+              autoFocus
+              selectTextOnFocus
+              returnKeyType="done"
+              onSubmitEditing={commitTitle}
+              onBlur={commitTitle}
+              className="rounded-lg border border-line bg-surface px-2 py-1 text-[15px] text-ink"
+            />
+          ) : (
+            <Text
+              className={`text-[15px] leading-6 ${
+                todo.isCompleted ? 'text-subtle line-through' : 'text-ink'
+              }`}
+            >
+              {todo.title}
+            </Text>
+          )}
 
           <View className="flex-row flex-wrap items-center gap-2">
             {due ? (
@@ -119,11 +148,43 @@ export function TodoRow({
         </Pressable>
 
         <IconButton
+          icon="edit-2"
+          label={`Rename ${todo.title}`}
+          onPress={() => {
+            setTitleDraft(todo.title);
+            setEditing(true);
+          }}
+        />
+
+        {/* Two taps to delete, but both are on the row: a task the student
+            cannot see how to remove is exactly what the orphan bug felt like. */}
+        <IconButton
+          icon={confirming ? 'check' : 'trash-2'}
+          tone="rose"
+          label={confirming ? `Confirm deleting ${todo.title}` : `Delete ${todo.title}`}
+          onPress={() => {
+            if (confirming) actions.remove(todo);
+            else setConfirming(true);
+          }}
+        />
+
+        <IconButton
           icon={expanded ? 'chevron-up' : 'chevron-down'}
           label="Toggle subtasks"
           onPress={() => setExpanded((value) => !value)}
         />
       </View>
+
+      {confirming ? (
+        <View className="flex-row items-center gap-3 border-t border-line bg-rose-soft/50 px-4 py-2 pl-12">
+          <Text className="flex-1 text-xs text-ink/75">
+            Press the tick to delete this task permanently.
+          </Text>
+          <Pressable accessibilityRole="button" onPress={() => setConfirming(false)} hitSlop={6}>
+            <Text className="text-xs font-semibold text-muted">Cancel</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {expanded ? (
         <View className="gap-3 border-t border-line bg-paper/60 px-4 py-3 pl-12">
@@ -181,10 +242,6 @@ export function TodoRow({
             />
           </View>
 
-          <Pressable onPress={() => actions.remove(todo)} className="mt-1 flex-row items-center gap-2 py-1">
-            <Feather name="trash-2" size={12} color="#B0443E" />
-            <Text className="text-xs font-medium text-rose">Delete task</Text>
-          </Pressable>
         </View>
       ) : null}
     </View>

@@ -24,6 +24,19 @@ export const paths = {
   chatMessages: (db: Firestore, uid: string, subjectId: string, chatId: string) =>
     collection(db, 'users', uid, 'subjects', subjectId, 'chats', chatId, 'messages'),
 
+  flashcards: (db: Firestore, uid: string, subjectId: string) =>
+    collection(db, 'users', uid, 'subjects', subjectId, 'flashcards'),
+  flashcard: (db: Firestore, uid: string, subjectId: string, cardId: string) =>
+    doc(db, 'users', uid, 'subjects', subjectId, 'flashcards', cardId),
+
+  classes: (db: Firestore, uid: string) => collection(db, 'users', uid, 'classes'),
+  class: (db: Firestore, uid: string, classId: string) =>
+    doc(db, 'users', uid, 'classes', classId),
+
+  sessions: (db: Firestore, uid: string) => collection(db, 'users', uid, 'sessions'),
+  session: (db: Firestore, uid: string, sessionId: string) =>
+    doc(db, 'users', uid, 'sessions', sessionId),
+
   todos: (db: Firestore, uid: string) => collection(db, 'users', uid, 'todos'),
   todo: (db: Firestore, uid: string, todoId: string) => doc(db, 'users', uid, 'todos', todoId),
   weakConcepts: (db: Firestore, uid: string) => collection(db, 'users', uid, 'weak_concepts'),

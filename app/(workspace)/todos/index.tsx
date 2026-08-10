@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   Timestamp,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { DatePicker } from '@/components/DatePicker';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -20,6 +21,7 @@ import { bucketFor, dayKey, toDate, type DueBucket } from '@/lib/dates';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { Priority, SubTask, Subject, Todo } from '@/lib/schema';
+import { sweepOrphanedTodos } from '@/services/ingestion';
 
 const GROUPS: { key: DueBucket; title: string; hint: string }[] = [
   { key: 'overdue', title: 'Overdue', hint: 'Past due and still open' },
@@ -42,6 +44,29 @@ export default function Todos() {
   const [subjectId, setSubjectId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  /**
+   * Deleting a material now takes its deadlines with it, but accounts that
+   * deleted material before that fix still carry orphaned to-dos. Sweep once
+   * per mount so the list heals itself without the student being told about a
+   * bug they never understood.
+   */
+  const swept = useRef(false);
+  useEffect(() => {
+    if (swept.current) return;
+    swept.current = true;
+    void sweepOrphanedTodos(uid)
+      .then((removed) => {
+        if (removed > 0) {
+          setNotice(
+            `Removed ${removed} deadline${removed === 1 ? '' : 's'} left behind by material you had already deleted.`
+          );
+        }
+      })
+      .catch(() => undefined);
+  }, [uid]);
 
   const open = useMemo(() => todos.data.filter((todo) => !todo.isCompleted), [todos.data]);
   const completed = useMemo(() => todos.data.filter((todo) => todo.isCompleted), [todos.data]);
@@ -110,7 +135,36 @@ export default function Todos() {
     }
   }
 
+  /** Bulk clear. Batched so a long list is one round trip, not fifty. */
+  const clearMany = useCallback(
+    async (items: Todo[], describe: string) => {
+      if (items.length === 0) return;
+      setError(null);
+      setBusy(true);
+      try {
+        for (let index = 0; index < items.length; index += 400) {
+          const batch = writeBatch(db);
+          for (const todo of items.slice(index, index + 400)) {
+            batch.delete(paths.todo(db, uid, todo.id));
+          }
+          await batch.commit();
+        }
+        setNotice(`Cleared ${items.length} ${describe}${items.length === 1 ? '' : 's'}.`);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [db, uid]
+  );
+
   const actions: TodoActions = {
+    rename: (todo, nextTitle) => {
+      void updateDoc(paths.todo(db, uid, todo.id), { title: nextTitle }).catch((caught) =>
+        setError(String(caught))
+      );
+    },
     toggle: (todo) => {
       void updateDoc(paths.todo(db, uid, todo.id), {
         isCompleted: !todo.isCompleted,
@@ -146,11 +200,41 @@ export default function Todos() {
             ? `${open.length} open · ${syllabusCount} pulled from your syllabuses automatically`
             : 'Manual tasks and syllabus deadlines, in one list.'
         }
+        actions={
+          <>
+            {grouped.overdue.length > 0 ? (
+              <Button
+                label={`Clear ${grouped.overdue.length} overdue`}
+                icon="alert-circle"
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onPress={() => void clearMany(grouped.overdue, 'overdue task')}
+              />
+            ) : null}
+            {completed.length > 0 ? (
+              <Button
+                label={`Clear ${completed.length} completed`}
+                icon="check"
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onPress={() => void clearMany(completed, 'completed task')}
+              />
+            ) : null}
+          </>
+        }
       />
 
       {error ? (
         <View className="mb-6">
           <Notice title="Could not save" body={error} />
+        </View>
+      ) : null}
+
+      {notice ? (
+        <View className="mb-6">
+          <Notice tone="pine" title="Tidied up" body={notice} />
         </View>
       ) : null}
 

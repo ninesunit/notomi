@@ -11,13 +11,22 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type DocumentReference,
+  type Firestore,
 } from 'firebase/firestore';
 import { AiError, extractMetadata, summarizeDocument } from '@/lib/ai';
 import { parseDueDate } from '@/lib/dates';
 import { getDb } from '@/services/firebase';
 import { stableId } from '@/lib/ids';
 import { paths } from '@/lib/paths';
-import { colorForSubject, type ExtractedDeadline, type ExtractedMetadata, type FileKind } from '@/lib/schema';
+import {
+  colorForSubject,
+  type ExtractedDeadline,
+  type ExtractedMetadata,
+  type FileKind,
+  type SourceDocument,
+  type Todo,
+} from '@/lib/schema';
 import {
   ACCEPTED_MIME_TYPES,
   canonicalMimeType,
@@ -443,6 +452,8 @@ export async function findOrCreateSubject(
       name: subjectName,
       moduleCode,
       color: colorForSubject(moduleCode || subjectName),
+      emoji: null,
+      tag: null,
       documentCount: 0,
       // Unfiled until the program planner assigns it a semester.
       semesterId: null,
@@ -517,7 +528,14 @@ async function saveDeadlines(
   return dated.length;
 }
 
-/** Removes a document and its R2 object. */
+/**
+ * Removes a document and everything derived from it.
+ *
+ * An upload fans out: the original lands in R2, deadlines become to-dos, notes
+ * and chats hang off the document. Deleting only the document row left those
+ * behind as orphans — a to-do the student could not explain and could not
+ * remove from its source. Every derived record now goes with it.
+ */
 export async function deleteMaterial(
   uid: string,
   subjectId: string,
@@ -525,8 +543,144 @@ export async function deleteMaterial(
   r2FileKey: string | null
 ): Promise<void> {
   const db = getDb();
+
+  // The object store is best-effort: a missing or unreachable R2 must not
+  // strand the Firestore records the student is actually trying to remove.
   if (r2FileKey) await deleteR2File(r2FileKey).catch(() => undefined);
-  const { deleteDoc } = await import('firebase/firestore');
-  await deleteDoc(paths.document(db, uid, subjectId, documentId));
-  await updateDoc(paths.subject(db, uid, subjectId), { documentCount: increment(-1) });
+
+  const [derivedTodos, derivedChats, flashcards] = await Promise.all([
+    getDocs(query(paths.todos(db, uid), where('sourceDocumentId', '==', documentId))),
+    getDocs(query(paths.chats(db, uid, subjectId), where('documentId', '==', documentId))),
+    getDocs(query(paths.flashcards(db, uid, subjectId), where('sourceDocumentId', '==', documentId))),
+  ]);
+
+  // Chat messages are a subcollection, so they have to be listed before their
+  // parent goes — a deleted Firestore document does not take its children.
+  const messageRefs = (
+    await Promise.all(
+      derivedChats.docs.map((chat) =>
+        getDocs(paths.chatMessages(db, uid, subjectId, chat.id)).then((snapshot) =>
+          snapshot.docs.map((message) => message.ref)
+        )
+      )
+    )
+  ).flat();
+
+  await commitDeletes(db, [
+    ...messageRefs,
+    ...derivedChats.docs.map((chat) => chat.ref),
+    ...derivedTodos.docs.map((todo) => todo.ref),
+    ...flashcards.docs.map((card) => card.ref),
+    paths.document(db, uid, subjectId, documentId),
+  ]);
+
+  await updateDoc(paths.subject(db, uid, subjectId), {
+    documentCount: increment(-1),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Removes a subject and every document, to-do, chat, flashcard and weak
+ * concept underneath it.
+ */
+export async function deleteSubject(uid: string, subjectId: string): Promise<void> {
+  const db = getDb();
+
+  const [documents, chats, flashcards, subjectTodos, weak] = await Promise.all([
+    getDocs(paths.documents(db, uid, subjectId)),
+    getDocs(paths.chats(db, uid, subjectId)),
+    getDocs(paths.flashcards(db, uid, subjectId)),
+    getDocs(query(paths.todos(db, uid), where('subjectId', '==', subjectId))),
+    getDocs(query(paths.weakConcepts(db, uid), where('subjectId', '==', subjectId))),
+  ]);
+
+  await Promise.all(
+    documents.docs
+      .map((document) => (document.data() as SourceDocument).r2FileKey)
+      .filter(Boolean)
+      .map((key) => deleteR2File(key).catch(() => undefined))
+  );
+
+  const messageRefs = (
+    await Promise.all(
+      chats.docs.map((chat) =>
+        getDocs(paths.chatMessages(db, uid, subjectId, chat.id)).then((snapshot) =>
+          snapshot.docs.map((message) => message.ref)
+        )
+      )
+    )
+  ).flat();
+
+  await commitDeletes(db, [
+    ...messageRefs,
+    ...chats.docs.map((chat) => chat.ref),
+    ...documents.docs.map((document) => document.ref),
+    ...flashcards.docs.map((card) => card.ref),
+    ...subjectTodos.docs.map((todo) => todo.ref),
+    ...weak.docs.map((concept) => concept.ref),
+    paths.subject(db, uid, subjectId),
+  ]);
+
+  // Timetable blocks survive, but must stop pointing at a subject that is gone.
+  const classes = await getDocs(query(paths.classes(db, uid), where('subjectId', '==', subjectId)));
+  if (!classes.empty) {
+    const batch = writeBatch(db);
+    for (const block of classes.docs) {
+      batch.update(block.ref, { subjectId: null, subjectName: null });
+    }
+    await batch.commit();
+  }
+}
+
+/**
+ * Deletes refs in batches. Firestore caps a batch at 500 writes, and a subject
+ * with a long chat history clears that easily.
+ */
+async function commitDeletes(db: Firestore, refs: DocumentReference[]): Promise<void> {
+  for (let index = 0; index < refs.length; index += 400) {
+    const batch = writeBatch(db);
+    for (const ref of refs.slice(index, index + 400)) batch.delete(ref);
+    await batch.commit();
+  }
+}
+
+/**
+ * Removes syllabus to-dos whose source document no longer exists.
+ *
+ * Cascade deletion keeps new uploads clean, but accounts that deleted material
+ * before it existed still carry orphans. This sweeps them, costing one read per
+ * distinct source document rather than one per to-do.
+ */
+export async function sweepOrphanedTodos(uid: string): Promise<number> {
+  const db = getDb();
+
+  const snapshot = await getDocs(query(paths.todos(db, uid), where('source', '==', 'syllabus')));
+  if (snapshot.empty) return 0;
+
+  const bySource = new Map<string, DocumentReference[]>();
+  for (const todo of snapshot.docs) {
+    const data = todo.data() as Todo;
+    // A syllabus to-do with no traceable origin cannot be verified, so it is
+    // left alone rather than guessed at.
+    if (!data.sourceDocumentId || !data.subjectId) continue;
+    const key = `${data.subjectId}/${data.sourceDocumentId}`;
+    bySource.set(key, [...(bySource.get(key) ?? []), todo.ref]);
+  }
+  if (bySource.size === 0) return 0;
+
+  const checks = await Promise.all(
+    [...bySource.keys()].map(async (key) => {
+      const [subjectId, documentId] = key.split('/');
+      const exists = (await getDoc(paths.document(db, uid, subjectId, documentId))).exists();
+      return { key, exists };
+    })
+  );
+
+  const orphaned = checks
+    .filter((check) => !check.exists)
+    .flatMap((check) => bySource.get(check.key) ?? []);
+
+  if (orphaned.length > 0) await commitDeletes(db, orphaned);
+  return orphaned.length;
 }

@@ -2,9 +2,11 @@ import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { orderBy, query } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { useRouter } from 'expo-router';
 import { CardGrid, GridItem, SubjectCard } from '@/components/SubjectCard';
+import { SubjectModal } from '@/components/SubjectModal';
 import { UploadButton } from '@/components/UploadButton';
-import { EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
+import { Button, EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { getDb } from '@/services/firebase';
@@ -14,7 +16,10 @@ import type { Subject } from '@/lib/schema';
 /** Root of the library: one folder per subject, live from Firestore. */
 export default function Library() {
   const uid = useUid();
+  const router = useRouter();
   const [search, setSearch] = useState('');
+  /** 'new' opens the create flow; a Subject opens the editor for that folder. */
+  const [editing, setEditing] = useState<Subject | 'new' | null>(null);
 
   const { data, loading, error } = useCollection<Subject>(
     query(paths.subjects(getDb(), uid), orderBy('updatedAt', 'desc')),
@@ -45,7 +50,18 @@ export default function Library() {
               }`
             : 'Every document you upload is filed into a subject folder.'
         }
-        actions={<UploadButton />}
+        actions={
+          <>
+            <Button
+              label="New subject"
+              icon="folder-plus"
+              variant="secondary"
+              size="sm"
+              onPress={() => setEditing('new')}
+            />
+            <UploadButton />
+          </>
+        }
       />
 
       {error ? (
@@ -85,7 +101,7 @@ export default function Library() {
         <CardGrid>
           {filtered.map((subject) => (
             <GridItem key={subject.id}>
-              <SubjectCard subject={subject} />
+              <SubjectCard subject={subject} onEdit={() => setEditing(subject)} />
             </GridItem>
           ))}
         </CardGrid>
@@ -97,6 +113,14 @@ export default function Library() {
           the same course adds it to the existing folder.
         </Text>
       ) : null}
+
+      <SubjectModal
+        uid={uid}
+        subject={editing === 'new' ? null : editing}
+        visible={editing !== null}
+        onClose={() => setEditing(null)}
+        onCreated={(subjectId) => router.push(`/library/${subjectId}`)}
+      />
     </ScreenScroll>
   );
 }

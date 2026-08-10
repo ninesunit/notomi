@@ -1,9 +1,9 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Link, usePathname } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
 import { GlobalSearch } from './GlobalSearch';
-import { isActive, NAV_ITEMS } from './nav';
+import { isActive, NAV_ITEMS, TAB_ITEMS } from './nav';
 
 /**
  * Fixed-width, full-height rail. It must never grow or shrink with content —
@@ -19,8 +19,10 @@ export function Sidebar() {
 
   return (
     <View className="h-full w-64 shrink-0 border-r border-line bg-sand">
-      <View className="flex-1 justify-between p-4">
-        <View className="gap-6">
+      <View className="min-h-0 flex-1 justify-between p-4">
+        {/* min-h-0 + a scroller: the shell clips overflow, so on a short
+            viewport the nav has to scroll rather than lose its last items. */}
+        <View className="min-h-0 flex-1 gap-4">
           <Link href="/" asChild>
             <Pressable className="flex-row items-center gap-2.5 px-2 py-1">
               <View className="h-8 w-8 items-center justify-center rounded-lg bg-ink">
@@ -32,7 +34,7 @@ export function Sidebar() {
 
           <GlobalSearch />
 
-          <View className="gap-1">
+          <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-1 pb-2">
             {NAV_ITEMS.map((item) => {
               const active = isActive(pathname, item.href);
               return (
@@ -60,10 +62,10 @@ export function Sidebar() {
                 </Link>
               );
             })}
-          </View>
+          </ScrollView>
         </View>
 
-        <View className="gap-2 border-t border-line pt-4">
+        <View className="shrink-0 gap-2 border-t border-line pt-4">
           <View className="flex-row items-center gap-2.5 px-2">
             <View className="h-8 w-8 items-center justify-center rounded-full bg-accent-soft">
               <Text className="text-xs font-bold text-accent">{initial}</Text>
@@ -92,7 +94,7 @@ export function BottomTabs() {
 
   return (
     <View className="w-full shrink-0 flex-row border-t border-line bg-sand pb-1">
-      {NAV_ITEMS.map((item) => {
+      {TAB_ITEMS.map((item) => {
         const active = isActive(pathname, item.href);
         return (
           <Link key={item.href} href={item.href} asChild>

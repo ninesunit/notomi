@@ -4,6 +4,7 @@ import { Link, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { serverTimestamp, updateDoc } from 'firebase/firestore';
 import { DocumentChat } from '@/components/DocumentChat';
+import { ListenBar } from '@/components/ListenBar';
 import { Markdown } from '@/components/Markdown';
 import { Badge, Button, Card, IconButton, Loading, Notice } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
@@ -214,6 +215,10 @@ export default function DocumentReader() {
             />
           ) : record.notes ? (
             <>
+              <View className="mb-5">
+                <ListenBar markdown={record.notes} />
+              </View>
+
               <Card className="mb-6 gap-4">
                 <Markdown source={record.notes} />
               </Card>

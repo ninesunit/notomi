@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { deleteDoc, doc, orderBy, query } from 'firebase/firestore';
+import { orderBy, query } from 'firebase/firestore';
 import { AddMaterialModal } from '@/components/AddMaterialModal';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { SubjectModal } from '@/components/SubjectModal';
 import { Badge, Button, Card, EmptyState, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
@@ -13,8 +14,8 @@ import { formatChars } from '@/lib/format';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { SourceDocument, Subject } from '@/lib/schema';
-import { deleteMaterial } from '@/services/ingestion';
-import { deleteR2File, getR2FileUrl } from '@/services/r2Storage';
+import { deleteMaterial, deleteSubject } from '@/services/ingestion';
+import { getR2FileUrl } from '@/services/r2Storage';
 
 export default function SubjectFolder() {
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>();
@@ -24,6 +25,9 @@ export default function SubjectFolder() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const subject = useDocument<Subject>(paths.subject(db, uid, subjectId), [uid, subjectId]);
   const documents = useCollection<SourceDocument>(
@@ -80,22 +84,13 @@ export default function SubjectFolder() {
 
   async function removeSubject() {
     setError(null);
+    setDeleting(true);
     try {
-      // A missing object must not block removing the Firestore records.
-      await Promise.all(
-        documents.data.map((document) =>
-          document.r2FileKey ? deleteR2File(document.r2FileKey).catch(() => undefined) : Promise.resolve()
-        )
-      );
-      await Promise.all(
-        documents.data.map((document) =>
-          deleteDoc(paths.document(db, uid, subjectId, document.id))
-        )
-      );
-      await deleteDoc(doc(paths.subjects(db, uid), subjectId));
+      await deleteSubject(uid, subjectId);
       router.replace('/library');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
+      setDeleting(false);
     }
   }
 
@@ -135,6 +130,28 @@ export default function SubjectFolder() {
         </Pressable>
       </Link>
 
+      {/* Folder banner: the subject's colour and emoji are how a student picks
+          this page out at a glance, so they lead rather than sit in a chip. */}
+      <View
+        className="mb-5 h-20 w-full overflow-hidden rounded-2xl"
+        style={{ backgroundColor: `${subject.data.color}1F` }}
+      >
+        <View className="h-1.5 w-full" style={{ backgroundColor: subject.data.color }} />
+        <View className="flex-1 flex-row items-center gap-3 px-5">
+          <Text className="text-[30px] leading-9">{subject.data.emoji ?? '📘'}</Text>
+          {subject.data.tag ? (
+            <View
+              className="rounded-full px-2.5 py-1"
+              style={{ backgroundColor: `${subject.data.color}2E` }}
+            >
+              <Text className="text-xs font-semibold" style={{ color: subject.data.color }}>
+                {subject.data.tag}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+
       <PageHeader
         title={subject.data.name}
         subtitle={[
@@ -152,6 +169,7 @@ export default function SubjectFolder() {
             <Link href={`/study?subjectId=${subjectId}`} asChild>
               <Button label="Take Quiz" icon="zap" variant="secondary" size="sm" disabled={!hasText} />
             </Link>
+            <IconButton icon="edit-2" label="Edit subject" onPress={() => setEditOpen(true)} />
           </>
         }
       />
@@ -263,21 +281,64 @@ export default function SubjectFolder() {
         </View>
       )}
 
-      {documents.data.length > 0 ? (
-        <View className="mt-10 items-start border-t border-line pt-6">
-          <Button label="Delete subject" variant="danger" size="sm" icon="trash-2" onPress={() => void removeSubject()} />
-          <Text className="mt-2 text-xs text-subtle">
-            Removes this folder, its {documents.data.length} source
-            {documents.data.length === 1 ? '' : 's'} and their uploaded files.
-          </Text>
-        </View>
-      ) : null}
+      <View className="mt-10 gap-3 border-t border-line pt-6">
+        {confirmingDelete ? (
+          <>
+            <Notice
+              tone="rose"
+              title={`Delete “${subject.data.name}” and everything in it?`}
+              body={`This removes ${documents.data.length} source${
+                documents.data.length === 1 ? '' : 's'
+              }, their uploaded files, every note and saved chat, and any to-dos created from them. It cannot be undone.`}
+            />
+            <View className="flex-row items-center gap-2">
+              <Button
+                label={deleting ? 'Deleting…' : 'Yes, delete everything'}
+                variant="danger"
+                size="sm"
+                icon="trash-2"
+                loading={deleting}
+                disabled={deleting}
+                onPress={() => void removeSubject()}
+              />
+              <Button
+                label="Cancel"
+                variant="ghost"
+                size="sm"
+                disabled={deleting}
+                onPress={() => setConfirmingDelete(false)}
+              />
+            </View>
+          </>
+        ) : (
+          <View className="items-start">
+            <Button
+              label="Delete subject"
+              variant="danger"
+              size="sm"
+              icon="trash-2"
+              onPress={() => setConfirmingDelete(true)}
+            />
+            <Text className="mt-2 text-xs text-subtle">
+              Removes this folder and everything derived from it — sources, notes, chats and
+              deadlines.
+            </Text>
+          </View>
+        )}
+      </View>
 
       <AddMaterialModal
         subjectId={subjectId}
         subjectName={subject.data.name}
         visible={addOpen}
         onClose={() => setAddOpen(false)}
+      />
+
+      <SubjectModal
+        uid={uid}
+        subject={subject.data}
+        visible={editOpen}
+        onClose={() => setEditOpen(false)}
       />
     </ScreenScroll>
   );

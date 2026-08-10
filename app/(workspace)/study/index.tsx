@@ -17,6 +17,7 @@ import {
   cardsFromWeakConcepts,
   downloadAnkiDeck,
 } from '@/services/ankiExport';
+import { logSession } from '@/services/sessions';
 
 type Phase = 'choosing' | 'generating' | 'active' | 'results';
 
@@ -135,6 +136,14 @@ export default function StudyCenter() {
   function advance() {
     if (index + 1 >= questions.length) {
       setPhase('results');
+      // A ten-question quiz is roughly ten minutes of work, and it should feed
+      // the streak the same way a focus block does.
+      void logSession(uid, {
+        minutes: 10,
+        mode: 'quiz',
+        subjectId,
+        subjectName: subject?.name ?? null,
+      }).catch(() => undefined);
       return;
     }
     setIndex(index + 1);
@@ -385,6 +394,29 @@ export default function StudyCenter() {
         </View>
       ) : null}
 
+      {/* The four ways to study the same material. Multiple-choice is the one
+          on this page; the others are their own screens. */}
+      <View className="mb-8 flex-row flex-wrap gap-3">
+        <ModeCard
+          href="/study/flashcards"
+          emoji="🎴"
+          title="Flashcards"
+          body="Cards written from your notes, flipped and sorted into know or review."
+        />
+        <ModeCard
+          href="/study/tutor"
+          emoji="🧠"
+          title="AI tutor"
+          body="Explain it in your own words. Gemini marks the answer and follows up."
+        />
+        <ModeCard
+          href="/study/tutor?mode=exam"
+          emoji="📝"
+          title="Exam simulator"
+          body="A short-answer practice paper with a diagnostic report at the end."
+        />
+      </View>
+
       {dueConcepts.length > 0 ? (
         <Card className="mb-8 gap-4 border-accent/25 bg-accent-soft">
           <View className="flex-row items-start gap-3">
@@ -414,7 +446,10 @@ export default function StudyCenter() {
         </Card>
       ) : null}
 
-      <Text className="mb-4 text-lg font-semibold tracking-tight text-ink">Pick a subject</Text>
+      <Text className="mb-1 text-lg font-semibold tracking-tight text-ink">
+        Multiple-choice quiz
+      </Text>
+      <Text className="mb-4 text-sm text-muted">Pick a subject to generate ten questions.</Text>
 
       {subjects.loading ? (
         <Loading label="Loading subjects…" />
@@ -468,5 +503,34 @@ export default function StudyCenter() {
         </View>
       )}
     </ScreenScroll>
+  );
+}
+
+/** One of the study modes, as a tile that links to its own screen. */
+function ModeCard({
+  href,
+  emoji,
+  title,
+  body,
+}: {
+  href: string;
+  emoji: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <View className="flex-1 grow" style={{ minWidth: 220, flexBasis: 220 }}>
+      <Link href={href as never} asChild>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={title}
+          className="h-full gap-2 rounded-2xl border border-line bg-surface p-4"
+        >
+          <Text className="text-2xl">{emoji}</Text>
+          <Text className="text-[15px] font-semibold text-ink">{title}</Text>
+          <Text className="text-[13px] leading-5 text-muted">{body}</Text>
+        </Pressable>
+      </Link>
+    </View>
   );
 }

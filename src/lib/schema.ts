@@ -70,6 +70,10 @@ export type Subject = {
   name: string;
   moduleCode: string | null;
   color: string;
+  /** Folder icon. A single emoji, or null to fall back to the book glyph. */
+  emoji: string | null;
+  /** Free-text label shown on the card banner, e.g. "Core" or "Elective". */
+  tag: string | null;
   documentCount: number;
   /** Which semester this subject belongs to; null until the planner assigns it. */
   semesterId: string | null;
@@ -79,6 +83,28 @@ export type Subject = {
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
 };
+
+/**
+ * Palette offered when a student picks a folder colour. The generated colour
+ * from colorForSubject is always one of these, so a manual choice and an
+ * automatic one are visually the same family.
+ */
+export const SUBJECT_PALETTE = [
+  { name: 'Clay', value: '#B4552D' },
+  { name: 'Pine', value: '#2E6F5E' },
+  { name: 'Amber', value: '#B4832A' },
+  { name: 'Indigo', value: '#4C5FA8' },
+  { name: 'Plum', value: '#8A4B86' },
+  { name: 'Rose', value: '#B0443E' },
+  { name: 'Slate', value: '#4A5568' },
+  { name: 'Teal', value: '#2B7A78' },
+];
+
+/** Emoji offered in the folder picker — one row of academic shorthand. */
+export const SUBJECT_EMOJI = [
+  '📘', '📐', '🧪', '🧬', '💻', '⚖️', '🩺', '🎨',
+  '🌍', '🧠', '📊', '🏛️', '🔬', '🎼', '🗣️', '⚙️',
+];
 
 /** users/{uid}/subjects/{subjectId}/documents/{documentId} */
 export type SourceDocument = {
@@ -126,6 +152,95 @@ export type ChatRecord = {
   sender: 'user' | 'ai';
   text: string;
   createdAt: Timestamp | null;
+};
+
+/* ------------------------------------------------------------------ *
+ * Timetable
+ * ------------------------------------------------------------------ */
+
+/** users/{uid}/classes/{classId} */
+export type ClassBlock = {
+  id: string;
+  title: string;
+  /** Lecture, tutorial, lab… whatever the schedule called it. */
+  kind: string | null;
+  subjectId: string | null;
+  subjectName: string | null;
+  /** 0 = Monday … 6 = Sunday, matching DAY_LABELS. */
+  day: number;
+  /** Minutes from midnight, so comparisons and layout are plain arithmetic. */
+  startMinute: number;
+  endMinute: number;
+  venue: string | null;
+  color: string;
+  createdAt: Timestamp | null;
+};
+
+export const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+export const DAY_FULL = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+/** JS getDay() is Sunday-first; the timetable is Monday-first. */
+export function todayIndex(now = new Date()): number {
+  return (now.getDay() + 6) % 7;
+}
+
+export function minutesToLabel(minutes: number): string {
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const suffix = hour < 12 ? 'am' : 'pm';
+  const display = hour % 12 === 0 ? 12 : hour % 12;
+  return minute === 0 ? `${display}${suffix}` : `${display}:${String(minute).padStart(2, '0')}${suffix}`;
+}
+
+/** Parses "HH:MM" (24-hour) into minutes; null if it is not a valid time. */
+export function parseClock(value: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+export function minutesToClock(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Study sessions and flashcards
+ * ------------------------------------------------------------------ */
+
+/** users/{uid}/sessions/{sessionId} — one completed focus or study block. */
+export type StudySession = {
+  id: string;
+  subjectId: string | null;
+  subjectName: string | null;
+  minutes: number;
+  mode: 'focus' | 'quiz' | 'flashcards' | 'tutor' | 'exam';
+  /** Local YYYY-MM-DD, so a streak is a set membership test, not a scan. */
+  dayKey: string;
+  createdAt: Timestamp | null;
+};
+
+/** users/{uid}/subjects/{subjectId}/flashcards/{cardId} */
+export type Flashcard = {
+  id: string;
+  front: string;
+  back: string;
+  concept: string | null;
+  /** new = unseen, known = answered confidently, review = flagged to revisit. */
+  status: 'new' | 'known' | 'review';
+  sourceDocumentId: string | null;
+  createdAt: Timestamp | null;
+  lastSeenAt: Timestamp | null;
 };
 
 /** users/{uid}/todos/{todoId} */
@@ -205,6 +320,43 @@ export type ChatMessage = {
 export type PodcastLine = {
   speaker: string;
   text: string;
+};
+
+/** One class block as Gemini reads it off a schedule screenshot. */
+export type ExtractedClass = {
+  title: string;
+  kind: string | null;
+  /** Day name as printed on the schedule; mapped to an index on import. */
+  day: string;
+  /** 24-hour HH:MM. */
+  start: string;
+  end: string;
+  venue: string | null;
+};
+
+export type GeneratedCard = {
+  front: string;
+  back: string;
+  concept: string | null;
+};
+
+/** A free-text question the tutor or exam asks, with its marking guide. */
+export type OpenQuestion = {
+  question: string;
+  /** What a full-mark answer must contain — used to grade, never shown first. */
+  modelAnswer: string;
+  concept: string | null;
+};
+
+/** Gemini's assessment of a student's free-text answer. */
+export type AnswerGrade = {
+  /** 0-100, so partial credit is expressible. */
+  score: number;
+  verdict: string;
+  whatWentWell: string;
+  whatWasMissing: string;
+  /** The next question in a Socratic exchange; null ends the thread. */
+  followUp: string | null;
 };
 
 /** Deterministic palette so a subject keeps the same colour across devices. */

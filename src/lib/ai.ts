@@ -5,7 +5,15 @@ import {
   type ModelParams,
 } from 'firebase/ai';
 import { GEMINI_MODEL, getAiClient, getModel, isAppCheckEnabled } from '@/services/firebase';
-import type { ExtractedMetadata, PodcastLine, QuizQuestion } from './schema';
+import type {
+  AnswerGrade,
+  ExtractedClass,
+  ExtractedMetadata,
+  GeneratedCard,
+  OpenQuestion,
+  PodcastLine,
+  QuizQuestion,
+} from './schema';
 
 /**
  * Gemini's context window is well over a million tokens, so Notomi skips RAG
@@ -595,4 +603,266 @@ ${context}`,
 
   if (valid.length === 0) throw new AiError('Gemini did not return any usable questions.');
   return valid.map((q) => ({ ...q, explanation: q.explanation || '' }));
+}
+
+/* ------------------------------------------------------------------ *
+ * Timetable extraction from a schedule screenshot
+ * ------------------------------------------------------------------ */
+
+const timetableSchema = Schema.array({
+  items: Schema.object({
+    properties: {
+      title: Schema.string({ description: 'Course or class name as printed.' }),
+      kind: Schema.string({ description: 'Lecture, Tutorial, Lab, Seminar… or empty.' }),
+      day: Schema.string({ description: 'Full weekday name in English, e.g. "Monday".' }),
+      start: Schema.string({ description: '24-hour HH:MM.' }),
+      end: Schema.string({ description: '24-hour HH:MM.' }),
+      venue: Schema.string({ description: 'Room or building. Empty string if absent.' }),
+    },
+    optionalProperties: ['kind', 'venue'],
+  }),
+});
+
+/**
+ * Reads a photo or screenshot of a university timetable.
+ *
+ * Schedules are laid out as grids where the day is a column header and the time
+ * a row header, so the cell alone never carries the information — the prompt
+ * has to force the model to resolve each block against both axes.
+ */
+export async function extractTimetable(
+  data: ArrayBuffer,
+  mimeType: string
+): Promise<ExtractedClass[]> {
+  const raw = await generateFromMedia(
+    data,
+    mimeType,
+    `This image is a university class timetable. Extract every scheduled class.
+
+Read the grid carefully:
+- The day comes from the column (or row) header the block sits under, not from
+  the block's own text. Resolve abbreviations: Mon/M -> Monday, Tue/T/Tu ->
+  Tuesday, Wed/W -> Wednesday, Thu/Th/R -> Thursday, Fri/F -> Friday,
+  Sat -> Saturday, Sun -> Sunday.
+- Times come from the row (or column) the block spans. A block spanning two
+  one-hour rows is one class of two hours, not two classes.
+- Convert every time to 24-hour HH:MM. A timetable running 9-6 is 09:00-18:00,
+  never 09:00-06:00.
+- "title" is the course name or code as printed. Keep the code if both appear.
+- "kind" is the session type if shown (Lecture, Tutorial, Lab, Seminar,
+  Practical); empty string if not.
+- "venue" is the room or building; empty string if not shown.
+- One entry per class occurrence. A class held Monday and Thursday is two entries.
+- Ignore breaks, lunch, free slots and legend/key text.
+
+Return only classes you can actually read. If the image is not a timetable,
+return an empty array.`
+  );
+
+  const parsed = parseJson<ExtractedClass[]>(raw);
+  if (!Array.isArray(parsed)) {
+    throw new AiError('Gemini could not read a timetable from that image.');
+  }
+
+  return parsed.filter(
+    (entry) =>
+      entry &&
+      typeof entry.title === 'string' &&
+      entry.title.trim() &&
+      typeof entry.day === 'string' &&
+      typeof entry.start === 'string' &&
+      typeof entry.end === 'string'
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Flashcards
+ * ------------------------------------------------------------------ */
+
+const flashcardSchema = Schema.array({
+  items: Schema.object({
+    properties: {
+      front: Schema.string({ description: 'The prompt side: a question or a term.' }),
+      back: Schema.string({ description: 'The answer side.' }),
+      concept: Schema.string({ description: '2-5 word topic label.' }),
+    },
+    optionalProperties: ['concept'],
+  }),
+});
+
+export async function generateFlashcards(
+  context: string,
+  count = 20
+): Promise<GeneratedCard[]> {
+  const parsed = await generateJson<GeneratedCard[]>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: flashcardSchema,
+        temperature: 0.5,
+      },
+    },
+    `Write ${count} flashcards from the material below.
+
+- One idea per card. A card testing two things is two cards.
+- "front" is a question or a term — never a statement with the answer in it.
+- "back" is the complete answer in one to three sentences. It must stand alone:
+  a student reading only the back should understand it.
+- Cover definitions, mechanisms, distinctions between similar ideas, and the
+  conditions under which something applies. Skip administrative trivia.
+- Where the material has a formula, make a card asking what each symbol means.
+- Never write a card whose answer is "yes" or "no".
+- If the material is thin, return fewer good cards rather than padding.
+
+MATERIAL:
+${context}`,
+    (value): value is GeneratedCard[] => Array.isArray(value)
+  );
+
+  const valid = parsed.filter(
+    (card) => card && typeof card.front === 'string' && card.front.trim() && card.back?.trim()
+  );
+  if (valid.length === 0) throw new AiError('Gemini did not return any usable flashcards.');
+  return valid.map((card) => ({
+    front: card.front.trim(),
+    back: card.back.trim(),
+    concept: card.concept?.trim() || null,
+  }));
+}
+
+/* ------------------------------------------------------------------ *
+ * Open questions: Socratic tutor and exam simulator
+ * ------------------------------------------------------------------ */
+
+const openQuestionSchema = Schema.array({
+  items: Schema.object({
+    properties: {
+      question: Schema.string(),
+      modelAnswer: Schema.string({ description: 'What a full-mark answer contains.' }),
+      concept: Schema.string({ description: '2-5 word topic label.' }),
+    },
+    optionalProperties: ['concept'],
+  }),
+});
+
+export async function generateOpenQuestions(
+  context: string,
+  options: { count?: number; style?: 'socratic' | 'exam' } = {}
+): Promise<OpenQuestion[]> {
+  const count = options.count ?? 6;
+  const style = options.style ?? 'exam';
+
+  const brief =
+    style === 'socratic'
+      ? `Write ${count} questions that make a student explain their understanding out
+loud. Favour "why", "how" and "what would happen if" over "what is". Order them
+so each one builds on the ground the previous one covered.`
+      : `Write ${count} short-answer exam questions of the kind that actually appear on
+a paper for this material. Mix definition, application and analysis, and use
+command words a marker would use: define, explain, compare, derive, justify.`;
+
+  const parsed = await generateJson<OpenQuestion[]>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: openQuestionSchema,
+        temperature: 0.6,
+      },
+    },
+    `${brief}
+
+- Every question must be answerable from the material alone.
+- "modelAnswer" is the marking guide: the specific points a full-mark answer
+  must contain, written out. It is never shown before the student answers, so
+  write it for a marker, not as a hint.
+- "concept" is the 2-5 word topic being tested.
+
+MATERIAL:
+${context}`,
+    (value): value is OpenQuestion[] => Array.isArray(value)
+  );
+
+  const valid = parsed.filter(
+    (entry) => entry && typeof entry.question === 'string' && entry.question.trim()
+  );
+  if (valid.length === 0) throw new AiError('Gemini did not return any usable questions.');
+  return valid.map((entry) => ({
+    question: entry.question.trim(),
+    modelAnswer: entry.modelAnswer?.trim() || '',
+    concept: entry.concept?.trim() || null,
+  }));
+}
+
+const gradeSchema = Schema.object({
+  properties: {
+    score: Schema.number({ description: '0-100. Partial credit is expected.' }),
+    verdict: Schema.string({ description: 'One short sentence of overall judgement.' }),
+    whatWentWell: Schema.string(),
+    whatWasMissing: Schema.string(),
+    followUp: Schema.string({ description: 'Next question, or empty to end.' }),
+  },
+  optionalProperties: ['followUp'],
+});
+
+/**
+ * Marks a free-text answer against the question's own marking guide.
+ *
+ * The guide is passed in rather than re-derived so the tutor cannot move the
+ * goalposts between asking and marking.
+ */
+export async function gradeAnswer(
+  context: string,
+  question: OpenQuestion,
+  answer: string,
+  options: { socratic?: boolean } = {}
+): Promise<AnswerGrade> {
+  const parsed = await generateJson<AnswerGrade>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: gradeSchema,
+        temperature: 0.2,
+      },
+    },
+    `You are marking a university student's answer.
+
+QUESTION
+${question.question}
+
+MARKING GUIDE (what a full-mark answer contains)
+${question.modelAnswer || 'Judge against the source material below.'}
+
+STUDENT'S ANSWER
+${answer}
+
+Mark it:
+- "score" 0-100 against the guide. Award partial credit generously for correct
+  reasoning expressed imprecisely; do not deduct for phrasing, spelling or
+  brevity if the substance is right. A blank or off-topic answer scores 0.
+- "verdict": one sentence a student can act on.
+- "whatWentWell": the specific things they got right. If nothing, say so plainly.
+- "whatWasMissing": the specific points from the guide they did not reach, and
+  the correction for anything they stated wrongly. Teach here — explain the
+  missing idea rather than just naming it.
+${
+  options.socratic
+    ? `- "followUp": one question that pushes their understanding one step further —
+  probing a gap if they missed something, or extending to a harder case if they
+  did well. Leave empty only if the topic is genuinely exhausted.`
+    : `- "followUp": leave empty.`
+}
+- Never invent facts that are not in the source material below.
+
+SOURCE MATERIAL
+${context.slice(0, 120_000)}`,
+    (value): value is AnswerGrade => !!value && typeof (value as AnswerGrade).score === 'number'
+  );
+
+  return {
+    score: Math.max(0, Math.min(100, Math.round(parsed.score))),
+    verdict: parsed.verdict?.trim() || '',
+    whatWentWell: parsed.whatWentWell?.trim() || '',
+    whatWasMissing: parsed.whatWasMissing?.trim() || '',
+    followUp: parsed.followUp?.trim() || null,
+  };
 }

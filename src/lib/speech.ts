@@ -64,6 +64,55 @@ function shortName(voice: Speech.Voice | undefined): string {
   return voice.name.replace(/^(Microsoft|Google|Apple)\s+/i, '').split(/[()]/)[0].trim();
 }
 
+/**
+ * Splits Markdown notes into speakable chunks.
+ *
+ * Handing a whole document to the speech engine in one call is unreliable —
+ * browsers cap utterance length and drop the tail — and it also makes pausing
+ * meaningless. Chunking at sentence boundaries gives progress and a place to
+ * stop.
+ */
+export function notesToSpeech(markdown: string): string[] {
+  const spoken = markdown
+    .replace(/```[\s\S]*?```/g, ' Code block omitted. ')
+    // Read a heading as a spoken heading rather than a run of hashes.
+    .replace(/^#{1,6}\s+(.*)$/gm, '$1.')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
+    // Tables read as noise; keep the cell text, drop the pipes and rules.
+    .replace(/^\s*\|?[\s:|-]*-{2,}[\s:|-]*\|?\s*$/gm, '')
+    .replace(/\|/g, ', ')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\$([^$]+)\$/g, '$1')
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+
+  const chunks: string[] = [];
+  for (const paragraph of spoken.split('\n')) {
+    const trimmed = paragraph.trim();
+    if (!trimmed) continue;
+
+    // Sentences, then merged up to a length the engine handles comfortably.
+    const sentences = trimmed.match(/[^.!?]+[.!?]*/g) ?? [trimmed];
+    let buffer = '';
+    for (const sentence of sentences) {
+      if ((buffer + sentence).length > 220 && buffer) {
+        chunks.push(buffer.trim());
+        buffer = '';
+      }
+      buffer += sentence;
+    }
+    if (buffer.trim()) chunks.push(buffer.trim());
+  }
+
+  return chunks.filter((chunk) => /[a-z0-9]/i.test(chunk));
+}
+
 export type PlaybackHandlers = {
   onLine: (index: number) => void;
   onDone: () => void;

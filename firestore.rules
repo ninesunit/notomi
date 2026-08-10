@@ -34,6 +34,14 @@ service cloud.firestore {
           }
         }
 
+        match /flashcards/{cardId} {
+          allow read, delete: if isOwner(userId);
+          allow create, update: if isOwner(userId)
+            && request.resource.data.status in ['new', 'known', 'review']
+            && request.resource.data.front is string
+            && request.resource.data.front.size() > 0;
+        }
+
         match /documents/{documentId} {
           allow read, delete: if isOwner(userId);
           // Source text is passed wholesale into Gemini's context window, but a
@@ -42,6 +50,26 @@ service cloud.firestore {
             && request.resource.data.rawText is string
             && request.resource.data.rawText.size() < 900000;
         }
+      }
+
+      match /classes/{classId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.day is int
+          && request.resource.data.day >= 0
+          && request.resource.data.day <= 6
+          && request.resource.data.startMinute is int
+          && request.resource.data.endMinute is int
+          && request.resource.data.startMinute < request.resource.data.endMinute;
+      }
+
+      match /sessions/{sessionId} {
+        allow read, delete: if isOwner(userId);
+        // Minutes are capped so a runaway timer cannot inflate a streak.
+        allow create, update: if isOwner(userId)
+          && request.resource.data.minutes is number
+          && request.resource.data.minutes > 0
+          && request.resource.data.minutes <= 600;
       }
 
       match /todos/{todoId} {
