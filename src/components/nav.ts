@@ -14,17 +14,19 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/study', label: 'Study Center', shortLabel: 'Study', icon: 'zap' },
   { href: '/focus', label: 'Focus', shortLabel: 'Focus', icon: 'target' },
   { href: '/todos', label: 'To-dos', shortLabel: 'To-dos', icon: 'check-square' },
+  { href: '/capture', label: 'Capture', shortLabel: 'Capture', icon: 'camera' },
   { href: '/calendar', label: 'Calendar', shortLabel: 'Calendar', icon: 'calendar' },
   { href: '/program', label: 'Program', shortLabel: 'Program', icon: 'layers' },
 ];
 
 /**
  * The bottom bar holds fewer items than the rail — six 60px tabs already fill a
- * phone, and Calendar and Program are the two a student reaches for least often
- * on the move. Both stay reachable from the dashboard.
+ * phone. Calendar, Program and Capture are cut: the first two are reached from
+ * the dashboard, and Capture is a home-screen shortcut, which is the whole
+ * point of it.
  */
 export const TAB_ITEMS: NavItem[] = NAV_ITEMS.filter(
-  (item) => item.href !== '/calendar' && item.href !== '/program'
+  (item) => !['/calendar', '/program', '/capture'].includes(item.href)
 );
 
 /** `/` only matches exactly; everything else matches its subtree. */

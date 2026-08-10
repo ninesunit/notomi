@@ -13,9 +13,10 @@ import { formatDateTime } from '@/lib/dates';
 import { formatChars } from '@/lib/format';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
-import type { SourceDocument, Subject } from '@/lib/schema';
+import type { SourceDocument, StudySession, Subject } from '@/lib/schema';
 import { deleteMaterial, deleteSubject } from '@/services/ingestion';
 import { getR2FileUrl } from '@/services/r2Storage';
+import { describeLastStudied, formatMinutes, studyBySubject } from '@/services/sessions';
 
 export default function SubjectFolder() {
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>();
@@ -33,6 +34,12 @@ export default function SubjectFolder() {
   const documents = useCollection<SourceDocument>(
     query(paths.documents(db, uid, subjectId), orderBy('createdAt', 'desc')),
     [uid, subjectId]
+  );
+  const sessions = useCollection<StudySession>(paths.sessions(db, uid), [uid]);
+
+  const study = useMemo(
+    () => studyBySubject(sessions.data).get(subjectId) ?? null,
+    [sessions.data, subjectId]
   );
 
   /** Task 3 asks for modules grouped inside the folder. */
@@ -180,15 +187,46 @@ export default function SubjectFolder() {
         </View>
       ) : null}
 
-      <View className="mb-8">
+      {/* Study time is already logged against this subject by the focus timer
+          and the study centre; this is where a student sees it back. */}
+      <View className="mb-6 flex-row flex-wrap items-center gap-2">
+        <View className="flex-row items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2">
+          <Feather name="clock" size={13} color="#9A9488" />
+          <Text className="text-sm font-bold text-ink">
+            {formatMinutes(study?.minutes ?? 0)}
+          </Text>
+          <Text className="text-[13px] text-muted">studied</Text>
+        </View>
+
+        {study?.minutesThisWeek ? (
+          <View className="flex-row items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2">
+            <Feather name="trending-up" size={13} color="#2E6F5E" />
+            <Text className="text-sm font-bold text-pine">
+              {formatMinutes(study.minutesThisWeek)}
+            </Text>
+            <Text className="text-[13px] text-muted">this week</Text>
+          </View>
+        ) : null}
+
+        <Text className="text-[13px] text-subtle">
+          {describeLastStudied(study?.lastStudied ?? null)}
+        </Text>
+      </View>
+
+      <View className="mb-8 flex-row flex-wrap gap-2">
         <Button
           label="Add material"
           icon="upload-cloud"
           variant="secondary"
           size="sm"
           onPress={() => setAddOpen(true)}
-          className="self-start"
         />
+        <Link href={`/focus?subjectId=${subjectId}`} asChild>
+          <Button label="Study this" icon="target" variant="secondary" size="sm" />
+        </Link>
+        <Link href={`/capture?subjectId=${subjectId}`} asChild>
+          <Button label="Capture a photo" icon="camera" variant="secondary" size="sm" />
+        </Link>
       </View>
 
       {documents.loading ? (

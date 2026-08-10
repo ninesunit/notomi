@@ -462,8 +462,11 @@ function Pill({
 function QuickActions({ onUpload }: { onUpload: () => void }) {
   return (
     <View className="mb-8 flex-row flex-wrap gap-2">
+      <Link href="/capture" asChild>
+        <Button label="Capture" icon="camera" variant="secondary" size="sm" />
+      </Link>
       <Link href="/timetable" asChild>
-        <Button label="Scan schedule" icon="camera" variant="secondary" size="sm" />
+        <Button label="Scan schedule" icon="grid" variant="secondary" size="sm" />
       </Link>
       <Button
         label="Upload material"

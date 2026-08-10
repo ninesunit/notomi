@@ -110,3 +110,61 @@ export function formatMinutes(minutes: number): string {
   const rest = minutes % 60;
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
+
+export type SubjectStudy = {
+  minutes: number;
+  sessions: number;
+  /** Minutes in the last seven days, which is what "am I keeping up" means. */
+  minutesThisWeek: number;
+  lastStudied: string | null;
+};
+
+/**
+ * Study time per subject.
+ *
+ * Every focus block, quiz and flashcard run already records which subject it
+ * belonged to; this is what turns that log into something a student can see.
+ * Keyed by subject id, so a renamed subject keeps its history.
+ */
+export function studyBySubject(
+  sessions: StudySession[],
+  now = new Date()
+): Map<string, SubjectStudy> {
+  const weekAgo = dayKey(new Date(now.getTime() - 6 * 86_400_000));
+  const out = new Map<string, SubjectStudy>();
+
+  for (const session of sessions) {
+    if (!session.subjectId) continue;
+
+    const entry =
+      out.get(session.subjectId) ??
+      ({ minutes: 0, sessions: 0, minutesThisWeek: 0, lastStudied: null } as SubjectStudy);
+
+    entry.minutes += session.minutes ?? 0;
+    entry.sessions += 1;
+    if (session.dayKey >= weekAgo) entry.minutesThisWeek += session.minutes ?? 0;
+    if (!entry.lastStudied || session.dayKey > entry.lastStudied) {
+      entry.lastStudied = session.dayKey;
+    }
+
+    out.set(session.subjectId, entry);
+  }
+
+  return out;
+}
+
+/** "today" / "yesterday" / "3 days ago" from a YYYY-MM-DD key. */
+export function describeLastStudied(key: string | null, now = new Date()): string {
+  if (!key) return 'Not studied yet';
+
+  const today = dayKey(now);
+  if (key === today) return 'Studied today';
+  if (key === dayKey(new Date(now.getTime() - 86_400_000))) return 'Studied yesterday';
+
+  const days = Math.round(
+    (new Date(`${today}T00:00:00`).getTime() - new Date(`${key}T00:00:00`).getTime()) / 86_400_000
+  );
+  if (days < 7) return `Studied ${days} days ago`;
+  if (days < 14) return 'Studied last week';
+  return `Studied ${Math.floor(days / 7)} weeks ago`;
+}

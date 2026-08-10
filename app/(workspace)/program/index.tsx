@@ -28,8 +28,10 @@ import {
   TERM_SUGGESTIONS,
   type ClassBlock,
   type Semester,
+  type StudySession,
   type Subject,
 } from '@/lib/schema';
+import { studyBySubject } from '@/services/sessions';
 import {
   assignSubject,
   createSemester,
@@ -67,7 +69,9 @@ export default function Program() {
     [uid]
   );
   const classes = useCollection<ClassBlock>(paths.classes(db, uid), [uid]);
+  const sessions = useCollection<StudySession>(paths.sessions(db, uid), [uid]);
 
+  const study = useMemo(() => studyBySubject(sessions.data), [sessions.data]);
   const ordered = useMemo(() => sortSemesters(semesters.data), [semesters.data]);
   const unassigned = useMemo(
     () =>
@@ -155,6 +159,7 @@ export default function Program() {
               semesters={ordered}
               subjects={subjects.data}
               classes={classes.data}
+              study={study}
             />
           ) : null}
 

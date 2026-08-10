@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import {
   doc,
@@ -291,6 +292,63 @@ export type IngestOptions = {
   subjectId?: string;
   onProgress?: (progress: IngestProgress) => void;
 };
+
+/**
+ * Opens the camera rather than a file browser.
+ *
+ * expo-document-picker cannot request the camera, and on a phone that is the
+ * difference between "photograph this whiteboard" and "go find a photo of a
+ * whiteboard". The `capture` attribute is what makes iOS and Android open the
+ * camera directly; a desktop browser ignores it and shows a file dialog, which
+ * is the right fallback.
+ */
+export async function captureImage(): Promise<MaterialFile[]> {
+  if (Platform.OS !== 'web') return pickMaterials();
+
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.setAttribute('capture', 'environment');
+    input.style.display = 'none';
+
+    let settled = false;
+    const finish = (files: MaterialFile[]) => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(files);
+    };
+
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      finish(
+        file
+          ? [
+              {
+                name: file.name || `capture-${Date.now()}.jpg`,
+                uri: URL.createObjectURL(file),
+                mimeType: file.type || 'image/jpeg',
+                size: file.size,
+                file,
+              },
+            ]
+          : []
+      );
+    });
+
+    // Cancel fires no event in most browsers; focus returning to the window is
+    // the only signal, and it needs a beat for `change` to land first.
+    window.addEventListener(
+      'focus',
+      () => setTimeout(() => finish([]), 600),
+      { once: true }
+    );
+
+    document.body.appendChild(input);
+    input.click();
+  });
+}
 
 export async function pickMaterials(): Promise<MaterialFile[]> {
   const picked = await DocumentPicker.getDocumentAsync({

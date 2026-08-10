@@ -3,16 +3,23 @@ import { Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Sheet } from './Sheet';
-import { Badge, Button } from './ui';
+import { Badge, Button, Field } from './ui';
 import {
   calculateGpa,
   DAY_LABELS,
+  GRADE_OPTIONS,
   GRADE_POINTS,
   minutesToLabel,
   type ClassBlock,
   type Semester,
   type Subject,
 } from '@/lib/schema';
+import { requiredAverage } from '@/services/program';
+import {
+  describeLastStudied,
+  formatMinutes,
+  type SubjectStudy,
+} from '@/services/sessions';
 
 /**
  * The degree as a tree: programme at the root, terms as branches, subjects as
@@ -28,6 +35,7 @@ export function ProgramMap({
   semesters,
   subjects,
   classes = [],
+  study,
   programName = 'My degree',
   /** Compact mode drops the detail drawer and shows only the current term. */
   compact = false,
@@ -35,6 +43,8 @@ export function ProgramMap({
   semesters: Semester[];
   subjects: Subject[];
   classes?: ClassBlock[];
+  /** Logged study time per subject id, for the detail drawer. */
+  study?: Map<string, SubjectStudy>;
   programName?: string;
   compact?: boolean;
 }) {
@@ -184,10 +194,13 @@ export function ProgramMap({
         );
       })}
 
+      {!compact ? <GpaSimulator subjects={subjects} /> : null}
+
       {selected ? (
         <SubjectDrawer
           subject={selected}
           classes={classes.filter((block) => block.subjectId === selected.id)}
+          study={study?.get(selected.id) ?? null}
           onClose={() => setSelected(null)}
         />
       ) : null}
@@ -202,10 +215,12 @@ export function ProgramMap({
 function SubjectDrawer({
   subject,
   classes,
+  study,
   onClose,
 }: {
   subject: Subject;
   classes: ClassBlock[];
+  study: SubjectStudy | null;
   onClose: () => void;
 }) {
   const points = subject.grade ? GRADE_POINTS[subject.grade] : null;
@@ -245,7 +260,14 @@ function SubjectDrawer({
           value={points === null || points === undefined ? '—' : points.toFixed(1)}
         />
         <Stat label="Sources" value={String(subject.documentCount ?? 0)} />
+        <Stat label="Studied" value={formatMinutes(study?.minutes ?? 0)} />
+        <Stat label="This week" value={formatMinutes(study?.minutesThisWeek ?? 0)} />
       </View>
+
+      <Text className="text-xs text-subtle">
+        {describeLastStudied(study?.lastStudied ?? null)}
+        {study?.sessions ? ` · ${study.sessions} session${study.sessions === 1 ? '' : 's'}` : ''}
+      </Text>
 
       <View className="gap-2">
         <Text className="text-sm font-medium text-muted">Class times</Text>
@@ -286,6 +308,183 @@ function Stat({ label, value }: { label: string; value: string }) {
     >
       <Text className="text-lg font-bold text-ink">{value}</Text>
       <Text className="text-[11px] text-muted">{label}</Text>
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * GPA target simulator
+ * ------------------------------------------------------------------ */
+
+/**
+ * What-if grades, in place on the map.
+ *
+ * Every subject without a recorded grade gets a hypothetical one, and the
+ * projection updates as they change. Nothing is written: the point is to answer
+ * "what do I need in the courses I am still taking", which is a question you
+ * ask repeatedly and never want to save the answer to.
+ */
+function GpaSimulator({ subjects }: { subjects: Subject[] }) {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState('3.50');
+  const [hypothetical, setHypothetical] = useState<Record<string, string>>({});
+
+  const graded = subjects.filter((subject) => subject.grade && (subject.creditHours ?? 0) > 0);
+  const ungraded = subjects.filter((subject) => !subject.grade && (subject.creditHours ?? 0) > 0);
+
+  const projected = useMemo(
+    () =>
+      calculateGpa(
+        subjects.map((subject) => ({
+          creditHours: subject.creditHours,
+          grade: subject.grade ?? hypothetical[subject.id] ?? null,
+        }))
+      ),
+    [subjects, hypothetical]
+  );
+
+  const actual = useMemo(() => calculateGpa(subjects), [subjects]);
+
+  // What the remaining credits have to average for the target to be reachable.
+  const parsedTarget = Number.parseFloat(target);
+  const remainingCredits = ungraded.reduce(
+    (total, subject) => total + (subject.creditHours ?? 0),
+    0
+  );
+  const earnedPoints = actual.gpa === null ? 0 : actual.gpa * actual.graded;
+  const needed = Number.isFinite(parsedTarget)
+    ? requiredAverage(parsedTarget, earnedPoints, actual.graded, remainingCredits)
+    : null;
+
+  if (subjects.length === 0) return null;
+
+  return (
+    <View className="mt-2 overflow-hidden rounded-2xl border border-line bg-surface">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen((value) => !value)}
+        className="flex-row items-center gap-3 px-4 py-3.5"
+      >
+        <Text className="text-lg">🎯</Text>
+        <View className="flex-1">
+          <Text className="text-sm font-semibold text-ink">GPA target simulator</Text>
+          <Text className="text-[11px] text-muted">
+            {ungraded.length === 0
+              ? 'Every subject is graded — nothing left to project.'
+              : `Try grades for your ${ungraded.length} ungraded subject${
+                  ungraded.length === 1 ? '' : 's'
+                }`}
+          </Text>
+        </View>
+        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={15} color="#6F6A5F" />
+      </Pressable>
+
+      {open ? (
+        <View className="gap-4 border-t border-line p-4">
+          <View className="flex-row flex-wrap gap-4">
+            <View className="gap-1" style={{ minWidth: 120 }}>
+              <Text className="text-[11px] font-bold uppercase tracking-wider text-muted">
+                Projected
+              </Text>
+              <Text className="text-[28px] font-bold leading-8 text-ink">
+                {projected.gpa === null ? '—' : projected.gpa.toFixed(2)}
+              </Text>
+              <Text className="text-[11px] text-subtle">
+                now {actual.gpa === null ? '—' : actual.gpa.toFixed(2)}
+              </Text>
+            </View>
+
+            <View className="flex-1 gap-1.5" style={{ minWidth: 180 }}>
+              <Field
+                label="Target GPA"
+                value={target}
+                onChangeText={setTarget}
+                keyboardType="decimal-pad"
+                placeholder="3.50"
+              />
+              {needed !== null ? (
+                <Text className={`text-xs font-medium ${needed > 4 ? 'text-rose' : 'text-pine'}`}>
+                  {needed > 4
+                    ? `Out of reach — you would need a ${needed.toFixed(2)} average across ${remainingCredits} remaining credits.`
+                    : `Average ${needed.toFixed(2)} across your ${remainingCredits} ungraded credits.`}
+                </Text>
+              ) : remainingCredits === 0 ? (
+                <Text className="text-xs text-subtle">
+                  No ungraded credits left to project against.
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {ungraded.length > 0 ? (
+            <View className="gap-2">
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm font-medium text-muted">Hypothetical grades</Text>
+                {Object.keys(hypothetical).length > 0 ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setHypothetical({})}
+                    hitSlop={6}
+                  >
+                    <Text className="text-xs font-semibold text-accent">Clear</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {ungraded.map((subject) => (
+                <View key={subject.id} className="gap-1.5 rounded-xl border border-line p-3">
+                  <Text className="text-[13px] font-semibold text-ink" numberOfLines={1}>
+                    {subject.emoji ? `${subject.emoji} ` : ''}
+                    {subject.name}
+                    <Text className="text-[11px] font-normal text-subtle">
+                      {'  '}
+                      {subject.creditHours ?? 0} cr
+                    </Text>
+                  </Text>
+
+                  <View className="flex-row flex-wrap gap-1">
+                    {GRADE_OPTIONS.map((grade) => {
+                      const active = hypothetical[subject.id] === grade;
+                      return (
+                        <Pressable
+                          key={grade}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Assume ${grade} for ${subject.name}`}
+                          accessibilityState={{ selected: active }}
+                          onPress={() =>
+                            setHypothetical((previous) => {
+                              const next = { ...previous };
+                              if (active) delete next[subject.id];
+                              else next[subject.id] = grade;
+                              return next;
+                            })
+                          }
+                          className={`rounded-md px-2 py-1 ${active ? 'bg-ink' : 'bg-sand'}`}
+                        >
+                          <Text
+                            className={`text-[11px] font-bold ${
+                              active ? 'text-paper' : 'text-muted'
+                            }`}
+                          >
+                            {grade}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          <Text className="text-[11px] leading-4 text-subtle">
+            Nothing here is saved. {graded.length} graded subject
+            {graded.length === 1 ? ' anchors' : 's anchor'} the projection; record a real grade in
+            the planner when you get it.
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }

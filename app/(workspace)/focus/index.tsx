@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -28,6 +29,7 @@ const LONG_BREAK = 15 * 60;
 const CYCLES_TO_LONG_BREAK = 4;
 
 export default function Focus() {
+  const params = useLocalSearchParams<{ subjectId?: string }>();
   const uid = useUid();
   const db = getDb();
 
@@ -41,7 +43,9 @@ export default function Focus() {
   const [running, setRunning] = useState(false);
   const [remaining, setRemaining] = useState(LENGTHS.focus);
   const [completed, setCompleted] = useState(0);
-  const [subjectId, setSubjectId] = useState<string | null>(null);
+  // Pre-selected when arriving from a subject page, so "Study this" lands on a
+  // timer that is already pointed at the right thing.
+  const [subjectId, setSubjectId] = useState<string | null>(params.subjectId ?? null);
   const [error, setError] = useState<string | null>(null);
   const [justLogged, setJustLogged] = useState<number | null>(null);
 
