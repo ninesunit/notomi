@@ -53,3 +53,8 @@ database-debug.log
 pubsub-debug.log
 ui-debug.log
 .firebase/
+
+# Never commit service account keys
+*serviceAccount*.json
+*firebase-adminsdk*.json
+secrets/

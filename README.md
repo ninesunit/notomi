@@ -1,9 +1,39 @@
 # Notomi
 
+**Live: https://notomii.web.app**
+
 A NotebookLM-style study workspace for **desktop, iPhone and iPadOS**, built on
 Expo Router + React Native Web and running entirely on your own Firebase
 project. There are no third-party AI keys anywhere in the stack — Gemini is
 reached through Firebase AI Logic, and document parsing happens on the device.
+
+## Deployment status
+
+| Piece | State |
+| --- | --- |
+| Hosting (`notomii.web.app`) | Deployed |
+| Firestore rules | Deployed |
+| Auth: Email/Password + Anonymous | Enabled |
+| Firestore composite indexes | None needed — every query is single-field |
+| **Cloud Storage for Firebase API** | **Not enabled — see below** |
+| **Firebase AI Logic API** | **Not enabled — see below** |
+
+Two Google APIs still have to be switched on by a project **Owner**. Until then
+the app runs, signs in and stores documents, but uploading the original file
+and every Gemini feature will fail with a clear in-app message.
+
+1. **Firebase AI Logic** — https://console.firebase.google.com/project/notomii/ailogic
+   Choose the **Gemini Developer API** backend. This enables
+   `firebasevertexai.googleapis.com` and is what powers metadata extraction,
+   chat, quizzes and audio overviews.
+2. **Cloud Storage** — https://console.firebase.google.com/project/notomii/storage
+   Click **Get started** to provision the default bucket
+   (`notomii.firebasestorage.app`). Then deploy the storage rules:
+   `npx firebase deploy --only storage`.
+
+The Firebase **Admin SDK service account cannot enable APIs** — that needs
+`serviceusage.services.enable`, which is an Owner/Editor permission. Everything
+else in this project was deployed with that service account.
 
 ## How it works
 
@@ -72,6 +102,8 @@ npm run deploy:rules     # firestore rules + indexes + storage rules
 ```
 
 Nothing works without this — the default rules deny every read and write.
+(Firestore rules are already deployed; the storage half needs Storage enabled
+first.)
 
 ### 4. Deploy the app
 
@@ -81,6 +113,11 @@ npm run deploy:hosting   # builds dist/ and pushes to Firebase Hosting
 
 Hosting is configured as a single-page app: every route rewrites to
 `index.html`, hashed bundles are cached immutably, and `index.html` is not.
+
+`build:web` passes `--clear`. That is deliberate: `EXPO_PUBLIC_*` values are
+inlined at transform time, so a warm Metro cache will happily ship a bundle
+carrying an older `.env` — which is exactly how a deploy ends up pointing at
+the wrong project.
 
 ## Local development against emulators
 

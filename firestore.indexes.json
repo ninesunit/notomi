@@ -1,30 +1,13 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "weak_concepts",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "subjectId", "order": "ASCENDING" },
-        { "fieldPath": "nextReviewAt", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "todos",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "subjectId", "order": "ASCENDING" },
-        { "fieldPath": "dueDate", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "todos",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "isCompleted", "order": "ASCENDING" },
-        { "fieldPath": "dueDate", "order": "ASCENDING" }
-      ]
-    }
+  "_comment": [
+    "Notomi deliberately needs no composite indexes. Every query orders on a",
+    "single field, which Firestore's automatic single-field indexes already",
+    "serve; the open/overdue and per-subject splits are done client-side, where",
+    "a student's data is small enough that it costs nothing.",
+    "Keeping it this way means a fresh project works the moment rules are",
+    "deployed, with no index build to wait on."
   ],
+  "indexes": [],
   "fieldOverrides": [
     {
       "collectionGroup": "documents",

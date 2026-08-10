@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Text, View } from 'react-native';
 import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { limit, orderBy, query, where } from 'firebase/firestore';
+import { orderBy, query } from 'firebase/firestore';
 import { CardGrid, GridItem, SubjectCard } from '@/components/SubjectCard';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { UploadButton } from '@/components/UploadButton';
@@ -24,23 +24,28 @@ export default function Dashboard() {
     [uid]
   );
 
-  const todos = useCollection<Todo>(
-    query(paths.todos(db, uid), where('isCompleted', '==', false), orderBy('dueDate', 'asc'), limit(50)),
-    [uid]
-  );
+  /**
+   * Ordered on a single field so Firestore serves this from the automatic
+   * single-field index. Adding `where('isCompleted','==',false)` would demand a
+   * composite index for no real benefit — a student's task list is small, and
+   * the open/overdue split below is a cheap client-side pass.
+   */
+  const todos = useCollection<Todo>(query(paths.todos(db, uid), orderBy('dueDate', 'asc')), [uid]);
+
+  const open = useMemo(() => todos.data.filter((todo) => !todo.isCompleted), [todos.data]);
 
   const upcoming = useMemo(
     () =>
-      todos.data
+      open
         .map((todo) => ({ todo, due: toDate(todo.dueDate) }))
         .filter(({ due }) => due !== null)
         .slice(0, 5),
-    [todos.data]
+    [open]
   );
 
   const overdueCount = useMemo(
-    () => todos.data.filter((todo) => bucketFor(toDate(todo.dueDate)) === 'overdue').length,
-    [todos.data]
+    () => open.filter((todo) => bucketFor(toDate(todo.dueDate)) === 'overdue').length,
+    [open]
   );
 
   const sourceCount = useMemo(
@@ -70,7 +75,7 @@ export default function Dashboard() {
       <View className="mb-8 flex-row flex-wrap gap-3">
         <Stat icon="folder" value={subjects.data.length} label="Subjects" />
         <Stat icon="file-text" value={sourceCount} label="Sources" />
-        <Stat icon="check-square" value={todos.data.length} label="Open tasks" />
+        <Stat icon="check-square" value={open.length} label="Open tasks" />
         <Stat
           icon="alert-circle"
           value={overdueCount}
