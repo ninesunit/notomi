@@ -10,12 +10,13 @@ import {
   Timestamp,
   updateDoc,
 } from 'firebase/firestore';
+import { DatePicker } from '@/components/DatePicker';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { nextPriority, TodoRow, type TodoActions } from '@/components/TodoRow';
 import { Button, Card, EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
-import { bucketFor, parseDueDate, toDate, type DueBucket } from '@/lib/dates';
+import { bucketFor, dayKey, toDate, type DueBucket } from '@/lib/dates';
 import { getDb } from '@/lib/firebase';
 import { paths } from '@/lib/paths';
 import type { Priority, SubTask, Subject, Todo } from '@/lib/schema';
@@ -27,12 +28,6 @@ const GROUPS: { key: DueBucket; title: string; hint: string }[] = [
   { key: 'someday', title: 'No date', hint: 'Unscheduled' },
 ];
 
-const QUICK_DATES: { label: string; days: number | null }[] = [
-  { label: 'Today', days: 0 },
-  { label: 'Tomorrow', days: 1 },
-  { label: 'Next week', days: 7 },
-  { label: 'No date', days: null },
-];
 
 export default function Todos() {
   const uid = useUid();
@@ -42,7 +37,7 @@ export default function Todos() {
   const subjects = useCollection<Subject>(paths.subjects(db, uid), [uid]);
 
   const [title, setTitle] = useState('');
-  const [dateText, setDateText] = useState('');
+  const [dueDate, setDueDate] = useState<Date | null>(null);
   const [priority, setPriority] = useState<Priority>('medium');
   const [subjectId, setSubjectId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -66,6 +61,25 @@ export default function Todos() {
     [open]
   );
 
+  /**
+   * Fed into the picker so choosing a date shows what is already due that day
+   * — the main reason to pick from a calendar rather than type a date.
+   */
+  const markers = useMemo(() => {
+    const map = new Map<string, { color: string; overdue?: boolean }[]>();
+    const now = new Date();
+    for (const todo of open) {
+      const due = toDate(todo.dueDate);
+      if (!due) continue;
+      const key = dayKey(due);
+      const list = map.get(key) ?? [];
+      const subject = subjects.data.find((s) => s.id === todo.subjectId);
+      list.push({ color: subject?.color || '#6F6A5F', overdue: due < now });
+      map.set(key, list);
+    }
+    return map;
+  }, [open, subjects.data]);
+
   async function addTodo() {
     const trimmed = title.trim();
     if (!trimmed) return;
@@ -76,7 +90,7 @@ export default function Todos() {
     try {
       await addDoc(paths.todos(db, uid), {
         title: trimmed,
-        dueDate: parseDueDate(dateText),
+        dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,
         isCompleted: false,
         subjectId: subject?.id ?? null,
         subjectName: subject?.name ?? null,
@@ -88,7 +102,7 @@ export default function Todos() {
         completedAt: null,
       });
       setTitle('');
-      setDateText('');
+      setDueDate(null);
       setPriority('medium');
       setSubjectId(null);
     } catch (caught) {
@@ -116,23 +130,12 @@ export default function Todos() {
         setError(String(caught))
       );
     },
+    setDueDate: (todo, next) => {
+      void updateDoc(paths.todo(db, uid, todo.id), {
+        dueDate: next ? Timestamp.fromDate(next) : null,
+      }).catch((caught) => setError(String(caught)));
+    },
   };
-
-  function applyQuickDate(days: number | null) {
-    if (days === null) {
-      setDateText('');
-      return;
-    }
-    const date = new Date();
-    date.setDate(date.getDate() + days);
-    setDateText(
-      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
-        date.getDate()
-      ).padStart(2, '0')}`
-    );
-  }
-
-  const parsedPreview = parseDueDate(dateText);
 
   return (
     <ScreenScroll maxWidth={860}>
@@ -163,30 +166,7 @@ export default function Todos() {
 
         <View className="flex-row flex-wrap items-end gap-4">
           <View className="flex-1 gap-2" style={{ minWidth: 220 }}>
-            <Text className="text-sm font-medium text-muted">Due</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {QUICK_DATES.map((quick) => (
-                <Pressable
-                  key={quick.label}
-                  onPress={() => applyQuickDate(quick.days)}
-                  className="rounded-lg border border-line bg-paper px-3 py-1.5"
-                >
-                  <Text className="text-xs font-medium text-muted">{quick.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Field
-              value={dateText}
-              onChangeText={setDateText}
-              placeholder="YYYY-MM-DD"
-              autoCapitalize="none"
-              autoCorrect={false}
-              hint={
-                dateText && !parsedPreview
-                  ? 'Not a date Notomi recognises — use YYYY-MM-DD.'
-                  : undefined
-              }
-            />
+            <DatePicker value={dueDate} onChange={setDueDate} markers={markers} />
           </View>
 
           <View className="gap-2">

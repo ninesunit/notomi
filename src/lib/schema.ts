@@ -75,11 +75,21 @@ export type WeakConcept = {
 };
 
 /** What Gemini returns when we analyse a freshly uploaded document. */
+export type ExtractedDeadline = {
+  title: string;
+  /** ISO YYYY-MM-DD. */
+  dueDate: string | null;
+  /** 24-hour HH:MM when the source states one. */
+  dueTime: string | null;
+  /** assignment | exam | quiz | lab | project | reading | presentation | other */
+  kind: string | null;
+};
+
 export type ExtractedMetadata = {
   moduleCode: string | null;
   subjectName: string | null;
   summary: string | null;
-  deadlines: { title: string; dueDate: string | null }[];
+  deadlines: ExtractedDeadline[];
 };
 
 export type QuizQuestion = {

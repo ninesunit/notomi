@@ -87,13 +87,15 @@ export function buildContext(sources: { title: string; text: string }[]): string
   const budgetPerSource = Math.floor(MAX_CONTEXT_CHARS / usable.length);
 
   return usable
-    .map((source) => {
+    .map((source, index) => {
       let body = source.text;
       if (body.length > budgetPerSource) {
         const half = Math.floor(budgetPerSource / 2);
         body = `${body.slice(0, half)}\n\n[... middle of this document omitted for length ...]\n\n${body.slice(-half)}`;
       }
-      return `<source title="${source.title.replace(/"/g, "'")}">\n${body}\n</source>`;
+      // Numbered as well as titled: students often have several files with
+      // near-identical names, and the index disambiguates a citation.
+      return `<source index="${index + 1}" title="${source.title.replace(/"/g, "'")}">\n${body}\n</source>`;
     })
     .join('\n\n');
 }
@@ -105,6 +107,56 @@ async function generate(params: Omit<ModelParams, 'model'>, prompt: string): Pro
   } catch (error) {
     throw new AiError(describe(error), error);
   }
+}
+
+/**
+ * Runs a JSON-mode prompt and parses it, retrying once if the model returns
+ * something unparseable. Long-context calls are slow and occasionally truncate
+ * mid-object; a single retry at a lower temperature recovers nearly all of
+ * those without making the student start over.
+ */
+async function generateJson<T>(
+  params: Omit<ModelParams, 'model'>,
+  prompt: string,
+  validate: (value: unknown) => value is T
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const config = {
+      ...params,
+      generationConfig: {
+        ...params.generationConfig,
+        // Second pass: clamp creativity so the model follows the schema.
+        ...(attempt === 1 ? { temperature: 0 } : {}),
+      },
+    };
+
+    try {
+      const raw = await generate(config, prompt);
+      const parsed = parseJson<unknown>(raw);
+      if (validate(parsed)) return parsed;
+      lastError = new AiError('Gemini returned JSON in an unexpected shape.');
+    } catch (error) {
+      // A transport or quota failure will not be fixed by retrying the parse.
+      if (error instanceof AiError && !/not valid JSON|unexpected shape/i.test(error.message)) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new AiError('Gemini returned an unusable response.');
+}
+
+/** Today's date, so the model can resolve "week 5" and bare day/month dates. */
+function todayContext(): string {
+  const now = new Date();
+  return `Today is ${now.toISOString().slice(0, 10)} (${now.toLocaleDateString(undefined, {
+    weekday: 'long',
+  })}).`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -121,18 +173,26 @@ const metadataSchema = Schema.object({
     deadlines: Schema.array({
       items: Schema.object({
         properties: {
-          title: Schema.string(),
+          title: Schema.string({ description: 'What is due, e.g. "Problem Set 3".' }),
           dueDate: Schema.string({ description: 'ISO 8601 date (YYYY-MM-DD), or empty if unknown.' }),
+          dueTime: Schema.string({ description: '24h HH:MM if a time is stated, else empty.' }),
+          kind: Schema.string({
+            description: 'One of: assignment, exam, quiz, lab, project, reading, presentation, other.',
+          }),
         },
-        optionalProperties: ['dueDate'],
+        optionalProperties: ['dueDate', 'dueTime', 'kind'],
       }),
     }),
   },
   optionalProperties: ['moduleCode'],
 });
 
+function isMetadata(value: unknown): value is Partial<ExtractedMetadata> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export async function extractMetadata(text: string): Promise<ExtractedMetadata> {
-  const raw = await generate(
+  const parsed = await generateJson<Partial<ExtractedMetadata>>(
     {
       generationConfig: {
         responseMimeType: 'application/json',
@@ -142,17 +202,29 @@ export async function extractMetadata(text: string): Promise<ExtractedMetadata> 
     },
     `Analyze this syllabus/lecture document and return the requested JSON.
 
+${todayContext()}
+
 Rules:
 - "moduleCode": the official course code if one appears (e.g. "MA1521"), else "".
 - "subjectName": the subject/course this belongs to, in title case. Never empty — infer it from the content if it is not stated.
-- "summary": 2-4 sentences on what this document covers.
-- "deadlines": every assessment, assignment, exam or submission with a date. Use ISO YYYY-MM-DD. If a date has no year, assume the academic year the document implies. Omit entries with no discernible date. Return [] when there are none.
+- "summary": 2-4 sentences on what this document actually teaches. Describe the content, not the document type.
+- "deadlines": every assessment, assignment, exam, lab or submission that has a date.
+  · "dueDate" is ISO YYYY-MM-DD.
+  · A date with no year belongs to the academic year the document implies. If the
+    month is already past relative to today, it almost certainly refers to the
+    coming year rather than one that has gone.
+  · "dueTime" only when the document states one (e.g. "by 5pm" -> "17:00").
+    Leave it empty rather than inventing a time.
+  · "kind" classifies it; use "other" when unclear.
+  · A recurring item ("weekly quizzes") is not a dated deadline — skip it.
+  · Titles must be self-contained: "Essay 1 draft", not "the draft".
+  · Return [] when the document has no dated assessments.
 
 DOCUMENT:
-${text.slice(0, MAX_CONTEXT_CHARS)}`
+${text.slice(0, MAX_CONTEXT_CHARS)}`,
+    isMetadata
   );
 
-  const parsed = parseJson<Partial<ExtractedMetadata>>(raw);
   return {
     moduleCode: parsed.moduleCode?.trim() || null,
     subjectName: parsed.subjectName?.trim() || null,
@@ -160,7 +232,12 @@ ${text.slice(0, MAX_CONTEXT_CHARS)}`
     deadlines: Array.isArray(parsed.deadlines)
       ? parsed.deadlines
           .filter((d) => d && typeof d.title === 'string' && d.title.trim())
-          .map((d) => ({ title: d.title.trim(), dueDate: d.dueDate?.trim() || null }))
+          .map((d) => ({
+            title: d.title.trim(),
+            dueDate: d.dueDate?.trim() || null,
+            dueTime: (d as { dueTime?: string }).dueTime?.trim() || null,
+            kind: (d as { kind?: string }).kind?.trim() || null,
+          }))
       : [],
   };
 }
@@ -169,12 +246,32 @@ ${text.slice(0, MAX_CONTEXT_CHARS)}`
  * Task 4 — grounded multi-source chat
  * ------------------------------------------------------------------ */
 
-export const READER_SYSTEM_PROMPT =
-  'You are Notomi, an expert tutor. Use ONLY the provided source text to answer questions. ' +
-  'Cite your answers using inline quotes: quote the exact supporting sentence in double quotes ' +
-  'and name the source title in brackets, e.g. "photosynthesis converts light energy" [Lecture 3]. ' +
-  'If the sources do not contain the answer, say so plainly instead of guessing. ' +
-  'Be concise and well structured; prefer short paragraphs and bullet lists.';
+export const READER_SYSTEM_PROMPT = [
+  'You are Notomi, an expert tutor for a university student.',
+  '',
+  'GROUNDING — this is absolute:',
+  '- Answer ONLY from the SOURCES below. They are the student\'s own uploaded material.',
+  '- Never use outside knowledge to add facts, even if you are confident they are true.',
+  '- If the sources do not answer the question, say exactly what is missing and',
+  '  suggest what the student could upload. Do not guess or pad.',
+  '- If sources disagree, say so and quote both.',
+  '',
+  'CITING:',
+  '- Support every substantive claim with the exact supporting sentence in double',
+  '  quotes, followed by the source title in brackets:',
+  '  "photosynthesis converts light energy" [Lecture 3].',
+  '- Quote verbatim. Never paraphrase inside quotation marks.',
+  '- One or two short quotes per point is plenty; do not wall-of-quote.',
+  '',
+  'TEACHING:',
+  '- Lead with the direct answer, then the support.',
+  '- Prefer short paragraphs and bullets over long prose.',
+  '- Define jargon the first time it appears.',
+  '- When the student asks for revision help, work from what the sources emphasise',
+  '  (repetition, worked examples, stated learning outcomes) rather than your own',
+  '  sense of what matters.',
+  '- Use **bold** for key terms. Never invent page numbers or figures.',
+].join('\n');
 
 export type ChatTurn = { role: 'user' | 'model'; text: string };
 
@@ -268,10 +365,10 @@ export async function generateQuiz(
 ): Promise<QuizQuestion[]> {
   const count = options.count ?? 10;
   const focus = options.focusConcepts?.length
-    ? `\n\nThe student previously got these concepts wrong. Weight at least half the questions toward them:\n${options.focusConcepts.map((c) => `- ${c}`).join('\n')}`
+    ? `\n\nThe student previously got these concepts wrong. Weight at least half the questions toward them, approaching each from a different angle than a simple recall check:\n${options.focusConcepts.map((c) => `- ${c}`).join('\n')}`
     : '';
 
-  const raw = await generate(
+  const parsed = await generateJson<QuizQuestion[]>(
     {
       generationConfig: {
         responseMimeType: 'application/json',
@@ -282,19 +379,29 @@ export async function generateQuiz(
     `Generate a ${count}-question multiple-choice quiz based strictly on the provided text.
 
 Rules:
-- Exactly 4 options per question, exactly one correct.
+- Exactly 4 options per question, exactly one unambiguously correct.
 - "correctAnswerIndex" is the zero-based index of the correct option.
-- Distractors must be plausible and drawn from the same material, not obviously wrong.
-- "explanation": one or two sentences saying why the answer is right, referencing the source material.
-- "concept": the specific 2-5 word topic the question tests.
-- Test understanding, not trivia about formatting or page numbers.${focus}
+- Distractors must be plausible: draw them from genuine misconceptions or from
+  neighbouring ideas in the same material. Never use joke options, "all of the
+  above", or answers that are obviously wrong on length or specificity alone.
+- Vary the correct index across the quiz; do not favour any position.
+- Mix difficulty: roughly a third recall, a third application, a third analysis.
+  Prefer questions that require reasoning over ones answered by matching a
+  keyword.
+- "explanation": one or two sentences on why the answer is right AND why the
+  most tempting distractor is wrong.
+- "concept": the specific 2-5 word topic tested.
+- Never test document formatting, page numbers, or administrative trivia such as
+  the lecturer's email.
+- If the text is too thin to support ${count} good questions, return fewer rather
+  than padding with weak ones.${focus}
 
 TEXT:
-${context}`
+${context}`,
+    (value): value is QuizQuestion[] => Array.isArray(value)
   );
 
-  const parsed = parseJson<QuizQuestion[]>(raw);
-  const valid = (Array.isArray(parsed) ? parsed : []).filter(
+  const valid = parsed.filter(
     (q) =>
       q &&
       typeof q.question === 'string' &&

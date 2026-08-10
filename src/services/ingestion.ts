@@ -17,7 +17,7 @@ import { parseDueDate } from '@/lib/dates';
 import { getDb } from '@/lib/firebase';
 import { stableId } from '@/lib/ids';
 import { paths } from '@/lib/paths';
-import { colorForSubject, type ExtractedMetadata } from '@/lib/schema';
+import { colorForSubject, type ExtractedDeadline, type ExtractedMetadata } from '@/lib/schema';
 import {
   ACCEPTED_MIME_TYPES,
   canonicalMimeType,
@@ -364,10 +364,13 @@ async function saveDeadlines(
   subjectId: string,
   subjectName: string,
   documentId: string,
-  deadlines: { title: string; dueDate: string | null }[]
+  deadlines: ExtractedDeadline[]
 ): Promise<number> {
   const dated = deadlines
-    .map((deadline) => ({ ...deadline, due: parseDueDate(deadline.dueDate) }))
+    .map((deadline) => ({
+      ...deadline,
+      due: parseDueDate(deadline.dueDate, deadline.dueTime),
+    }))
     .filter((deadline) => deadline.due !== null);
 
   if (dated.length === 0) return 0;
@@ -389,13 +392,17 @@ async function saveDeadlines(
       subjectName,
       source: 'syllabus' as const,
       sourceDocumentId: documentId,
+      kind: deadline.kind ?? null,
     };
 
     if (existing[i].exists()) batch.update(ref, shared);
     else {
+      // Exams and projects carry more weight than a weekly reading, so they
+      // arrive already flagged rather than all landing on "medium".
+      const heavyweight = ['exam', 'project', 'presentation'].includes(deadline.kind ?? '');
       batch.set(ref, {
         ...shared,
-        priority: 'medium',
+        priority: heavyweight ? 'high' : 'medium',
         subTasks: [],
         isCompleted: false,
         completedAt: null,

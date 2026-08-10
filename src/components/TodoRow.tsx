@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { CountdownChip } from './Countdown';
+import { DatePicker } from './DatePicker';
 import { Badge, IconButton } from './ui';
 import { formatDue, toDate } from '@/lib/dates';
 import type { Priority, SubTask, Todo } from '@/lib/schema';
@@ -18,6 +20,7 @@ export type TodoActions = {
   remove: (todo: Todo) => void;
   cyclePriority: (todo: Todo) => void;
   setSubTasks: (todo: Todo, subTasks: SubTask[]) => void;
+  setDueDate: (todo: Todo, due: Date | null) => void;
 };
 
 export function TodoRow({
@@ -90,6 +93,8 @@ export function TodoRow({
               </Text>
             ) : null}
 
+            {due && !todo.isCompleted ? <CountdownChip due={due} compact /> : null}
+
             {todo.subjectName ? (
               <Text className="text-xs text-subtle" numberOfLines={1}>
                 {todo.subjectName}
@@ -121,7 +126,14 @@ export function TodoRow({
       </View>
 
       {expanded ? (
-        <View className="gap-2 border-t border-line bg-paper/60 px-4 py-3 pl-12">
+        <View className="gap-3 border-t border-line bg-paper/60 px-4 py-3 pl-12">
+          {/* Reschedule without retyping the task. */}
+          <DatePicker
+            label="Due date"
+            value={due}
+            onChange={(next) => actions.setDueDate(todo, next)}
+          />
+
           {subTasks.map((subTask) => (
             <View key={subTask.id} className="flex-row items-center gap-3">
               <Pressable

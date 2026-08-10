@@ -44,11 +44,12 @@
     "web": "node scripts/copy-pdf-worker.mjs && expo start --web",
     "ios": "expo start --ios",
     "android": "expo start --android",
-    "build:web": "node scripts/copy-pdf-worker.mjs && expo export --platform web --clear",
+    "build:web": "node scripts/copy-pdf-worker.mjs && expo export --platform web --clear && node scripts/patch-html.mjs",
     "typecheck": "tsc --noEmit",
     "deploy:hosting": "npm run build:web && firebase deploy --only hosting",
     "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes",
-    "postinstall": "node scripts/copy-pdf-worker.mjs"
+    "postinstall": "node scripts/copy-pdf-worker.mjs",
+    "icons": "python3 scripts/make-icons.py"
   },
   "private": true
 }

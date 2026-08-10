@@ -1,0 +1,16 @@
+{
+  "name": "Notomi — your study workspace",
+  "short_name": "Notomi",
+  "description": "Upload your lectures, ask questions grounded in your own sources, and let your syllabus fill in your to-do list.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F7F5EE",
+  "theme_color": "#F7F5EE",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
