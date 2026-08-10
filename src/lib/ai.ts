@@ -29,13 +29,28 @@ export class AiError extends Error {
  */
 const REQUEST_TIMEOUT_MS = 120_000;
 
+/**
+ * Google retires and renames Gemini models on its own schedule, and the model
+ * id lives in an env var that is easy to set to something that no longer
+ * exists. Rather than take every AI feature down, the first "no such model"
+ * failure pins this fallback for the rest of the session.
+ */
+const FALLBACK_MODEL = 'gemini-2.5-flash';
+let activeModel = GEMINI_MODEL;
+
+const isUnknownModel = (raw: string): boolean =>
+  /not found|NOT_FOUND|is not supported|does not exist|unsupported model|invalid model/i.test(raw);
+
 function model(params: Omit<ModelParams, 'model'> = {}): GenerativeModel {
   return getGenerativeModel(
     getAiClient(),
-    { model: GEMINI_MODEL, ...params },
+    { model: activeModel, ...params },
     { timeout: REQUEST_TIMEOUT_MS }
   );
 }
+
+/** The model id actually in use, after any fallback. */
+export const currentModel = (): string => activeModel;
 
 /**
  * Firebase now auto-enforces App Check for AI Logic during the console's guided
@@ -128,6 +143,19 @@ async function generate(params: Omit<ModelParams, 'model'>, prompt: string): Pro
     const result = await model(params).generateContent(prompt);
     return result.response.text();
   } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+
+    if (isUnknownModel(raw) && activeModel !== FALLBACK_MODEL) {
+      console.warn(`[ai] model "${activeModel}" unavailable; falling back to ${FALLBACK_MODEL}`);
+      activeModel = FALLBACK_MODEL;
+      const retry = await model(params)
+        .generateContent(prompt)
+        .catch((second) => {
+          throw new AiError(describe(second), second);
+        });
+      return retry.response.text();
+    }
+
     throw new AiError(describe(error), error);
   }
 }
@@ -183,14 +211,19 @@ async function generateJson<T>(
  * with an untitled, unsummarised document.
  */
 export async function summarizeDocument(text: string): Promise<string> {
+  const prompt =
+    `Summarise this study document for a university student in 2-4 sentences. ` +
+    `Describe what it teaches, not what kind of document it is. ` +
+    `Plain prose, no markdown, no preamble.\n\n${text.slice(0, MAX_CONTEXT_CHARS)}`;
+
+  // getModel() is the shared instance from services/firebase; generate() adds
+  // the model fallback and error mapping the rest of the app relies on.
   try {
-    const result = await getModel().generateContent(
-      `Summarise this study document for a university student in 2-4 sentences. ` +
-        `Describe what it teaches, not what kind of document it is. ` +
-        `Plain prose, no markdown, no preamble.\n\n${text.slice(0, MAX_CONTEXT_CHARS)}`
-    );
+    const result = await getModel().generateContent(prompt);
     return result.response.text().trim();
   } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    if (isUnknownModel(raw)) return (await generate({}, prompt)).trim();
     throw new AiError(describe(error), error);
   }
 }
