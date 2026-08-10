@@ -5,7 +5,7 @@ name: Deploy R2 Worker
 # Expo app shares this repo and changing it has no bearing on the Worker.
 on:
   push:
-    branches: [main]
+    branches: [main, claude/notomi-firebase-webapp-4z1myi]
     paths:
       - 'worker/**'
       - '.github/workflows/deploy-worker.yml'
