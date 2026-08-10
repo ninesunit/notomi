@@ -299,6 +299,65 @@ function decodeXmlEntities(value: string): string {
     .replace(/&amp;/g, '&');
 }
 
+/**
+ * Shrinks an oversized image before it goes to Gemini.
+ *
+ * A phone screenshot of a full-width timetable is routinely 3-4k pixels wide
+ * and several megabytes, and base64 inflates that by a third. Downscaling to a
+ * long edge that still resolves 10pt text cuts the request by an order of
+ * magnitude, which is the difference between a scan that works on mobile data
+ * and one that times out.
+ *
+ * Returns the original bytes unchanged if anything is unavailable — this is an
+ * optimisation, never a gate.
+ */
+export async function downscaleImage(
+  data: ArrayBuffer,
+  mimeType: string,
+  maxEdge = 2000
+): Promise<{ data: ArrayBuffer; mimeType: string }> {
+  const unchanged = { data, mimeType };
+  if (Platform.OS !== 'web' || typeof createImageBitmap !== 'function') return unchanged;
+
+  try {
+    const bitmap = await createImageBitmap(new Blob([data], { type: mimeType }));
+    const longest = Math.max(bitmap.width, bitmap.height);
+    if (longest <= maxEdge) {
+      bitmap.close();
+      return unchanged;
+    }
+
+    const scale = maxEdge / longest;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      bitmap.close();
+      return unchanged;
+    }
+
+    // White behind the image: a transparent PNG flattened onto black would make
+    // dark schedule text unreadable.
+    context.fillStyle = '#FFFFFF';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      // 0.92 keeps small text crisp; lower starts to smear thin glyphs.
+      canvas.toBlob((result) => resolve(result), 'image/jpeg', 0.92)
+    );
+    if (!blob) return unchanged;
+
+    return { data: await blob.arrayBuffer(), mimeType: 'image/jpeg' };
+  } catch {
+    return unchanged;
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * Gemini-backed extraction
  * ------------------------------------------------------------------ */

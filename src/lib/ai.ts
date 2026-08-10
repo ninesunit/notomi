@@ -281,10 +281,13 @@ function toBase64(data: ArrayBuffer): string {
 async function generateFromMedia(
   data: ArrayBuffer,
   mimeType: string,
-  prompt: string
+  prompt: string,
+  generationConfig: Record<string, unknown> = {}
 ): Promise<string> {
   try {
-    const result = await model({ generationConfig: { temperature: 0.1 } }).generateContent([
+    const result = await model({
+      generationConfig: { temperature: 0.1, ...generationConfig },
+    }).generateContent([
       { inlineData: { data: toBase64(data), mimeType } },
       { text: prompt },
     ]);
@@ -292,7 +295,7 @@ async function generateFromMedia(
   } catch (error) {
     const raw = error instanceof Error ? error.message : String(error);
     if (/too large|payload|request entity/i.test(raw)) {
-      throw new AiError('That file is too large for a single Gemini request. Split it and retry.');
+      throw new AiError('That image is too large for a single Gemini request. Crop it and retry.');
     }
     throw new AiError(describe(error), error);
   }
@@ -640,26 +643,42 @@ export async function extractTimetable(
     mimeType,
     `This image is a university class timetable. Extract every scheduled class.
 
-Read the grid carefully:
-- The day comes from the column (or row) header the block sits under, not from
-  the block's own text. Resolve abbreviations: Mon/M -> Monday, Tue/T/Tu ->
-  Tuesday, Wed/W -> Wednesday, Thu/Th/R -> Thursday, Fri/F -> Friday,
-  Sat -> Saturday, Sun -> Sunday.
-- Times come from the row (or column) the block spans. A block spanning two
-  one-hour rows is one class of two hours, not two classes.
-- Convert every time to 24-hour HH:MM. A timetable running 9-6 is 09:00-18:00,
-  never 09:00-06:00.
-- Split the identifier: "code" is the module code (letters then digits, e.g.
-  CS2040, MA1101R, BIO 210) and "title" is the course name with the code
-  removed. If only one is printed, fill that field and leave the other empty.
-- "kind" is the session type if shown (Lecture, Tutorial, Lab, Seminar,
-  Practical); empty string if not.
-- "venue" is the room or building; empty string if not shown.
-- One entry per class occurrence. A class held Monday and Thursday is two entries.
-- Ignore breaks, lunch, free slots and legend/key text.
+DAY
+- The day comes from the column or row header the block sits under. Headers
+  often carry a date too ("Monday Aug 17") — take the weekday, ignore the date.
+- Resolve abbreviations: Mon/M -> Monday, Tue/Tu -> Tuesday, Wed/W -> Wednesday,
+  Thu/Th/R -> Thursday, Fri/F -> Friday, Sat -> Saturday, Sun -> Sunday.
 
-Return only classes you can actually read. If the image is not a timetable,
-return an empty array.`
+TIME
+- If the block prints its own times ("8:00 AM-11:00 AM"), use those. They are
+  authoritative and override anything you would infer from the grid.
+- Only when no times are printed inside the block, read them off the time axis
+  the block spans. A block spanning three one-hour rows is one three-hour class,
+  never three classes.
+- Give times as 24-hour HH:MM. 8:00 AM is 08:00; 1:30 PM is 13:30; 5:00 PM is
+  17:00. A timetable running 9-6 is 09:00-18:00, never 09:00-06:00.
+
+IDENTITY
+- "code" is the module or course code: letters then digits, such as CS2040,
+  CW6123, MA1101R, PU3312. Take it exactly as printed.
+- "title" is the course name if one is printed. Many schedules show only a code
+  and a session type — in that case leave "title" empty rather than inventing a
+  name or repeating the code.
+- "kind" is the session type if shown: Lecture, Tutorial, Lab, Seminar,
+  Practical, Workshop. Ignore any group or section prefix such as "LD", "LM",
+  "C", "G1" — that is not the session type.
+- "venue" is the room, hall or lab, with the label stripped: "Room: CQCR2003-FCI
+  Classroom" becomes "CQCR2003-FCI Classroom". Empty if not shown.
+
+ROWS
+- One entry per occurrence. A course meeting Monday and Thursday is two entries.
+- The same course can appear several times on one day at different hours; each
+  is its own entry.
+- Ignore breaks, lunch, empty cells, filter controls and legend text.
+
+Return every class you can read. Return an empty array only if the image
+contains no schedule at all.`,
+    { responseMimeType: 'application/json', responseSchema: timetableSchema }
   );
 
   const parsed = parseJson<ExtractedClass[]>(raw);
@@ -667,15 +686,28 @@ return an empty array.`
     throw new AiError('Gemini could not read a timetable from that image.');
   }
 
-  return parsed.filter(
-    (entry) =>
-      entry &&
-      typeof entry.title === 'string' &&
-      entry.title.trim() &&
-      typeof entry.day === 'string' &&
-      typeof entry.start === 'string' &&
-      typeof entry.end === 'string'
-  );
+  // A row needs a day, a start and an end. It does NOT need a title: plenty of
+  // schedules print only a code and a session type, and demanding a course name
+  // silently dropped every class on those.
+  return parsed
+    .filter(
+      (entry) =>
+        entry &&
+        typeof entry.day === 'string' &&
+        entry.day.trim() &&
+        typeof entry.start === 'string' &&
+        typeof entry.end === 'string' &&
+        ((entry.title ?? '').trim() || (entry.code ?? '').trim())
+    )
+    .map((entry) => ({
+      title: (entry.title ?? '').trim(),
+      code: (entry.code ?? '').trim() || null,
+      kind: (entry.kind ?? '').trim() || null,
+      day: entry.day.trim(),
+      start: entry.start.trim(),
+      end: entry.end.trim(),
+      venue: (entry.venue ?? '').trim() || null,
+    }));
 }
 
 /* ------------------------------------------------------------------ *

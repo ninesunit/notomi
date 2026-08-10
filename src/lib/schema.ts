@@ -265,13 +265,40 @@ export function minutesToLabel(minutes: number): string {
   return minute === 0 ? `${display}${suffix}` : `${display}:${String(minute).padStart(2, '0')}${suffix}`;
 }
 
-/** Parses "HH:MM" (24-hour) into minutes; null if it is not a valid time. */
+/**
+ * Parses a clock time into minutes from midnight.
+ *
+ * Deliberately forgiving: this reads both what a student types into a field and
+ * what Gemini lifts off a schedule, and real schedules print "8:00 AM",
+ * "8.00am", "0800" and "13:00" interchangeably. Insisting on 24-hour HH:MM
+ * silently dropped every class on a timetable that used 12-hour times.
+ *
+ * Returns null for anything genuinely unparseable, which is what makes a row
+ * get flagged rather than guessed at.
+ */
 export function parseClock(value: string): number | null {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  const text = value.trim().toLowerCase().replace(/\s+/g, '');
+  if (!text) return null;
+
+  const match = /^(\d{1,2})(?:[:.h]?(\d{2}))?(am|pm|a|p)?$/.exec(text);
   if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (hour > 23 || minute > 59) return null;
+
+  let hour = Number(match[1]);
+  const minute = match[2] === undefined ? 0 : Number(match[2]);
+  const meridiem = match[3]?.[0];
+
+  if (Number.isNaN(hour) || Number.isNaN(minute) || minute > 59) return null;
+
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null;
+    // 12am is midnight and 12pm is noon — the one case the +12 rule gets wrong.
+    if (meridiem === 'p') hour = hour === 12 ? 12 : hour + 12;
+    else hour = hour === 12 ? 0 : hour;
+  } else if (hour > 23) {
+    // "0800" style: no separator, no meridiem, four digits.
+    return null;
+  }
+
   return hour * 60 + minute;
 }
 

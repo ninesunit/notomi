@@ -5,13 +5,19 @@ import { ScreenScroll } from '@/components/ScreenScroll';
 import { useRouter } from 'expo-router';
 import { CardGrid, GridItem, SubjectCard } from '@/components/SubjectCard';
 import { SubjectModal } from '@/components/SubjectModal';
+import {
+  defaultScope,
+  filterByTerm,
+  TermFilter,
+  type TermScope,
+} from '@/components/TermFilter';
 import { UploadButton } from '@/components/UploadButton';
 import { Button, EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
-import type { Subject } from '@/lib/schema';
+import type { Semester, Subject } from '@/lib/schema';
 
 /** Root of the library: one folder per subject, live from Firestore. */
 export default function Library() {
@@ -21,23 +27,47 @@ export default function Library() {
   /** 'new' opens the create flow; a Subject opens the editor for that folder. */
   const [editing, setEditing] = useState<Subject | 'new' | null>(null);
 
+  const db = getDb();
   const { data, loading, error } = useCollection<Subject>(
-    query(paths.subjects(getDb(), uid), orderBy('updatedAt', 'desc')),
+    query(paths.subjects(db, uid), orderBy('updatedAt', 'desc')),
     [uid]
+  );
+  const semesters = useCollection<Semester>(
+    query(paths.semesters(db, uid), orderBy('order', 'asc')),
+    [uid]
+  );
+
+  /**
+   * Null until the data lands, then the current term. Choosing eagerly would
+   * pin the scope to 'all' before we know which term is live.
+   */
+  const [scope, setScope] = useState<TermScope | null>(null);
+  const activeScope = scope ?? defaultScope(data, semesters.data);
+
+  const inTerm = useMemo(
+    () => filterByTerm(data, activeScope, semesters.data),
+    [data, activeScope, semesters.data]
   );
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return data;
-    return data.filter((subject) =>
+    if (!needle) return inTerm;
+    return inTerm.filter((subject) =>
       `${subject.name} ${subject.moduleCode ?? ''}`.toLowerCase().includes(needle)
     );
-  }, [data, search]);
+  }, [inTerm, search]);
 
   const totalSources = useMemo(
-    () => data.reduce((total, subject) => total + (subject.documentCount ?? 0), 0),
-    [data]
+    () => inTerm.reduce((total, subject) => total + (subject.documentCount ?? 0), 0),
+    [inTerm]
   );
+
+  const scopeName =
+    activeScope === 'all'
+      ? null
+      : activeScope === 'unassigned'
+        ? 'Unfiled'
+        : (semesters.data.find((semester) => semester.id === activeScope)?.name ?? null);
 
   return (
     <ScreenScroll>
@@ -45,9 +75,13 @@ export default function Library() {
         title="Library"
         subtitle={
           data.length
-            ? `${data.length} ${data.length === 1 ? 'subject' : 'subjects'} · ${totalSources} ${
-                totalSources === 1 ? 'source' : 'sources'
-              }`
+            ? [
+                scopeName,
+                `${inTerm.length} ${inTerm.length === 1 ? 'subject' : 'subjects'}`,
+                `${totalSources} ${totalSources === 1 ? 'source' : 'sources'}`,
+              ]
+                .filter(Boolean)
+                .join(' · ')
             : 'Every document you upload is filed into a subject folder.'
         }
         actions={
@@ -68,6 +102,15 @@ export default function Library() {
         <View className="mb-6">
           <Notice title="Could not load your library" body={error.message} />
         </View>
+      ) : null}
+
+      {data.length > 0 ? (
+        <TermFilter
+          semesters={semesters.data}
+          subjects={data}
+          scope={activeScope}
+          onScope={setScope}
+        />
       ) : null}
 
       {data.length > 3 ? (
@@ -93,9 +136,18 @@ export default function Library() {
         />
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon="search"
-          title="No matches"
-          body={`Nothing in your library matches “${search.trim()}”.`}
+          icon={search.trim() ? 'search' : 'folder'}
+          title={search.trim() ? 'No matches' : 'Nothing in this term'}
+          body={
+            search.trim()
+              ? `Nothing in ${scopeName ? `“${scopeName}”` : 'your library'} matches “${search.trim()}”.`
+              : 'No subjects are filed under this term yet. Assign them in the program planner, or switch to All.'
+          }
+          action={
+            search.trim() ? undefined : (
+              <Button label="Show all subjects" variant="secondary" onPress={() => setScope('all')} />
+            )
+          }
         />
       ) : (
         <CardGrid>

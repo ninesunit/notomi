@@ -8,6 +8,7 @@ import { ProgramMap } from '@/components/ProgramMap';
 import { CardGrid, GridItem, SubjectCard } from '@/components/SubjectCard';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { SubjectModal } from '@/components/SubjectModal';
+import { defaultScope, filterByTerm } from '@/components/TermFilter';
 import { UploadButton } from '@/components/UploadButton';
 import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
@@ -60,11 +61,30 @@ export default function Dashboard() {
   const streak = useMemo(() => summarizeStreak(sessions.data), [sessions.data]);
   const today = todayIndex();
 
-  /** Only classes tied to a live subject; a stale block is not a real class. */
-  const liveClasses = useMemo(
-    () => academicClasses(classes.data, subjects.data),
-    [classes.data, subjects.data]
+  /**
+   * Only classes tied to a live subject in the current term. A stale block is
+   * not a real class, and neither is last semester's Monday lecture.
+   */
+  const scope = useMemo(
+    () => defaultScope(subjects.data, semesters.data),
+    [subjects.data, semesters.data]
   );
+
+  /** The subjects a student is actually taking now. */
+  const currentSubjects = useMemo(
+    () => filterByTerm(subjects.data, scope, semesters.data),
+    [subjects.data, scope, semesters.data]
+  );
+
+  const liveClasses = useMemo(
+    () => academicClasses(classes.data, currentSubjects),
+    [classes.data, currentSubjects]
+  );
+
+  const scopeName =
+    scope === 'all'
+      ? null
+      : (semesters.data.find((semester) => semester.id === scope)?.name ?? null);
   const todaysClasses = useMemo(() => classesForDay(liveClasses, today), [liveClasses, today]);
   const tomorrowsClasses = useMemo(
     () => classesForDay(liveClasses, (today + 1) % 7),
@@ -157,26 +177,51 @@ export default function Dashboard() {
       ) : null}
 
       <View className="mb-6 flex-row items-center justify-between">
-        <Text className="text-lg font-semibold tracking-tight text-ink">Your subjects</Text>
+        <View className="flex-1">
+          <Text className="text-lg font-semibold tracking-tight text-ink">
+            {scopeName ? 'This term' : 'Your subjects'}
+          </Text>
+          {scopeName ? <Text className="text-xs text-muted">{scopeName}</Text> : null}
+        </View>
         {subjects.data.length > 0 ? (
           <Link href="/library" asChild>
-            <Button label="View library" variant="ghost" size="sm" />
+            <Button
+              label={
+                subjects.data.length > currentSubjects.length
+                  ? `All ${subjects.data.length} subjects`
+                  : 'View library'
+              }
+              variant="ghost"
+              size="sm"
+            />
           </Link>
         ) : null}
       </View>
 
       {subjects.loading ? (
         <Loading label="Loading your subjects…" />
-      ) : subjects.data.length === 0 ? (
+      ) : currentSubjects.length === 0 ? (
         <EmptyState
           icon="upload-cloud"
-          title="No subjects yet"
-          body="Upload a PDF or DOCX. Notomi reads it on your device, then Gemini names the subject, summarises it and extracts every deadline it can find."
-          action={<UploadButton label="Upload your first document" />}
+          title={subjects.data.length > 0 ? 'Nothing filed under this term' : 'No subjects yet'}
+          body={
+            subjects.data.length > 0
+              ? 'You have subjects on other terms. Assign them to this one in the program planner, or open the library to see everything.'
+              : 'Upload a PDF or DOCX. Notomi reads it on your device, then Gemini names the subject, summarises it and extracts every deadline it can find.'
+          }
+          action={
+            subjects.data.length > 0 ? (
+              <Link href="/program" asChild>
+                <Button label="Open the planner" variant="secondary" />
+              </Link>
+            ) : (
+              <UploadButton label="Upload your first document" />
+            )
+          }
         />
       ) : (
         <CardGrid>
-          {subjects.data.map((subject) => (
+          {currentSubjects.map((subject) => (
             <GridItem key={subject.id}>
               <SubjectCard subject={subject} onEdit={() => setEditing(subject)} />
             </GridItem>

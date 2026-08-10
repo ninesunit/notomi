@@ -33,6 +33,14 @@ export function Sheet({
   footer,
   /** Caps the scrollable body on desktop; the sheet uses a fraction of height. */
   maxHeight = 460,
+  /**
+   * Whether tapping the scrim closes the sheet.
+   *
+   * Off for anything holding work that cost something to produce — a scan
+   * discarded by a stray tap outside the panel is work the student has to pay
+   * for again.
+   */
+  dismissOnScrim = true,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -41,6 +49,7 @@ export function Sheet({
   children: ReactNode;
   footer?: ReactNode;
   maxHeight?: number;
+  dismissOnScrim?: boolean;
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -72,9 +81,9 @@ export function Sheet({
       onRequestClose={onClose}
     >
       <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        onPress={onClose}
+        accessibilityRole={dismissOnScrim ? 'button' : 'none'}
+        accessibilityLabel={dismissOnScrim ? 'Close' : undefined}
+        onPress={dismissOnScrim ? onClose : undefined}
         className={`flex-1 bg-ink/40 ${sheet ? 'justify-end' : 'items-center justify-center px-5'}`}
       >
         {/* The scrim closes; the panel must not, so it swallows its own press. */}

@@ -5,6 +5,12 @@ import { orderBy, query } from 'firebase/firestore';
 import { ImportReview } from '@/components/ImportReview';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
+import {
+  defaultScope,
+  filterByTerm,
+  TermFilter,
+  type TermScope,
+} from '@/components/TermFilter';
 import { Button, Card, EmptyState, Field, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
@@ -86,15 +92,24 @@ export default function Timetable() {
 
   /**
    * The grid renders academic blocks only, and only for subjects that still
-   * exist. A block whose subject was deleted is surfaced separately rather
-   * than drawn as a class the student no longer takes.
+   * exist and sit in the chosen term. A block whose subject was deleted is
+   * surfaced separately rather than drawn as a class the student no longer
+   * takes, and last year's classes do not clutter this year's week.
    */
+  const [scope, setScope] = useState<TermScope | null>(null);
+  const activeScope = scope ?? defaultScope(subjects.data, semesters.data);
+
+  const scopedSubjects = useMemo(
+    () => filterByTerm(subjects.data, activeScope, semesters.data),
+    [subjects.data, activeScope, semesters.data]
+  );
+
   const classes = useMemo(
     () => ({
       ...allClasses,
-      data: academicClasses(allClasses.data, subjects.data),
+      data: academicClasses(allClasses.data, scopedSubjects),
     }),
-    [allClasses, subjects.data]
+    [allClasses, scopedSubjects]
   );
   const unlinked = useMemo(
     () => unlinkedClasses(allClasses.data, subjects.data),
@@ -203,13 +218,26 @@ export default function Timetable() {
         </View>
       ) : null}
 
+      {subjects.data.length > 0 ? (
+        <TermFilter
+          semesters={semesters.data}
+          subjects={subjects.data}
+          scope={activeScope}
+          onScope={setScope}
+        />
+      ) : null}
+
       {loading ? (
         <Loading label="Loading your week…" />
       ) : classes.data.length === 0 ? (
         <EmptyState
           icon="calendar"
-          title="No classes yet"
-          body="Take a screenshot of your university schedule and upload it — Gemini reads the grid and fills this in. You can also add classes by hand."
+          title={allClasses.data.length > 0 ? 'No classes in this term' : 'No classes yet'}
+          body={
+            allClasses.data.length > 0
+              ? 'You have classes on other terms. Switch the filter above, or scan this term’s schedule.'
+              : 'Take a screenshot of your university schedule and upload it — Gemini reads the grid and fills this in. You can also add classes by hand.'
+          }
           action={
             <Button
               label="Scan a screenshot"
@@ -848,7 +876,7 @@ function ClassForm({
               onChangeText={setEnd}
               placeholder="11:00"
               autoCapitalize="none"
-              hint={!timesValid ? 'Use 24-hour HH:MM, ending after it starts.' : undefined}
+              hint={!timesValid ? 'e.g. 9:00 AM or 09:00, ending after it starts.' : undefined}
             />
           </View>
         </View>
@@ -1045,7 +1073,7 @@ function RoutineForm({
             onChangeText={setEnd}
             placeholder="19:00"
             autoCapitalize="none"
-            hint={!timesValid ? 'Use 24-hour HH:MM, ending after it starts.' : undefined}
+            hint={!timesValid ? 'e.g. 9:00 AM or 09:00, ending after it starts.' : undefined}
           />
         </View>
       </View>

@@ -12,7 +12,14 @@ import {
   type Subject,
 } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
-import { canonicalMimeType, classify, humanSize, ParseError, SIZE_LIMITS } from './fileProcessor';
+import {
+  canonicalMimeType,
+  classify,
+  downscaleImage,
+  humanSize,
+  ParseError,
+  SIZE_LIMITS,
+} from './fileProcessor';
 
 /**
  * The weekly timetable.
@@ -148,6 +155,9 @@ export function toImportRows(entries: ExtractedClass[], subjects: Subject[]): St
       return;
     }
 
+    // Many schedules print a code and a session type but no course name. The
+    // code is then the subject's identity, and the student renames it later if
+    // they want — inventing a title here would be worse than showing the code.
     const code = entry.code?.trim() ?? '';
     const title = entry.title?.trim() || code || 'Untitled class';
     const existing = matchSubject(title, code, subjects);
@@ -320,14 +330,28 @@ export async function scanTimetableImage(
     );
   }
 
-  const entries = await extractTimetable(data, canonicalMimeType('image', mimeType));
+  // Shrunk first: a full-page screenshot is often several megabytes, and the
+  // inline request budget is the most common reason a scan fails outright.
+  const shrunk = await downscaleImage(data, canonicalMimeType('image', mimeType));
+  const entries = await extractTimetable(shrunk.data, shrunk.mimeType);
+
   if (entries.length === 0) {
     throw new ParseError(
-      'Gemini could not find any classes in that image. Make sure the whole grid is visible and the text is readable.'
+      'Gemini read that image but found no classes in it. Crop the screenshot to just the ' +
+        'timetable grid — including the day headers and the time column — and try again.'
     );
   }
 
-  return toImportRows(entries, subjects);
+  const staged = toImportRows(entries, subjects);
+  if (staged.rows.length === 0) {
+    throw new ParseError(
+      `Gemini found ${entries.length} class${entries.length === 1 ? '' : 'es'} but could not ` +
+        'make sense of the days or times. Add them by hand, or try a screenshot where the day ' +
+        'headers and start/end times are clearly visible.'
+    );
+  }
+
+  return staged;
 }
 
 /* ------------------------------------------------------------------ *

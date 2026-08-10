@@ -45,6 +45,7 @@ export function ImportReview({
     semesters.find((semester) => semester.isCurrent)?.id ?? null
   );
   const [saving, setSaving] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const termOptions = useMemo(() => {
@@ -99,20 +100,33 @@ export function ImportReview({
       title="Review your schedule"
       icon="check-square"
       maxHeight={520}
+      // These rows cost a Gemini call to produce. A tap on the scrim used to
+      // throw the whole scan away, which read as the review "disappearing".
+      dismissOnScrim={false}
       footer={
         <>
           <Text className="flex-1 text-xs text-muted">
-            {included.length} of {rows.length} classes · {courses}{' '}
-            {courses === 1 ? 'subject' : 'subjects'}
+            {discarding
+              ? 'Discard this scan?'
+              : `${included.length} of ${rows.length} classes · ${courses} ${
+                  courses === 1 ? 'subject' : 'subjects'
+                }`}
           </Text>
-          <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} disabled={saving} />
+          {/* Discarding means paying for another scan, so it asks once. */}
           <Button
-            label={saving ? 'Importing…' : 'Import'}
-            icon="download"
+            label={discarding ? 'Yes, discard' : 'Cancel'}
+            variant={discarding ? 'danger' : 'ghost'}
+            size="sm"
+            disabled={saving}
+            onPress={() => (discarding ? onClose() : setDiscarding(true))}
+          />
+          <Button
+            label={discarding ? 'Keep' : saving ? 'Importing…' : 'Import'}
+            icon={discarding ? undefined : 'download'}
             size="sm"
             loading={saving}
-            disabled={saving || included.length === 0}
-            onPress={() => void confirm()}
+            disabled={saving || (!discarding && included.length === 0)}
+            onPress={() => (discarding ? setDiscarding(false) : void confirm())}
           />
         </>
       }
@@ -315,7 +329,7 @@ export function ImportReview({
                         onChangeText={(value) => patch(row.id, { end: value })}
                         placeholder="11:00"
                         autoCapitalize="none"
-                        hint={!timesValid ? '24-hour HH:MM, ending after it starts.' : undefined}
+                        hint={!timesValid ? 'e.g. 9:00 AM or 09:00, ending after it starts.' : undefined}
                       />
                     </View>
                   </View>
