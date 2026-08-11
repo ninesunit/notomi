@@ -149,8 +149,8 @@ function ClassChip({
             {block.code}
           </Text>
         ) : null}
-        {block.code && (block.kind || (!dense && block.venue)) ? ' · ' : ''}
-        {[block.kind, dense ? null : block.venue].filter(Boolean).join(' · ')}
+        {block.code && (block.section || block.kind || (!dense && block.venue)) ? ' · ' : ''}
+        {[block.section, block.kind, dense ? null : block.venue].filter(Boolean).join(' · ')}
       </Text>
     </Pressable>
   );

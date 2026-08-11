@@ -129,6 +129,14 @@ export default function Timetable() {
 
   const grid = width >= GRID_BREAKPOINT;
 
+  /** The term being looked at, so destructive copy can name it. */
+  const scopeName =
+    activeScope === 'all'
+      ? null
+      : activeScope === 'unassigned'
+        ? 'Unfiled'
+        : (semesters.data.find((semester) => semester.id === activeScope)?.name ?? null);
+
   /**
    * The visible hour range is derived from the actual schedule, padded by an
    * hour. A fixed 00:00-24:00 ruler would make a normal week a thin band in an
@@ -202,7 +210,7 @@ export default function Timetable() {
             ? undefined
             : classes.data.length
               ? `${classes.data.length} class${classes.data.length === 1 ? '' : 'es'} a week`
-              : 'Upload a screenshot of your schedule and Gemini will read it into a grid.'
+              : 'Upload a screenshot of your schedule and Notomi will read it into a grid.'
         }
         actions={
           <>
@@ -258,7 +266,7 @@ export default function Timetable() {
           body={
             allClasses.data.length > 0
               ? 'You have classes on other terms. Switch the filter above, or scan this term’s schedule.'
-              : 'Take a screenshot of your university schedule and upload it — Gemini reads the grid and fills this in. You can also add classes by hand.'
+              : 'Take a screenshot of your university schedule and upload it — Notomi reads the grid and fills this in. You can also add classes by hand.'
           }
           action={
             <Button
@@ -408,8 +416,14 @@ export default function Timetable() {
             <>
               <Notice
                 tone="rose"
-                title="Clear the whole timetable?"
-                body={`This removes all ${classes.data.length} classes. Your subjects and material are untouched.`}
+                title={
+                  scopeName
+                    ? `Clear the timetable for ${scopeName}?`
+                    : 'Clear the whole timetable?'
+                }
+                body={`This removes ${classes.data.length} class block${
+                  classes.data.length === 1 ? '' : 's'
+                }. Your subjects, notes, past terms and program structure all stay exactly as they are — only the weekly blocks go.`}
               />
               <View className="flex-row gap-2">
                 <Button
@@ -419,7 +433,12 @@ export default function Timetable() {
                   icon="trash-2"
                   onPress={() => {
                     setConfirmClear(false);
-                    void clearTimetable(uid).catch((caught) => setError(String(caught)));
+                    // Scoped to what is on screen: clearing this term must not
+                    // take last term's timetable with it.
+                    void clearTimetable(
+                      uid,
+                      classes.data.map((block) => block.id)
+                    ).catch((caught) => setError(String(caught)));
                   }}
                 />
                 <Button
@@ -433,14 +452,15 @@ export default function Timetable() {
           ) : (
             <View className="items-start">
               <Button
-                label="Clear timetable"
+                label={scopeName ? `Clear ${scopeName}` : 'Clear timetable'}
                 variant="danger"
                 size="sm"
                 icon="trash-2"
                 onPress={() => setConfirmClear(true)}
               />
-              <Text className="mt-2 text-xs text-subtle">
-                Useful at the start of a new semester, before scanning a fresh schedule.
+              <Text className="mt-2 text-xs leading-4 text-subtle">
+                Clears the weekly class blocks only, ready for a fresh schedule. Your subjects,
+                notes and program structure are kept.
               </Text>
             </View>
           )}
@@ -763,8 +783,9 @@ function DayTimeline({
                   >
                     {[
                       `${minutesToLabel(block.startMinute)}–${minutesToLabel(block.endMinute)}`,
-                      block.venue,
+                      block.section,
                       block.kind,
+                      block.venue,
                     ]
                       .filter(Boolean)
                       .join('  ·  ')}
@@ -959,7 +980,11 @@ function WeekGrid({
                         </Text>
                         {blockHeight > 42 ? (
                           <Text className="text-[10px] leading-tight text-muted" numberOfLines={1}>
-                            {[block.code, minutesToLabel(block.startMinute), block.venue]
+                            {[
+                              block.section || block.code,
+                              minutesToLabel(block.startMinute),
+                              block.venue,
+                            ]
                               .filter(Boolean)
                               .join(' · ')}
                           </Text>
@@ -1097,6 +1122,7 @@ function ClassForm({
 }) {
   const [title, setTitle] = useState(block?.title ?? '');
   const [kind, setKind] = useState(block?.kind ?? '');
+  const [section, setSection] = useState(block?.section ?? '');
   const [venue, setVenue] = useState(block?.venue ?? '');
   /**
    * Days, plural.
@@ -1141,6 +1167,7 @@ function ClassForm({
       // copy here is exactly what stopped a library rename reaching the grid.
       title: subject ? subject.name : title.trim(),
       kind: kind.trim() || null,
+      section: section.trim() || null,
       subjectId: subject?.id ?? null,
       subjectName: subject?.name ?? null,
       startMinute,
@@ -1272,9 +1299,17 @@ function ClassForm({
             <Field label="Session type" value={kind} onChangeText={setKind} placeholder="Lecture" />
           </View>
           <View className="flex-1">
-            <Field label="Room" value={venue} onChangeText={setVenue} placeholder="LT-15" />
+            <Field
+              label="Section"
+              value={section}
+              onChangeText={setSection}
+              placeholder="TC1L"
+              autoCapitalize="characters"
+            />
           </View>
         </View>
+
+        <Field label="Room" value={venue} onChangeText={setVenue} placeholder="LT-15" />
 
       {error ? <Text className="text-xs text-rose">{error}</Text> : null}
     </Sheet>

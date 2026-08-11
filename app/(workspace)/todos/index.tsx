@@ -333,7 +333,7 @@ export default function Todos() {
         <EmptyState
           icon="check-circle"
           title="Nothing on your list"
-          body="Add a task above, or upload a syllabus — every deadline Gemini finds in it lands here automatically."
+          body="Add a task above, or upload a syllabus — every deadline Notomi finds in it lands here automatically."
         />
       ) : (
         <View className="gap-8">

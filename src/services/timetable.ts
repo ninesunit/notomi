@@ -15,6 +15,7 @@ import {
   DAY_FULL,
   minutesToClock,
   parseClock,
+  parseCourseCode,
   tidyName,
   type ClassBlock,
   type ExtractedClass,
@@ -42,6 +43,8 @@ import {
 export type ClassInput = {
   title: string;
   kind: string | null;
+  /** Section/session id: TC1L, TL2L, G3. Null where the schedule prints none. */
+  section: string | null;
   subjectId: string | null;
   subjectName: string | null;
   day: number;
@@ -62,6 +65,7 @@ export async function saveClass(
   const fields = {
     title: input.title.trim(),
     kind: input.kind?.trim() || null,
+    section: input.section?.trim().toUpperCase() || null,
     subjectId: input.subjectId,
     subjectName: input.subjectName,
     day: input.day,
@@ -83,17 +87,31 @@ export async function deleteClass(uid: string, classId: string): Promise<void> {
   await deleteDoc(paths.class(db, uid, classId));
 }
 
-export async function clearTimetable(uid: string): Promise<number> {
+/**
+ * Removes class blocks and nothing else.
+ *
+ * Subjects, their documents, notes, chats, flashcards and every semester in the
+ * program structure are in other collections and are not touched — clearing a
+ * timetable at the start of a new term must not take last term's record with
+ * it, because the record is the thing a student keeps.
+ *
+ * Pass the ids currently on screen to clear just that term; pass nothing to
+ * clear every block.
+ */
+export async function clearTimetable(uid: string, classIds?: string[]): Promise<number> {
   const db = getDb();
-  const snapshot = await getDocs(paths.classes(db, uid));
-  if (snapshot.empty) return 0;
 
-  for (let index = 0; index < snapshot.docs.length; index += 400) {
+  const refs = classIds
+    ? classIds.map((id) => paths.class(db, uid, id))
+    : (await getDocs(paths.classes(db, uid))).docs.map((block) => block.ref);
+  if (refs.length === 0) return 0;
+
+  for (let index = 0; index < refs.length; index += 400) {
     const batch = writeBatch(db);
-    for (const block of snapshot.docs.slice(index, index + 400)) batch.delete(block.ref);
+    for (const ref of refs.slice(index, index + 400)) batch.delete(ref);
     await batch.commit();
   }
-  return snapshot.size;
+  return refs.length;
 }
 
 /* ------------------------------------------------------------------ *
@@ -129,6 +147,8 @@ export type ImportRow = {
   include: boolean;
   title: string;
   code: string;
+  /** Section/session id for this block: TC1L, TL2L, G3. */
+  section: string;
   kind: string;
   day: number;
   start: string;
@@ -163,7 +183,9 @@ export function groupImportRows(rows: ImportRow[]): ImportGroup[] {
   const groups = new Map<string, ImportGroup>();
 
   for (const row of rows) {
-    const key = (row.code.trim() || row.title.trim()).toLowerCase();
+    // Keyed on the course code alone: two sections of one course are one
+    // subject with two sessions, not two subjects.
+    const key = (parseCourseCode(row.code).code || row.title.trim()).toLowerCase();
     const existing = groups.get(key);
 
     if (existing) {
@@ -240,7 +262,13 @@ export function toImportRows(entries: ExtractedClass[], subjects: Subject[]): St
     // Many schedules print a code and a session type but no course name. The
     // code is then the subject's identity, and the student renames it later if
     // they want — inventing a title here would be worse than showing the code.
-    const code = entry.code?.trim().toUpperCase() ?? '';
+    //
+    // The section is split off here rather than left in the code: "LDCW6123
+    // TC1L" and "LDCW6123 TL1L" are one course, and grouping on the raw string
+    // made them two subjects with two library folders.
+    const parsed = parseCourseCode(entry.code);
+    const code = parsed.code;
+    const section = (entry.section?.trim().toUpperCase() || parsed.section) ?? '';
     // Schedules print course names in block capitals; a library of those reads
     // like shouting, so the staged name is calmed before it is ever shown.
     const title = tidyName(entry.title?.trim() || '') || code || 'Untitled class';
@@ -251,6 +279,7 @@ export function toImportRows(entries: ExtractedClass[], subjects: Subject[]): St
       include: true,
       title,
       code,
+      section,
       kind: entry.kind?.trim() ?? '',
       day,
       start: minutesToClock(startMinute),
@@ -268,14 +297,14 @@ export function toImportRows(entries: ExtractedClass[], subjects: Subject[]): St
  * onto an existing library adds classes rather than duplicate folders.
  */
 function matchSubject(title: string, code: string, subjects: Subject[]): Subject | null {
-  const normalisedCode = code.replace(/\s+/g, '').toLowerCase();
+  const normalisedCode = parseCourseCode(code).code.toLowerCase();
 
   // A module code is the strongest signal — match it before anything fuzzy.
   if (normalisedCode) {
     const byCode = subjects.find(
       (subject) =>
         subject.moduleCode &&
-        subject.moduleCode.replace(/\s+/g, '').toLowerCase() === normalisedCode
+        parseCourseCode(subject.moduleCode).code.toLowerCase() === normalisedCode
     );
     if (byCode) return byCode;
   }
@@ -370,6 +399,7 @@ export async function commitImport(
       classes.push({
         title: subjectName,
         kind: row.kind.trim() || null,
+        section: row.section.trim() || null,
         subjectId,
         subjectName,
         day: row.day,
@@ -426,7 +456,7 @@ export async function scanTimetableImage(
 
   if (entries.length === 0) {
     throw new ParseError(
-      'Gemini read that image but found no classes in it. Crop the screenshot to just the ' +
+      'That image was read, but no classes were found in it. Crop the screenshot to just the ' +
         'timetable grid — including the day headers and the time column — and try again.'
     );
   }
@@ -434,9 +464,9 @@ export async function scanTimetableImage(
   const staged = toImportRows(entries, subjects);
   if (staged.rows.length === 0) {
     throw new ParseError(
-      `Gemini found ${entries.length} class${entries.length === 1 ? '' : 'es'} but could not ` +
-        'make sense of the days or times. Add them by hand, or try a screenshot where the day ' +
-        'headers and start/end times are clearly visible.'
+      `${entries.length} class${entries.length === 1 ? '' : 'es'} were found, but their days ` +
+        'or times could not be made sense of. Add them by hand, or try a screenshot where the ' +
+        'day headers and start/end times are clearly visible.'
     );
   }
 

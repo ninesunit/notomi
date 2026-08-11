@@ -161,7 +161,7 @@ export default function Library() {
 
       {data.length > 0 ? (
         <Text className="mt-8 text-xs leading-5 text-subtle">
-          Documents are grouped by the module code Gemini finds in them. Uploading another file from
+          Documents are grouped by the module code Notomi finds in them. Uploading another file from
           the same course adds it to the existing folder.
         </Text>
       ) : null}

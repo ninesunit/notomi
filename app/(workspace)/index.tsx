@@ -117,7 +117,7 @@ export default function Dashboard() {
         <View className="mb-6">
           <Notice
             title="Could not load your library"
-            body={`${subjects.error.message} — if this mentions permissions, deploy firestore.rules.`}
+            body={subjects.error.message}
           />
         </View>
       ) : null}
@@ -208,7 +208,7 @@ function Engines({
           emoji="📸"
           title="Scan schedule"
           caption="Your timetable from a screenshot"
-          body="Upload a screenshot of your weekly timetable. Gemini reads it, you check it, and it builds your subjects, classes and program in one go."
+          body="Upload a screenshot of your weekly timetable. Notomi reads it, you check it, and it builds your subjects, classes and program in one go."
           action={scanning ? 'Reading your schedule…' : 'Start with a screenshot'}
           icon="camera"
           busy={scanning}
@@ -520,7 +520,7 @@ function QuickLog({
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Log a class</Text>
           <Text className="text-xs text-muted" numberOfLines={1}>
-            {open ? `Writing up ${active.name}` : 'Say what you covered and Gemini writes the notes'}
+            {open ? `Writing up ${active.name}` : 'Say what you covered and Notomi writes the notes'}
           </Text>
         </View>
         <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />

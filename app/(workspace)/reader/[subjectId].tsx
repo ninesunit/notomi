@@ -237,7 +237,7 @@ export default function Reader() {
                       {message.pending ? (
                         <Text className="py-1 text-[15px] text-subtle">Reading your sources…</Text>
                       ) : message.error ? (
-                        <Notice title="Gemini could not answer" body={message.text} />
+                        <Notice title="Notomi could not answer that" body={message.text} />
                       ) : (
                         <RichText text={message.text} />
                       )}

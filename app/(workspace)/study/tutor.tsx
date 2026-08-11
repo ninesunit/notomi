@@ -406,7 +406,7 @@ export default function Tutor() {
         subtitle={
           mode === 'exam'
             ? 'A practice paper written from your material, marked question by question.'
-            : 'Gemini asks, you explain, and it follows up on what you say.'
+            : 'Notomi asks, you explain, and it follows up on what you say.'
         }
       />
 

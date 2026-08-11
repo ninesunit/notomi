@@ -407,7 +407,7 @@ export default function StudyCenter() {
           href="/study/tutor"
           emoji="🧠"
           title="AI tutor"
-          body="Explain it in your own words. Gemini marks the answer and follows up."
+          body="Explain it in your own words. Notomi marks the answer and follows up."
         />
         <ModeCard
           href="/study/tutor?mode=exam"

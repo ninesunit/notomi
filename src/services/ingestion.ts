@@ -62,8 +62,8 @@ export const STAGE_LABELS: Record<IngestStage, string> = {
   picking: 'Choosing file…',
   reading: 'Reading file…',
   extracting: 'Extracting text…',
-  uploading: 'Uploading the original to Cloudflare R2…',
-  analyzing: 'Asking Gemini for the key details…',
+  uploading: 'Saving the original…',
+  analyzing: 'Pulling out the key details…',
   saving: 'Saving to your library…',
   done: 'Done',
 };
@@ -74,8 +74,8 @@ export const STAGE_LABELS: Record<IngestStage, string> = {
  */
 export function stageLabel(stage: IngestStage, kind?: FileKind | null): string {
   if (stage !== 'extracting' || !kind) return STAGE_LABELS[stage];
-  if (kind === 'image') return 'Reading the image with Gemini OCR…';
-  if (kind === 'audio' || kind === 'video') return `Transcribing the ${kind} with Gemini…`;
+  if (kind === 'image') return 'Reading the text out of the image…';
+  if (kind === 'audio' || kind === 'video') return `Transcribing the ${kind}…`;
   return 'Extracting text on your device…';
 }
 
@@ -441,7 +441,7 @@ async function prepareFile(
       metadata: null,
       metadataError:
         error instanceof AiError
-          ? `Gemini could not analyse it: ${error.message}`
+          ? `Could not analyse it: ${error.message}`
           : 'Automatic analysis failed.',
     };
   }

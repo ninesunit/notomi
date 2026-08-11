@@ -77,7 +77,7 @@ export async function generateNotes(title: string, text: string): Promise<string
 
   if (!looksComplete(markdown)) {
     throw new AiError(
-      'Gemini returned notes that look incomplete. Try again — long documents occasionally ' +
+      'These notes came back looking incomplete. Try again — long documents occasionally ' +
         'truncate part-way.'
     );
   }

@@ -92,6 +92,44 @@ export function calculateGpa(
 }
 
 /**
+ * Splits "LDCW6123 TC1L" into the course and the session it identifies.
+ *
+ * A university schedule prints both in the same cell, and treating the whole
+ * string as the course code is what made one subject arrive as two: LDCW6123
+ * TC1L and LDCW6123 TL1L look like different courses, so the importer created a
+ * folder for each and the student had to merge them by hand.
+ *
+ * The two are told apart by how many digits they carry. A course code runs to
+ * three or more (CS2040, LDCW6123, MA1101R); a section code carries one or two
+ * (TC1L, TL2L, G3, L1). That rule holds across every schedule format I have
+ * seen, and where it does not, the worst case is a section kept as part of the
+ * code — which is what happened for everything before this.
+ */
+export function parseCourseCode(raw: string | null | undefined): {
+  code: string;
+  section: string | null;
+} {
+  const tokens = (raw ?? '')
+    .toUpperCase()
+    .split(/[\s,/|]+/)
+    .map((token) => token.replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/g, ''))
+    .filter(Boolean);
+
+  if (tokens.length === 0) return { code: '', section: null };
+
+  const isCourse = (token: string) => /[A-Z]/.test(token) && /\d{3,}/.test(token);
+  const isSection = (token: string) => /^[A-Z]{0,3}\d{1,2}[A-Z]{0,2}$/.test(token);
+
+  const code = tokens.find(isCourse) ?? null;
+  const section = tokens.find((token) => token !== code && isSection(token)) ?? null;
+
+  // Nothing course-shaped: keep what was printed rather than inventing a split.
+  if (!code) return { code: tokens.join(' '), section: null };
+
+  return { code, section };
+}
+
+/**
  * Calms a name a schedule printed in block capitals.
  *
  * University systems shout: "FUNDAMENTALS OF DIGITAL MEDIA" is what comes off
@@ -232,6 +270,14 @@ export type ClassBlock = {
   title: string;
   /** Lecture, tutorial, lab… whatever the schedule called it. */
   kind: string | null;
+  /**
+   * Section or session id, e.g. TC1L, TL2L, G3.
+   *
+   * It identifies which of a course's several weekly sessions this block is,
+   * and belongs to the block rather than to the subject — one course has one
+   * code and many sections.
+   */
+  section?: string | null;
   /** The subject this class teaches. Blocks without one are not rendered. */
   subjectId: string | null;
   subjectName: string | null;
@@ -586,6 +632,8 @@ export type ExtractedClass = {
   title: string;
   /** Module/course code where the schedule prints one, e.g. "CS2040". */
   code: string | null;
+  /** Section or session identifier for this block, e.g. "TC1L", "TL2L", "G3". */
+  section: string | null;
   kind: string | null;
   /** Day name as printed on the schedule; mapped to an index on import. */
   day: string;

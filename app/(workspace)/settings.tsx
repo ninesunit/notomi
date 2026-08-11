@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { RemindersCard } from '@/components/Reminders';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Button, Card, PageHeader } from '@/components/ui';
 import { useAuth } from '@/hooks/useAuth';
-import { currentModel } from '@/lib/ai';
 import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
 
 /**
@@ -92,13 +91,16 @@ export default function Settings() {
       </Card>
 
       <Card className="gap-2">
-        <Text className="text-[15px] font-semibold text-ink">About</Text>
+        <Text className="text-[15px] font-semibold text-ink">About Notomi</Text>
+        <Text className="text-sm leading-6 text-muted">
+          Your whole semester in one place. Scan your timetable once and Notomi builds your
+          subjects, your week and your deadlines, then helps you study from your own material —
+          notes, flashcards, a tutor that only knows what you uploaded.
+        </Text>
         <Row label="Version" value="1.0.0" />
-        <Row label="AI model" value={currentModel()} />
-        <Row label="Platform" value={Platform.OS === 'web' ? 'Web / PWA' : Platform.OS} />
         <Text className="mt-2 text-xs leading-5 text-subtle">
-          Notomi updates itself: a new build is fetched in the background and applied the next time
-          you open it. Documents are read on your device before anything is sent to Gemini.
+          Notomi updates itself: a new version is fetched in the background and applied the next
+          time you open it.
         </Text>
       </Card>
     </ScreenScroll>

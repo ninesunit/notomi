@@ -61,7 +61,7 @@ export function LectureLogPanel({
         <EmptyState
           icon="book-open"
           title="No classes logged yet"
-          body="After a lecture, write one line — “did topic 4, reached 4.2”. Gemini writes the notes for exactly that range from your uploaded material, and files them under the topic."
+          body="After a lecture, write one line — “did topic 4, reached 4.2”. Notomi writes the notes for exactly that range from your uploaded material, and files them under the topic."
         />
       ) : (
         <View className="gap-7">
@@ -225,7 +225,7 @@ export function LogComposer({
       </View>
 
       {done ? <Notice tone="pine" title={done} /> : null}
-      {error ? <Notice title="Gemini could not finish that" body={error} /> : null}
+      {error ? <Notice title="That could not be written up" body={error} /> : null}
 
       <Reveal open={answer !== null}>
         {answer ? (

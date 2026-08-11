@@ -175,8 +175,8 @@ export function ImportReview({
       }
     >
       <Text className="text-xs leading-5 text-subtle">
-        Check what Gemini read before it is saved. Importing creates one library folder per
-        subject, fills your weekly timetable, and files everything under the term you choose.
+        Check this before it is saved. Importing creates one library folder per subject, fills
+        your weekly timetable, and files everything under the term you choose.
       </Text>
 
       {skipped > 0 ? (
@@ -412,7 +412,8 @@ function SessionRow({
         </Pressable>
 
         <Text className="flex-1 text-xs font-medium text-ink" numberOfLines={1}>
-          {session.kind || 'Session'} · {DAY_LABELS[session.day]}{' '}
+          {[session.section, session.kind].filter(Boolean).join(' ') || 'Session'} ·{' '}
+          {DAY_LABELS[session.day]}{' '}
           {timesValid && startMinute !== null && endMinute !== null
             ? `${minutesToLabel(startMinute)}–${minutesToLabel(endMinute)}`
             : `${session.start}–${session.end}`}
@@ -422,21 +423,29 @@ function SessionRow({
       <View className="flex-row gap-2">
         <View className="flex-1">
           <Field
+            label="Section"
+            value={session.section}
+            onChangeText={(value) => onPatch({ section: value })}
+            placeholder="TC1L"
+            autoCapitalize="characters"
+          />
+        </View>
+        <View className="flex-1">
+          <Field
             label="Type"
             value={session.kind}
             onChangeText={(value) => onPatch({ kind: value })}
             placeholder="Lecture"
           />
         </View>
-        <View className="flex-1">
-          <Field
-            label="Room"
-            value={session.venue}
-            onChangeText={(value) => onPatch({ venue: value })}
-            placeholder="LT-15"
-          />
-        </View>
       </View>
+
+      <Field
+        label="Room"
+        value={session.venue}
+        onChangeText={(value) => onPatch({ venue: value })}
+        placeholder="LT-15"
+      />
 
       <View className="gap-1.5">
         <Text className="text-sm font-medium text-muted">Day</Text>

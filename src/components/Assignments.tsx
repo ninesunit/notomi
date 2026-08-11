@@ -76,7 +76,7 @@ export function AssignmentsPanel({
           }}
         />
         <Text className="flex-1 text-xs leading-4 text-subtle" style={{ minWidth: 180 }}>
-          Upload the task sheet or paste it. Gemini breaks it into steps and puts the deadline in
+          Upload the task sheet or paste it. Notomi breaks it into steps and puts the deadline in
           your calendar.
         </Text>
       </View>
@@ -496,7 +496,7 @@ function AddAssignment({
                 {file ? file.name : 'Choose a file'}
               </Text>
               <Text className="text-xs text-subtle">
-                {file ? 'Tap to pick a different one' : 'Read on your device, then sent to Gemini'}
+                {file ? 'Tap to pick a different one' : 'Read on your device before anything is sent'}
               </Text>
             </View>
             {file ? (
@@ -572,7 +572,7 @@ function DraftReview({ draft, onChange }: { draft: Draft; onChange: (next: Draft
       <DatePicker
         label="Deadline"
         value={due}
-        placeholder="Gemini found no deadline — set one"
+        placeholder="No deadline found — set one"
         onChange={(date) =>
           onChange({ ...draft, dueDate: date ? Timestamp.fromDate(date) : null })
         }

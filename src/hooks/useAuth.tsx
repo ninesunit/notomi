@@ -49,16 +49,16 @@ export function authErrorMessage(error: unknown): string {
     case 'auth/network-request-failed':
       return 'Network error. Check your connection.';
     case 'auth/operation-not-allowed':
-      return 'This sign-in method is disabled. Enable it in Firebase console > Authentication > Sign-in method.';
+      return 'This sign-in method is not switched on for this app.';
     case 'auth/admin-restricted-operation':
-      return 'Anonymous sign-in is disabled. Enable it in Firebase console > Authentication > Sign-in method.';
+      return 'Guest sign-in is not switched on for this app.';
     case 'auth/popup-closed-by-user':
     case 'auth/cancelled-popup-request':
       return 'Google sign-in was cancelled.';
     case 'auth/popup-blocked':
       return 'Your browser blocked the Google popup. Allow popups for this site, or try again.';
     case 'auth/unauthorized-domain':
-      return 'This domain is not authorised for Google sign-in. Add it in Firebase console > Authentication > Settings > Authorized domains.';
+      return 'Google sign-in is not available on this address.';
     case 'auth/account-exists-with-different-credential':
       return 'That email already has an account created with a different sign-in method.';
     default:

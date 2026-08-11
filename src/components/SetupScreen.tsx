@@ -3,11 +3,9 @@ import { Feather } from '@expo/vector-icons';
 import { missingFirebaseConfigKeys } from '@/services/firebase';
 
 const STEPS = [
-  'Open the Firebase console for project "notomii" and go to Project settings > General.',
-  'Under "Your apps", add a Web app (or open the existing one) and copy the SDK config values.',
-  'Copy .env.example to .env in the project root and paste each value in.',
-  'In the console, enable Authentication (Email/Password + Anonymous), Cloud Firestore, Cloud Storage, and Build > AI Logic (Gemini Developer API).',
-  'Restart the dev server so Expo picks up the new .env.',
+  'Copy .env.example to .env in the project root.',
+  'Fill in the values for this deployment — see the project README for where each one comes from.',
+  'Restart the dev server so the new .env is picked up.',
 ];
 
 /**
@@ -25,10 +23,10 @@ export function SetupScreen() {
           <View className="mb-2 h-11 w-11 items-center justify-center rounded-xl bg-ink">
             <Text className="text-lg font-bold text-paper">N</Text>
           </View>
-          <Text className="text-3xl font-bold tracking-tight text-ink">Connect Notomi to Firebase</Text>
+          <Text className="text-3xl font-bold tracking-tight text-ink">Finish setting up Notomi</Text>
           <Text className="text-[15px] leading-6 text-muted">
-            Notomi runs entirely on your own Firebase project — Auth, Firestore, Storage and Gemini
-            through Firebase AI Logic. It just needs the web config for that project.
+            This deployment is missing its configuration, so the app cannot start. Add the values
+            below and reload.
           </Text>
         </View>
 
@@ -58,7 +56,7 @@ export function SetupScreen() {
 
         <Text className="text-xs leading-5 text-subtle">
           These values are safe to ship in a client bundle — they identify the project, they do not
-          grant access. Access is enforced by firestore.rules and storage.rules.
+          grant access. Every document is scoped to the account that created it.
         </Text>
       </View>
     </ScrollView>

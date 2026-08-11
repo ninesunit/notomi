@@ -119,7 +119,7 @@ export default function Capture() {
     <ScreenScroll maxWidth={640}>
       <PageHeader
         title="Capture"
-        subtitle="Photograph a whiteboard or a slide. Gemini reads the text and files it under the subject."
+        subtitle="Photograph a whiteboard or a slide. Notomi reads the text and files it under the subject."
       />
 
       {error ? (
@@ -238,8 +238,7 @@ export default function Capture() {
           ) : null}
 
           <Text className="text-xs leading-5 text-subtle">
-            Add Notomi to your home screen and this screen becomes a one-tap shortcut. Photos are
-            read by Gemini and the original is stored in your own Cloudflare R2 bucket.
+            Add Notomi to your home screen and this screen becomes a one-tap shortcut.
           </Text>
         </View>
       )}

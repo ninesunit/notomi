@@ -370,7 +370,7 @@ async function extractImage(
   try {
     const text = await readImage(data, canonicalMimeType('image', mimeType));
     if (!text.trim()) {
-      throw new ParseError(`Gemini found no readable text in "${fileName}".`);
+      throw new ParseError(`No readable text was found in "${fileName}".`);
     }
     return { text, pageCount: 1, kind: 'image' };
   } catch (error) {
@@ -392,7 +392,7 @@ async function extractMedia(
   try {
     const text = await transcribeMedia(data, canonicalMimeType(kind, mimeType), kind);
     if (!text.trim()) {
-      throw new ParseError(`Gemini produced no transcript for "${fileName}".`);
+      throw new ParseError(`No transcript could be produced for "${fileName}".`);
     }
     return { text, pageCount: null, kind };
   } catch (error) {

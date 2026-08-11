@@ -63,56 +63,57 @@ function model(params: Omit<ModelParams, 'model'> = {}): GenerativeModel {
 export const currentModel = (): string => activeModel;
 
 /**
- * Firebase now auto-enforces App Check for AI Logic during the console's guided
- * setup. An app that sends no App Check token then has every Gemini call
- * rejected — and because the rejection fails CORS, the browser reports only
- * "Failed to fetch". Naming the likely cause saves a long hunt.
+ * The diagnostic, for whoever deployed this — not for the student.
+ *
+ * Attestation is enforced for the AI service during its guided setup, and an
+ * app that sends no token has every call rejected. Because the rejection fails
+ * CORS, the browser reports only "Failed to fetch", which is indistinguishable
+ * from an outage. That is worth logging in detail; it is not worth putting on
+ * screen, where it would name the whole stack to anyone who hit a hiccup.
  */
-const APP_CHECK_HINT =
-  'App Check is enforced for AI Logic on this project but the app is not sending a token. ' +
-  'Set EXPO_PUBLIC_APP_CHECK_SITE_KEY to your reCAPTCHA v3 site key and redeploy, ' +
-  'or unenforce App Check for AI Logic in the Firebase console.';
-
-/**
- * App Check started on our side but Google refused the token. The usual cause
- * is a mismatched reCAPTCHA pair — the secret stored in the Firebase console
- * has to belong to the same key as the site key compiled into this build — or
- * a site key whose allowed domains do not include this origin.
- */
-const APP_CHECK_TOKEN_REJECTED =
-  'App Check started but its token was refused. Check that the reCAPTCHA secret saved in ' +
-  'Firebase console > App Check matches this build’s site key, and that the key’s ' +
-  'domain list includes this site.';
+function logSetupHint(kind: 'missing-token' | 'token-refused', raw: string): void {
+  console.warn(
+    `[ai] ${
+      kind === 'missing-token'
+        ? 'attestation is enforced but this build sends no token — set the App Check site key'
+        : 'the attestation token was refused — check the site key and its allowed domains'
+    }: ${raw.slice(0, 200)}`
+  );
+}
 
 /** Turns an unknown SDK failure into something worth showing a student. */
 function describe(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
-  if (/API key not valid/i.test(raw)) return 'Firebase API key rejected. Check your .env values.';
+
+  if (/API key not valid/i.test(raw)) {
+    console.warn(`[ai] the API key was rejected: ${raw.slice(0, 200)}`);
+    return 'This app is not configured correctly yet.';
+  }
   if (/AI Logic|not enabled|SERVICE_DISABLED|has not been used/i.test(raw)) {
-    return 'Firebase AI Logic is not enabled yet. Enable it in the Firebase console under Build > AI Logic.';
+    console.warn(`[ai] the AI service is not enabled for this project: ${raw.slice(0, 200)}`);
+    return 'The AI features are not switched on for this app yet.';
   }
   if (/quota|RESOURCE_EXHAUSTED|429/i.test(raw)) {
-    return 'Gemini rate limit reached. Wait a moment and try again.';
+    return 'Too many AI requests just now. Wait a moment and try again.';
   }
-  // Two very different failures both mention App Check, and telling a user to
-  // "set the site key" when the key is already set sends them the wrong way.
+
+  // Two very different failures both mention attestation, and they need
+  // different fixes — but both read the same to a student.
   if (/app.?check|attestation|unattested/i.test(raw)) {
-    return isAppCheckEnabled() ? `${APP_CHECK_TOKEN_REJECTED} (${raw.slice(0, 120)})` : APP_CHECK_HINT;
+    logSetupHint(isAppCheckEnabled() ? 'token-refused' : 'missing-token', raw);
+    return 'The AI features are not available on this device right now.';
   }
   if (/permission|403|PERMISSION_DENIED|unauthenticated|401/i.test(raw)) {
-    return isAppCheckEnabled()
-      ? `${APP_CHECK_TOKEN_REJECTED} (${raw.slice(0, 120)})`
-      : `Firebase AI Logic rejected the request. ${APP_CHECK_HINT}`;
+    logSetupHint(isAppCheckEnabled() ? 'token-refused' : 'missing-token', raw);
+    return 'The AI features are not available on this device right now.';
   }
-  if (/timed? ?out|deadline/i.test(raw)) return 'Gemini took too long to respond. Try again.';
+
+  if (/timed? ?out|deadline/i.test(raw)) return 'That took too long to come back. Try again.';
   if (/network|fetch|Failed to fetch|ERR_/i.test(raw)) {
-    // A blocked App Check request comes back as an opaque CORS failure, which
-    // the browser reports as a plain "Failed to fetch" — indistinguishable
-    // from a real outage unless we know whether App Check started.
-    return isAppCheckEnabled()
-      ? `Could not reach Gemini. ${APP_CHECK_TOKEN_REJECTED}`
-      : `Could not reach Gemini. ${APP_CHECK_HINT}`;
+    logSetupHint(isAppCheckEnabled() ? 'token-refused' : 'missing-token', raw);
+    return 'Could not reach the AI service. Check your connection and try again.';
   }
+
   return raw;
 }
 
@@ -138,7 +139,7 @@ export function parseJson<T>(raw: string): T {
         /* fall through */
       }
     }
-    throw new AiError('Gemini returned a response that was not valid JSON.');
+    throw new AiError('The response came back in a shape Notomi could not read.');
   }
 }
 
@@ -212,7 +213,7 @@ async function generateJson<T>(
       const raw = await generate(config, prompt);
       const parsed = parseJson<unknown>(raw);
       if (validate(parsed)) return parsed;
-      lastError = new AiError('Gemini returned JSON in an unexpected shape.');
+      lastError = new AiError('The response came back in a shape Notomi could not read.');
     } catch (error) {
       // A transport or quota failure will not be fixed by retrying the parse.
       if (error instanceof AiError && !/not valid JSON|unexpected shape/i.test(error.message)) {
@@ -224,7 +225,7 @@ async function generateJson<T>(
 
   throw lastError instanceof Error
     ? lastError
-    : new AiError('Gemini returned an unusable response.');
+    : new AiError('The response could not be used.');
 }
 
 /**
@@ -297,7 +298,7 @@ async function generateFromMedia(
   } catch (error) {
     const raw = error instanceof Error ? error.message : String(error);
     if (/too large|payload|request entity/i.test(raw)) {
-      throw new AiError('That image is too large for a single Gemini request. Crop it and retry.');
+      throw new AiError('That image is too large to send in one go. Crop it and retry.');
     }
     throw new AiError(describe(error), error);
   }
@@ -526,7 +527,7 @@ ${context}`
 
   const parsed = parseJson<PodcastLine[]>(raw);
   if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new AiError('Gemini did not return any podcast lines.');
+    throw new AiError('No audio overview could be written from this material.');
   }
   return parsed
     .filter((line) => line && typeof line.text === 'string' && line.text.trim())
@@ -606,7 +607,7 @@ ${context}`,
       q.correctAnswerIndex < q.options.length
   );
 
-  if (valid.length === 0) throw new AiError('Gemini did not return any usable questions.');
+  if (valid.length === 0) throw new AiError('No usable questions came back from this material.');
   return valid.map((q) => ({ ...q, explanation: q.explanation || '' }));
 }
 
@@ -619,13 +620,16 @@ const timetableSchema = Schema.array({
     properties: {
       title: Schema.string({ description: 'Course name without the code.' }),
       code: Schema.string({ description: 'Module code such as "CS2040". Empty if absent.' }),
+      section: Schema.string({
+        description: 'Section/session id for this block, such as "TC1L" or "G3". Empty if absent.',
+      }),
       kind: Schema.string({ description: 'Lecture, Tutorial, Lab, Seminar… or empty.' }),
       day: Schema.string({ description: 'Full weekday name in English, e.g. "Monday".' }),
       start: Schema.string({ description: '24-hour HH:MM.' }),
       end: Schema.string({ description: '24-hour HH:MM.' }),
       venue: Schema.string({ description: 'Room or building. Empty string if absent.' }),
     },
-    optionalProperties: ['code', 'kind', 'venue'],
+    optionalProperties: ['code', 'section', 'kind', 'venue'],
   }),
 });
 
@@ -661,14 +665,25 @@ TIME
   17:00. A timetable running 9-6 is 09:00-18:00, never 09:00-06:00.
 
 IDENTITY
-- "code" is the module or course code: letters then digits, such as CS2040,
-  CW6123, MA1101R, PU3312. Take it exactly as printed.
+- "code" is the module or course code and nothing else: letters then three or
+  more digits, such as CS2040, CW6123, MA1101R, PU3312, LDCW6123. Take it
+  exactly as printed.
+- "section" is the section or session identifier printed beside the code, such
+  as TC1L, TC2L, TL1L, TL2L, G1, L2, S3. It has one or two digits. It is NOT
+  part of the code.
+
+  This distinction matters more than any other on this page. One course runs
+  several sessions a week with different section ids — LDCW6123 TC1L and
+  LDCW6123 TL1L are the SAME course, two of its sessions. Never fold the
+  section into "code", and never treat two sections of one course as two
+  courses.
 - "title" is the course name if one is printed. Many schedules show only a code
   and a session type — in that case leave "title" empty rather than inventing a
   name or repeating the code.
 - "kind" is the session type if shown: Lecture, Tutorial, Lab, Seminar,
-  Practical, Workshop. Ignore any group or section prefix such as "LD", "LM",
-  "C", "G1" — that is not the session type.
+  Practical, Workshop. Where the schedule prints only a section id, infer it
+  where the pattern is obvious across the timetable and leave it empty
+  otherwise.
 - "venue" is the room, hall or lab, with the label stripped: "Room: CQCR2003-FCI
   Classroom" becomes "CQCR2003-FCI Classroom". Empty if not shown.
 
@@ -685,7 +700,7 @@ contains no schedule at all.`,
 
   const parsed = parseJson<ExtractedClass[]>(raw);
   if (!Array.isArray(parsed)) {
-    throw new AiError('Gemini could not read a timetable from that image.');
+    throw new AiError('No timetable could be read from that image.');
   }
 
   // A row needs a day, a start and an end. It does NOT need a title: plenty of
@@ -704,6 +719,7 @@ contains no schedule at all.`,
     .map((entry) => ({
       title: (entry.title ?? '').trim(),
       code: (entry.code ?? '').trim() || null,
+      section: (entry.section ?? '').trim() || null,
       kind: (entry.kind ?? '').trim() || null,
       day: entry.day.trim(),
       start: entry.start.trim(),
@@ -759,7 +775,7 @@ ${context}`,
   const valid = parsed.filter(
     (card) => card && typeof card.front === 'string' && card.front.trim() && card.back?.trim()
   );
-  if (valid.length === 0) throw new AiError('Gemini did not return any usable flashcards.');
+  if (valid.length === 0) throw new AiError('No usable flashcards came back from this material.');
   return valid.map((card) => ({
     front: card.front.trim(),
     back: card.back.trim(),
@@ -822,7 +838,7 @@ ${context}`,
   const valid = parsed.filter(
     (entry) => entry && typeof entry.question === 'string' && entry.question.trim()
   );
-  if (valid.length === 0) throw new AiError('Gemini did not return any usable questions.');
+  if (valid.length === 0) throw new AiError('No usable questions came back from this material.');
   return valid.map((entry) => ({
     question: entry.question.trim(),
     modelAnswer: entry.modelAnswer?.trim() || '',

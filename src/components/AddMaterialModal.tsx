@@ -190,8 +190,8 @@ export function AddMaterialModal({
                 <Feather name="file-plus" size={22} color="#9A9488" />
                 <Text className="text-center text-sm leading-5 text-muted">
                   Choose PDFs, Word docs, slide decks, notes, photos of a whiteboard, or a lecture
-                  recording. Notomi reads documents on your device and uses Gemini to OCR images
-                  and transcribe audio and video, then stores the original in Cloudflare R2.
+                  recording. Notomi reads the text out of all of them and files it under this
+                  subject.
                 </Text>
                 <Button label="Choose files" icon="folder" variant="secondary" onPress={() => void choose()} />
               </View>
