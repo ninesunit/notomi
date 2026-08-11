@@ -259,7 +259,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <View className="mb-7 flex-row flex-wrap items-end justify-between gap-4">
+    <View className="mb-5 flex-row flex-wrap items-end justify-between gap-4">
       <View className="flex-1 gap-1.5" style={{ minWidth: 220 }}>
         <Text className="text-[28px] font-bold leading-8 tracking-tight text-ink">{title}</Text>
         {subtitle ? <Text className="text-[15px] leading-6 text-muted">{subtitle}</Text> : null}

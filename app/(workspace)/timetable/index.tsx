@@ -13,6 +13,8 @@ import { ImportReview } from '@/components/ImportReview';
 import { FadeIn } from '@/components/motion';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
+import { WeekOverview } from '@/components/WeekOverview';
+import { TimeField } from '@/components/TimeField';
 import {
   defaultScope,
   filterByTerm,
@@ -78,6 +80,8 @@ export default function Timetable() {
   const [error, setError] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [selectedDay, setSelectedDay] = useState(todayIndex());
+  /** Phone layout only: the whole week at a glance, or one day on a ruler. */
+  const [view, setView] = useState<'week' | 'day'>('week');
 
   const [showRoutines, setShowRoutines] = useState(true);
   const [editingRoutine, setEditingRoutine] = useState<RoutineBlock | 'new' | null>(null);
@@ -192,9 +196,13 @@ export default function Timetable() {
       <PageHeader
         title="Timetable"
         subtitle={
-          classes.data.length
-            ? `${classes.data.length} class${classes.data.length === 1 ? '' : 'es'} a week`
-            : 'Upload a screenshot of your schedule and Gemini will read it into a grid.'
+          // On a phone the count is already visible in the week below it, and
+          // the header is the space the week needs.
+          !grid && classes.data.length
+            ? undefined
+            : classes.data.length
+              ? `${classes.data.length} class${classes.data.length === 1 ? '' : 'es'} a week`
+              : 'Upload a screenshot of your schedule and Gemini will read it into a grid.'
         }
         actions={
           <>
@@ -293,6 +301,35 @@ export default function Timetable() {
               size="sm"
               onPress={() => setEditingRoutine('new')}
             />
+
+            {/* Week is the default: the whole point of a timetable is seeing
+                the week. The timeline stays one tap away for the days that
+                need the hour-by-hour shape. */}
+            {grid ? null : (
+              <View className="flex-row overflow-hidden rounded-lg border border-line">
+                {(['week', 'day'] as const).map((option) => (
+                  <Pressable
+                    key={option}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: view === option }}
+                    accessibilityLabel={option === 'week' ? 'Whole week' : 'One day'}
+                    onPress={() => {
+                      feedback('toggle');
+                      setView(option);
+                    }}
+                    className={`px-3 py-1.5 ${view === option ? 'bg-ink' : 'bg-surface'}`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${
+                        view === option ? 'text-paper' : 'text-muted'
+                      }`}
+                    >
+                      {option === 'week' ? 'Week' : 'Day'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
           </View>
 
           {grid ? (
@@ -301,6 +338,13 @@ export default function Timetable() {
               routines={showRoutines ? routines.data : []}
               firstHour={firstHour}
               lastHour={lastHour}
+              onSelect={(block) => setEditing(block)}
+              onSelectRoutine={(block) => setEditingRoutine(block)}
+            />
+          ) : view === 'week' ? (
+            <WeekOverview
+              classes={classes.data}
+              routines={showRoutines ? routines.data : []}
               onSelect={(block) => setEditing(block)}
               onSelectRoutine={(block) => setEditingRoutine(block)}
             />
@@ -950,6 +994,65 @@ function WeekGrid({
  * Add / edit a class
  * ------------------------------------------------------------------ */
 
+/**
+ * Weekday chips, multi-select when adding.
+ *
+ * The same control serves classes and routines, because "which days does this
+ * happen on" is the same question for a lecture and for the gym.
+ */
+function DayPicker({
+  days,
+  multiple,
+  onToggle,
+  hint,
+}: {
+  days: number[];
+  multiple: boolean;
+  onToggle: (day: number) => void;
+  hint?: string;
+}) {
+  return (
+    <View className="gap-2">
+      <Text className="text-sm font-medium text-muted">
+        {multiple ? 'Which days?' : 'Day'}
+      </Text>
+
+      <View className="flex-row flex-wrap gap-1.5">
+        {DAY_LABELS.map((label, index) => {
+          const selected = days.includes(index);
+          return (
+            <Pressable
+              key={label}
+              accessibilityRole={multiple ? 'checkbox' : 'button'}
+              accessibilityState={{ selected, checked: selected }}
+              // react-native-web does not emit aria-checked from
+              // accessibilityState here, so a screen reader would announce a
+              // checkbox with no state. Set it directly.
+              aria-checked={multiple ? selected : undefined}
+              accessibilityLabel={DAY_FULL[index]}
+              onPress={() => {
+                feedback('toggle');
+                onToggle(index);
+              }}
+              className={`min-w-[46px] items-center rounded-lg px-3 py-2 ${
+                selected ? 'bg-ink' : 'bg-sand'
+              }`}
+            >
+              <Text
+                className={`text-xs font-semibold ${selected ? 'text-paper' : 'text-ink'}`}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {hint ? <Text className="text-xs leading-4 text-subtle">{hint}</Text> : null}
+    </View>
+  );
+}
+
 function ClassModal({
   uid,
   block,
@@ -995,36 +1098,51 @@ function ClassForm({
   const [title, setTitle] = useState(block?.title ?? '');
   const [kind, setKind] = useState(block?.kind ?? '');
   const [venue, setVenue] = useState(block?.venue ?? '');
-  const [day, setDay] = useState(block?.day ?? todayIndex());
-  const [start, setStart] = useState(minutesToClock(block?.startMinute ?? 9 * 60));
-  const [end, setEnd] = useState(minutesToClock(block?.endMinute ?? 10 * 60));
+  /**
+   * Days, plural.
+   *
+   * A lecture that meets Monday and Thursday is one thing a student adds once,
+   * not two identical forms filled in twice. Editing stays single-day: an
+   * existing block is one occurrence, and turning it into three from its own
+   * editor would be a surprise rather than a shortcut.
+   */
+  const [days, setDays] = useState<number[]>([block?.day ?? todayIndex()]);
+  const [startMinute, setStartMinute] = useState(block?.startMinute ?? 9 * 60);
+  const [endMinute, setEndMinute] = useState(block?.endMinute ?? 10 * 60);
   const [subjectId, setSubjectId] = useState<string | null>(block?.subjectId ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const startMinute = parseClock(start);
-  const endMinute = parseClock(end);
-  const timesValid = startMinute !== null && endMinute !== null && endMinute > startMinute;
+  const timesValid = endMinute > startMinute;
 
   const linked = subjects.find((candidate) => candidate.id === subjectId) ?? null;
   // A session is identified by its subject; only an unlinked block needs a name
   // typed for it.
-  const valid = (linked !== null || title.trim().length > 0) && timesValid;
+  const valid = (linked !== null || title.trim().length > 0) && timesValid && days.length > 0;
+
+  const toggleDay = (index: number) =>
+    setDays((current) => {
+      if (block) return [index];
+      if (current.includes(index)) {
+        // Never leave it with none selected — that would just disable Save.
+        return current.length === 1 ? current : current.filter((day) => day !== index);
+      }
+      return [...current, index].sort((a, b) => a - b);
+    });
 
   async function save() {
-    if (!valid || startMinute === null || endMinute === null) return;
+    if (!valid) return;
     setSaving(true);
     setError(null);
 
     const subject = linked;
-    const input: ClassInput = {
+    const shared = {
       // Derived, not typed: the subject owns the name, and storing a divergent
       // copy here is exactly what stopped a library rename reaching the grid.
       title: subject ? subject.name : title.trim(),
       kind: kind.trim() || null,
       subjectId: subject?.id ?? null,
       subjectName: subject?.name ?? null,
-      day,
       startMinute,
       endMinute,
       venue: venue.trim() || null,
@@ -1032,7 +1150,12 @@ function ClassForm({
     };
 
     try {
-      await saveClass(uid, input, block?.id);
+      // One write per day. Editing passes the block id so the first (and only)
+      // day updates in place instead of adding a duplicate.
+      for (const day of days) {
+        const input: ClassInput = { ...shared, day };
+        await saveClass(uid, input, block?.id);
+      }
       onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -1060,7 +1183,7 @@ function ClassForm({
           <View className="flex-1" />
           <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} disabled={saving} />
           <Button
-            label={block ? 'Save' : 'Add class'}
+            label={block ? 'Save' : days.length > 1 ? `Add ${days.length} classes` : 'Add class'}
             size="sm"
             loading={saving}
             disabled={!valid || saving}
@@ -1073,8 +1196,7 @@ function ClassForm({
           <View className="gap-2">
             <Text className="text-sm font-medium text-muted">Subject</Text>
             <Text className="text-xs leading-4 text-subtle">
-              The session belongs to a subject in your library. Its name, code and colour come
-              from there, so renaming it in the library renames it here.
+              Name, code and colour come from the library.
             </Text>
             <View className="flex-row flex-wrap gap-1.5">
               {subjects.map((subject) => (
@@ -1123,47 +1245,26 @@ function ClassForm({
           />
         )}
 
-        <View className="gap-2">
-          <Text className="text-sm font-medium text-muted">Day</Text>
-          <View className="flex-row flex-wrap gap-1.5">
-            {DAY_LABELS.map((label, index) => (
-              <Pressable
-                key={label}
-                accessibilityRole="button"
-                accessibilityState={{ selected: day === index }}
-                onPress={() => setDay(index)}
-                className={`rounded-lg px-3 py-2 ${day === index ? 'bg-ink' : 'bg-sand'}`}
-              >
-                <Text
-                  className={`text-xs font-semibold ${day === index ? 'text-paper' : 'text-ink'}`}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
+        <DayPicker
+          days={days}
+          multiple={!block}
+          onToggle={toggleDay}
+          hint={
+            block
+              ? 'This is one occurrence. Add another for a second day.'
+              : 'Pick every day this session runs — one block is created for each.'
+          }
+        />
 
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Field
-              label="Starts"
-              value={start}
-              onChangeText={setStart}
-              placeholder="09:00"
-              autoCapitalize="none"
-            />
-          </View>
-          <View className="flex-1">
-            <Field
-              label="Ends"
-              value={end}
-              onChangeText={setEnd}
-              placeholder="11:00"
-              autoCapitalize="none"
-              hint={!timesValid ? 'e.g. 9:00 AM or 09:00, ending after it starts.' : undefined}
-            />
-          </View>
+        <View className="gap-3">
+          <TimeField label="Starts" value={startMinute} onChange={setStartMinute} />
+          <TimeField
+            label="Ends"
+            value={endMinute}
+            onChange={setEndMinute}
+            invalid={!timesValid}
+            hint={!timesValid ? 'The end has to come after the start.' : undefined}
+          />
         </View>
 
         <View className="flex-row gap-3">
@@ -1198,37 +1299,47 @@ function RoutineForm({
   const [title, setTitle] = useState(block?.title ?? '');
   const [category, setCategory] = useState(block?.category ?? ROUTINE_CATEGORIES[0].id);
   const [venue, setVenue] = useState(block?.venue ?? '');
-  const [day, setDay] = useState(block?.day ?? todayIndex());
-  const [start, setStart] = useState(minutesToClock(block?.startMinute ?? 18 * 60));
-  const [end, setEnd] = useState(minutesToClock(block?.endMinute ?? 19 * 60));
+  /** Gym on Monday, Wednesday and Friday is one routine, added once. */
+  const [days, setDays] = useState<number[]>([block?.day ?? todayIndex()]);
+  const [startMinute, setStartMinute] = useState(block?.startMinute ?? 18 * 60);
+  const [endMinute, setEndMinute] = useState(block?.endMinute ?? 19 * 60);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const startMinute = parseClock(start);
-  const endMinute = parseClock(end);
-  const timesValid = startMinute !== null && endMinute !== null && endMinute > startMinute;
-  const valid = title.trim().length > 0 && timesValid;
+  const timesValid = endMinute > startMinute;
+  const valid = title.trim().length > 0 && timesValid && days.length > 0;
+
+  const toggleDay = (index: number) =>
+    setDays((current) => {
+      if (block) return [index];
+      if (current.includes(index)) {
+        return current.length === 1 ? current : current.filter((day) => day !== index);
+      }
+      return [...current, index].sort((a, b) => a - b);
+    });
 
   const meta = ROUTINE_CATEGORIES.find((option) => option.id === category);
 
   async function save() {
-    if (!valid || startMinute === null || endMinute === null) return;
+    if (!valid) return;
     setSaving(true);
     setError(null);
     try {
-      await saveRoutine(
-        uid,
-        {
-          title: title.trim(),
-          category,
-          day,
-          startMinute,
-          endMinute,
-          venue: venue.trim() || null,
-          color: meta?.color ?? '#6F6A5F',
-        },
-        block?.id
-      );
+      for (const day of days) {
+        await saveRoutine(
+          uid,
+          {
+            title: title.trim(),
+            category,
+            day,
+            startMinute,
+            endMinute,
+            venue: venue.trim() || null,
+            color: meta?.color ?? '#6F6A5F',
+          },
+          block?.id
+        );
+      }
       onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -1256,7 +1367,7 @@ function RoutineForm({
           <View className="flex-1" />
           <Button label="Cancel" variant="ghost" size="sm" onPress={onClose} disabled={saving} />
           <Button
-            label={block ? 'Save' : 'Add routine'}
+            label={block ? 'Save' : days.length > 1 ? `Add ${days.length} routines` : 'Add routine'}
             size="sm"
             loading={saving}
             disabled={!valid || saving}
@@ -1298,39 +1409,26 @@ function RoutineForm({
         </View>
       </View>
 
-      <View className="gap-2">
-        <Text className="text-sm font-medium text-muted">Day</Text>
-        <View className="flex-row flex-wrap gap-1.5">
-          {DAY_LABELS.map((label, index) => (
-            <Pressable
-              key={label}
-              accessibilityRole="button"
-              accessibilityState={{ selected: day === index }}
-              onPress={() => setDay(index)}
-              className={`rounded-lg px-3 py-2 ${day === index ? 'bg-ink' : 'bg-sand'}`}
-            >
-              <Text className={`text-xs font-semibold ${day === index ? 'text-paper' : 'text-ink'}`}>
-                {label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
+      <DayPicker
+        days={days}
+        multiple={!block}
+        onToggle={toggleDay}
+        hint={
+          block
+            ? 'This is one occurrence. Add another for a second day.'
+            : 'Pick every day it runs — gym on Mon, Wed and Fri is one routine.'
+        }
+      />
 
-      <View className="flex-row gap-3">
-        <View className="flex-1">
-          <Field label="Starts" value={start} onChangeText={setStart} placeholder="18:00" autoCapitalize="none" />
-        </View>
-        <View className="flex-1">
-          <Field
-            label="Ends"
-            value={end}
-            onChangeText={setEnd}
-            placeholder="19:00"
-            autoCapitalize="none"
-            hint={!timesValid ? 'e.g. 9:00 AM or 09:00, ending after it starts.' : undefined}
-          />
-        </View>
+      <View className="gap-3">
+        <TimeField label="Starts" value={startMinute} onChange={setStartMinute} />
+        <TimeField
+          label="Ends"
+          value={endMinute}
+          onChange={setEndMinute}
+          invalid={!timesValid}
+          hint={!timesValid ? 'The end has to come after the start.' : undefined}
+        />
       </View>
 
       <Field label="Where (optional)" value={venue} onChangeText={setVenue} placeholder="Sports hall" />

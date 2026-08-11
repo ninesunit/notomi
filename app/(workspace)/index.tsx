@@ -6,6 +6,7 @@ import { orderBy, query } from 'firebase/firestore';
 import { ImportReview } from '@/components/ImportReview';
 import { LogComposer } from '@/components/LectureLog';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { NowLine, WeekOverview } from '@/components/WeekOverview';
 import { defaultScope, filterByTerm } from '@/components/TermFilter';
 import { FadeIn, Reveal } from '@/components/motion';
 import { Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
@@ -17,7 +18,6 @@ import { bucketFor, formatDue, toDate } from '@/lib/dates';
 import { paths } from '@/lib/paths';
 import {
   calculateGpa,
-  minutesToLabel,
   todayIndex,
   type ClassBlock,
   type Semester,
@@ -25,7 +25,7 @@ import {
   type Todo,
 } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
-import { academicClasses, classesForDay } from '@/services/timetable';
+import { academicClasses, type ResolvedClass } from '@/services/timetable';
 
 /**
  * The dashboard.
@@ -87,16 +87,31 @@ export default function Dashboard() {
   const firstName = (user?.displayName || '').split(' ')[0];
   const setUp = subjects.data.length > 0 || classes.data.length > 0;
 
+  const { width } = useWindowDimensions();
+  /**
+   * A phone that is already set up gets a one-line greeting instead of a page
+   * header. The 28pt title and its subtitle are ninety points of chrome, and
+   * ninety points is the difference between seeing your whole week and
+   * scrolling for the end of it.
+   */
+  const compact = width < 560 && setUp;
+
   return (
     <ScreenScroll>
-      <PageHeader
-        title={firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
-        subtitle={
-          setUp
-            ? 'Here is your day. Everything else is one tap away in the menu.'
-            : 'Two uploads and Notomi builds your semester — timetable, subject folders and deadlines.'
-        }
-      />
+      {compact ? (
+        <Text className="mb-4 text-[17px] font-semibold tracking-tight text-ink">
+          {firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
+        </Text>
+      ) : (
+        <PageHeader
+          title={firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
+          subtitle={
+            setUp
+              ? undefined
+              : 'Two uploads and Notomi builds your semester — timetable, subject folders and deadlines.'
+          }
+        />
+      )}
 
       {subjects.error ? (
         <View className="mb-6">
@@ -115,11 +130,12 @@ export default function Dashboard() {
         notice={importer.notice}
       />
 
-      <UpNextToday
+      <ThisWeek
         classes={liveClasses}
         todos={open}
         loading={classes.loading || todos.loading}
         configured={setUp}
+        compact={compact}
       />
 
       {currentSubjects.length > 0 ? (
@@ -184,7 +200,7 @@ function Engines({
   const compact = width < 560;
 
   return (
-    <View className="mb-8 gap-3">
+    <View className="mb-5 gap-3">
       <View className="flex-row flex-wrap gap-3">
         <EngineCard
           index={0}
@@ -258,29 +274,35 @@ function EngineCard({
           onPress={onPress}
           disabled={busy}
           className={`h-full overflow-hidden rounded-2xl border ${
-            compact ? 'gap-2 p-4' : 'gap-3 p-5'
+            compact ? 'gap-1.5 p-3.5' : 'gap-3 p-5'
           }`}
           style={{ backgroundColor: `${tint}12`, borderColor: `${tint}3D` }}
         >
-          <View
-            className={`items-center justify-center rounded-xl ${
-              compact ? 'h-10 w-10' : 'h-11 w-11'
-            }`}
-            style={{ backgroundColor: `${tint}24` }}
-          >
-            <Text className={compact ? 'text-lg' : 'text-xl'}>{emoji}</Text>
+          <View className="flex-row items-center gap-2">
+            <View
+              className={`items-center justify-center rounded-xl ${
+                compact ? 'h-9 w-9' : 'h-11 w-11'
+              }`}
+              style={{ backgroundColor: `${tint}24` }}
+            >
+              <Text className={compact ? 'text-base' : 'text-xl'}>{emoji}</Text>
+            </View>
+            {compact ? (
+              <Feather
+                name={busy ? 'loader' : icon}
+                size={13}
+                color={tint}
+                style={{ marginLeft: 'auto' }}
+              />
+            ) : null}
           </View>
 
           {compact ? (
             <>
               <Text className="text-[15px] font-bold leading-5 text-ink">{title}</Text>
-              <Text className="text-[12px] leading-4 text-ink/70">{caption}</Text>
-              <View className="mt-auto flex-row items-center gap-1.5 pt-1.5">
-                <Feather name={busy ? 'loader' : icon} size={12} color={tint} />
-                <Text className="text-[12px] font-semibold" style={{ color: tint }}>
-                  {busy ? 'Reading…' : 'Start'}
-                </Text>
-              </View>
+              <Text className="text-[12px] leading-4 text-ink/70">
+                {busy ? 'Reading your schedule…' : caption}
+              </Text>
             </>
           ) : (
             <>
@@ -304,156 +326,97 @@ function EngineCard({
  * Up next today
  * ------------------------------------------------------------------ */
 
-type Entry =
-  | { kind: 'class'; at: number; block: ClassBlock }
-  | { kind: 'task'; at: number; todo: Todo; overdue: boolean };
+type Entry = { todo: Todo; overdue: boolean };
 
 /**
- * What is left of today, classes and deadlines interleaved.
+ * The week, plus whatever is due today.
  *
- * Interleaved rather than two lists because the question is "what is next", not
- * "what kind of thing is next". Anything already finished drops off: a feed
- * still showing this morning's lecture at four in the afternoon is a timetable,
- * and there is a whole screen for that.
+ * This replaced a list of today's classes, and the reason is that a student
+ * opening the app on Sunday night wants to know what Monday looks like, not to
+ * be told Sunday is empty. The whole week fits in the space the day list took,
+ * with today highlighted and a single line saying what is on right now — so the
+ * "what next" question is still answered without scrolling for it.
  */
-function UpNextToday({
+function ThisWeek({
   classes,
   todos,
   loading,
   configured,
+  compact,
 }: {
-  classes: ClassBlock[];
+  classes: ResolvedClass[];
   todos: Todo[];
   loading: boolean;
   configured: boolean;
+  /** Drops the section heading; the week is self-evident and space is short. */
+  compact: boolean;
 }) {
   const now = new Date();
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const today = todayIndex();
 
-  const entries = useMemo(() => {
-    const rows: Entry[] = classesForDay(classes, today)
-      .filter((block) => block.endMinute > nowMinutes)
-      .map((block) => ({ kind: 'class' as const, at: block.startMinute, block }));
-
+  const due = useMemo(() => {
+    const rows: Entry[] = [];
     for (const todo of todos) {
-      const due = toDate(todo.dueDate);
-      if (!due) continue;
-      const bucket = bucketFor(due, now);
+      const date = toDate(todo.dueDate);
+      if (!date) continue;
+      const bucket = bucketFor(date, now);
       if (bucket !== 'today' && bucket !== 'overdue') continue;
-      rows.push({
-        kind: 'task',
-        // An overdue task sorts to the top of the day, where it belongs.
-        at: bucket === 'overdue' ? -1 : due.getHours() * 60 + due.getMinutes(),
-        todo,
-        overdue: bucket === 'overdue',
-      });
+      rows.push({ todo, overdue: bucket === 'overdue' });
     }
-
-    return rows.sort((a, b) => a.at - b.at).slice(0, 6);
-    // `now` is derived from render time; the other four are the real inputs.
+    // Overdue first: it is the one that changes what you do next.
+    return rows.sort((a, b) => Number(b.overdue) - Number(a.overdue)).slice(0, 3);
+    // `now` is derived from render time; todos is the real input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classes, todos, today, nowMinutes]);
+  }, [todos]);
 
   return (
-    <View className="mb-9 gap-3">
-      <View className="flex-row items-center justify-between">
-        <Text className="text-lg font-semibold tracking-tight text-ink">Up next today</Text>
-        <Link href="/timetable" asChild>
-          <Button label="Timetable" variant="ghost" size="sm" />
-        </Link>
-      </View>
+    <View className="mb-6 gap-2.5">
+      {compact ? null : (
+        <View className="flex-row items-center justify-between">
+          <Text className="text-lg font-semibold tracking-tight text-ink">Your week</Text>
+          <Link href="/timetable" asChild>
+            <Button label="Timetable" variant="ghost" size="sm" />
+          </Link>
+        </View>
+      )}
 
       {loading ? (
-        <Loading label="Checking your day…" />
-      ) : entries.length === 0 ? (
+        <Loading label="Checking your week…" />
+      ) : classes.length === 0 ? (
         <Card className="gap-1">
           <Text className="text-[15px] font-semibold text-ink">
-            {configured ? 'Nothing left today 🎉' : 'Nothing scheduled yet'}
+            {configured ? 'No classes this term' : 'No timetable yet'}
           </Text>
           <Text className="text-sm leading-5 text-muted">
             {configured
-              ? 'No more classes and no deadlines due. A good moment for a focus block.'
-              : 'Scan your schedule above and today’s classes will appear here automatically.'}
+              ? 'Switch term in the timetable, or scan this term’s schedule.'
+              : 'Scan your schedule above and your whole week appears here.'}
           </Text>
         </Card>
       ) : (
+        <>
+          <NowLine classes={classes} />
+          {/* The card is the link on a phone, where the heading that used to
+              carry one has been dropped. */}
+          <Link href="/timetable" asChild>
+            <Pressable accessibilityRole="link" accessibilityLabel="Open your timetable">
+              <WeekOverview classes={classes} />
+            </Pressable>
+          </Link>
+        </>
+      )}
+
+      {due.length > 0 ? (
         <Card className="gap-0 p-0">
-          {entries.map((entry, index) =>
-            entry.kind === 'class' ? (
-              <ClassRow
-                key={`class-${entry.block.id}`}
-                block={entry.block}
-                nowMinutes={nowMinutes}
-                first={index === 0}
-              />
-            ) : (
-              <TaskRow key={`task-${entry.todo.id}`} entry={entry} first={index === 0} />
-            )
-          )}
+          {due.map((entry, index) => (
+            <TaskRow key={entry.todo.id} entry={entry} first={index === 0} />
+          ))}
         </Card>
-      )}
+      ) : null}
     </View>
   );
 }
 
-function ClassRow({
-  block,
-  nowMinutes,
-  first,
-}: {
-  block: ClassBlock;
-  nowMinutes: number;
-  first: boolean;
-}) {
-  const live = block.startMinute <= nowMinutes && block.endMinute > nowMinutes;
-  const away = block.startMinute - nowMinutes;
-
-  const body = (
-    <View
-      className={`flex-row items-center gap-3.5 px-5 py-4 ${first ? '' : 'border-t border-line'}`}
-    >
-      <View className="h-10 w-1 rounded-full" style={{ backgroundColor: block.color }} />
-
-      <View className="flex-1 gap-0.5">
-        <Text className="text-[15px] font-semibold leading-5 text-ink" numberOfLines={2}>
-          {block.subjectName || block.title}
-        </Text>
-        <Text className="text-xs text-muted" numberOfLines={1}>
-          {[
-            `${minutesToLabel(block.startMinute)}–${minutesToLabel(block.endMinute)}`,
-            block.venue,
-            block.kind,
-          ]
-            .filter(Boolean)
-            .join('  ·  ')}
-        </Text>
-      </View>
-
-      {live ? (
-        <View className="shrink-0 rounded-full bg-accent px-2 py-1">
-          <Text className="text-[10px] font-bold uppercase tracking-wider text-paper">Now</Text>
-        </View>
-      ) : (
-        <Text className="shrink-0 text-[13px] font-semibold text-muted">
-          {away < 60 ? `in ${away} min` : minutesToLabel(block.startMinute)}
-        </Text>
-      )}
-    </View>
-  );
-
-  if (!block.subjectId) return body;
-
-  return (
-    <Link href={`/library/${block.subjectId}`} asChild>
-      <Pressable accessibilityRole="link" accessibilityLabel={`Open ${block.title}`}>
-        {body}
-      </Pressable>
-    </Link>
-  );
-}
-
-function TaskRow({ entry, first }: { entry: Extract<Entry, { kind: 'task' }>; first: boolean }) {
+function TaskRow({ entry, first }: { entry: Entry; first: boolean }) {
   const due = toDate(entry.todo.dueDate);
 
   return (
@@ -461,7 +424,7 @@ function TaskRow({ entry, first }: { entry: Extract<Entry, { kind: 'task' }>; fi
       <Pressable
         accessibilityRole="link"
         accessibilityLabel={`Open ${entry.todo.title}`}
-        className={`flex-row items-center gap-3.5 px-5 py-4 ${first ? '' : 'border-t border-line'}`}
+        className={`flex-row items-center gap-3 px-4 py-3 ${first ? '' : 'border-t border-line'}`}
       >
         <View
           className={`h-8 w-8 items-center justify-center rounded-lg ${
@@ -476,7 +439,7 @@ function TaskRow({ entry, first }: { entry: Extract<Entry, { kind: 'task' }>; fi
         </View>
 
         <View className="flex-1 gap-0.5">
-          <Text className="text-[15px] font-medium text-ink" numberOfLines={1}>
+          <Text className="text-[14px] font-medium leading-5 text-ink" numberOfLines={2}>
             {entry.todo.title}
           </Text>
           {entry.todo.subjectName ? (
@@ -486,7 +449,11 @@ function TaskRow({ entry, first }: { entry: Extract<Entry, { kind: 'task' }>; fi
           ) : null}
         </View>
 
-        <Text className={`text-[13px] font-semibold ${entry.overdue ? 'text-rose' : 'text-muted'}`}>
+        <Text
+          className={`shrink-0 text-[13px] font-semibold ${
+            entry.overdue ? 'text-rose' : 'text-muted'
+          }`}
+        >
           {formatDue(due)}
         </Text>
       </Pressable>
@@ -540,7 +507,7 @@ function QuickLog({
   if (!active) return null;
 
   return (
-    <View className="mb-9 gap-3">
+    <View className="mb-6 gap-3">
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}

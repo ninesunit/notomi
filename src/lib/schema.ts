@@ -300,6 +300,17 @@ export function minutesToLabel(minutes: number): string {
 }
 
 /**
+ * "9:00 AM" — the unambiguous form, for anywhere a student is setting a time
+ * rather than reading one. minutesToLabel is the compact form for display.
+ */
+export function minutesTo12h(minutes: number): string {
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const display = hour % 12 === 0 ? 12 : hour % 12;
+  return `${display}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+/**
  * Parses a clock time into minutes from midnight.
  *
  * Deliberately forgiving: this reads both what a student types into a field and

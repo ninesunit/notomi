@@ -67,11 +67,18 @@ export function TermFilter({
     [subjects, semesters]
   );
 
-  // Nothing to scope by: one term and no strays is just "all".
+  /**
+   * Nothing to scope by, so nothing to show.
+   *
+   * One term with everything filed under it means "All" and that term are the
+   * same list, and a filter offering one real choice is a row of chrome the
+   * week below it needs the space for.
+   */
   if (semesters.length === 0 && unassigned === subjects.length) return null;
+  if (semesters.length <= 1 && unassigned === 0) return null;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5">
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
       <View className="flex-row gap-1.5 pr-4">
         <Chip
           label="All"
