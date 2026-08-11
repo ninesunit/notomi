@@ -10,7 +10,6 @@ import { Slot, usePathname } from 'expo-router';
 import { Copilot } from '@/components/Copilot';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
-import { MicrosoftPull } from '@/components/MicrosoftPull';
 import { useSafeArea } from '@/hooks/useSafeArea';
 import { Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/hooks/useAuth';
@@ -113,7 +112,6 @@ export default function WorkspaceLayout() {
               )}
 
               <IngestBanner />
-              <MicrosoftPull />
 
               {/* min-h-0 lets this shrink below its content so the banner is
                   never pushed off-screen and the scroller keeps its bounds. */}
