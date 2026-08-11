@@ -1160,6 +1160,9 @@ ${input.text.slice(0, MAX_CONTEXT_CHARS)}`,
  * question from how the app does it — and only one of those two should change
  * when Firestore does.
  */
+/** How long any single round may take before the assistant gives up. */
+const COPILOT_TIMEOUT_MS = 25_000;
+
 export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
   {
     functionDeclarations: [
@@ -1290,8 +1293,27 @@ ${input.brief}`,
 
   const actions: CopilotAction[] = [];
 
+  /**
+   * A bounded wait.
+   *
+   * A request to an unreachable service does not fail quickly — it hangs until
+   * the socket gives up, which can be the better part of a minute. Somebody
+   * walking between classes will have put the phone away long before then, so
+   * the assistant admits defeat at a length a person will actually wait.
+   */
+  const deadline = <T>(work: Promise<T>): Promise<T> =>
+    Promise.race([
+      work,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('That took too long. Check your connection and try again.')),
+          COPILOT_TIMEOUT_MS
+        )
+      ),
+    ]);
+
   try {
-    let response = (await chat.sendMessage(input.message)).response;
+    let response = (await deadline(chat.sendMessage(input.message))).response;
 
     for (let round = 0; round < 4; round += 1) {
       const calls = response.functionCalls();
@@ -1318,7 +1340,7 @@ ${input.brief}`,
         });
       }
 
-      response = (await chat.sendMessage(replies)).response;
+      response = (await deadline(chat.sendMessage(replies))).response;
     }
 
     return { reply: response.text().trim(), actions };
