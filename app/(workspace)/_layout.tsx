@@ -1,16 +1,16 @@
-import { ActivityIndicator, Platform, Text, useWindowDimensions, View } from 'react-native';
-import { Slot } from 'expo-router';
-import { useSafeArea } from '@/hooks/useSafeArea';
-import { GlobalSearch } from '@/components/GlobalSearch';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, useWindowDimensions, View } from 'react-native';
+import { Slot, usePathname } from 'expo-router';
+import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
-import { Logo } from '@/components/Logo';
-import { BottomTabs, Sidebar } from '@/components/Sidebar';
+import { useSafeArea } from '@/hooks/useSafeArea';
+import { Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/hooks/useAuth';
 import { IngestProvider } from '@/hooks/useIngest';
 import { ReminderProvider } from '@/hooks/useReminders';
 import { UndoProvider } from '@/hooks/useUndo';
 
-/** Below this the rail becomes a bottom bar (iPhone portrait, split-view iPad). */
+/** Below this the rail becomes a swipeable drawer (iPhone portrait, split-view iPad). */
 export const RAIL_BREAKPOINT = 900;
 
 /**
@@ -37,7 +37,25 @@ export default function WorkspaceLayout() {
   const { width } = useWindowDimensions();
   const insets = useSafeArea();
   const { user } = useAuth();
+  const pathname = usePathname();
   const showRail = width >= RAIL_BREAKPOINT;
+
+  const [drawer, setDrawer] = useState(false);
+
+  /**
+   * Navigating closes the drawer.
+   *
+   * Doing it here rather than in each row's onPress matters: `<Link asChild>`
+   * injects its own onPress, and a handler of ours in that slot would replace
+   * expo-router's and stop the link navigating at all.
+   */
+  useEffect(() => setDrawer(false), [pathname]);
+
+  // The rail and the drawer are the same navigation in two shapes; only one can
+  // be on screen, so a resize past the breakpoint has to dismiss the drawer.
+  useEffect(() => {
+    if (showRail) setDrawer(false);
+  }, [showRail]);
 
   // Belt-and-braces against a deep link rendering a screen that calls useUid()
   // before the gate in app/_layout.tsx has settled.
@@ -52,57 +70,43 @@ export default function WorkspaceLayout() {
   return (
     <IngestProvider>
       <UndoProvider>
-      <ReminderProvider>
-      {/* No padding on the root: the top bar carries the inset itself so its
-          own background fills the notch area, rather than leaving a bare strip
-          of paper above a floating bar. */}
-      <View className={`w-full h-full min-h-screen bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}>
-        {showRail ? <Sidebar /> : null}
-
-        <View
-          className={`flex-1 min-w-0 h-full bg-paper ${Platform.OS === 'web' ? 'overflow-hidden' : ''}`}
-        >
-          {/* Without the rail there is nowhere else for the wordmark or search
-              to live, so a compact bar carries both. */}
-          {showRail ? null : (
-            <View
-              className="border-b border-line bg-sand"
-              style={{
-                paddingTop: insets.top,
-                paddingLeft: insets.left,
-                paddingRight: insets.right,
-              }}
-            >
-              <View className="flex-row items-center gap-3 px-4 py-2.5">
-                <Logo size={28} />
-                <View className="flex-1">
-                  <GlobalSearch />
-                </View>
-              </View>
-            </View>
-          )}
-
-          <IngestBanner />
-          {/* min-h-0 lets this shrink below its content so the banner is never
-              pushed off-screen and the scroller keeps its own bounds. */}
-          <View className="flex-1 min-h-0">
-            <Slot />
-          </View>
-        </View>
-
-        {showRail ? null : (
-          // A minimum of 8px under the bar so it never sits flush on a device
-          // that reports no inset, and the full inset on one that does — the
-          // iPhone home indicator otherwise overlaps the last row of labels.
+        <ReminderProvider>
+          {/* No padding on the root: the top bar carries the inset itself so
+              its own background fills the notch area, rather than leaving a
+              bare strip of paper above a floating bar. */}
           <View
-            style={{ paddingBottom: Math.max(insets.bottom, 8) }}
-            className="bg-sand"
+            className={`w-full h-full min-h-screen bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}
           >
-            <BottomTabs />
+            {showRail ? <Sidebar /> : null}
+
+            <View
+              className={`flex-1 min-w-0 h-full bg-paper ${
+                Platform.OS === 'web' ? 'overflow-hidden' : ''
+              }`}
+              style={showRail ? { paddingRight: insets.right } : undefined}
+            >
+              {showRail ? null : <MobileTopBar onMenu={() => setDrawer(true)} />}
+
+              <IngestBanner />
+
+              {/* min-h-0 lets this shrink below its content so the banner is
+                  never pushed off-screen and the scroller keeps its bounds. */}
+              {showRail ? (
+                <View className="flex-1 min-h-0">
+                  <Slot />
+                </View>
+              ) : (
+                <EdgeSwipeArea onOpen={() => setDrawer(true)}>
+                  <Slot />
+                </EdgeSwipeArea>
+              )}
+            </View>
+
+            {showRail ? null : (
+              <NavDrawer open={drawer} onClose={() => setDrawer(false)} pathname={pathname} />
+            )}
           </View>
-        )}
-      </View>
-      </ReminderProvider>
+        </ReminderProvider>
       </UndoProvider>
     </IngestProvider>
   );

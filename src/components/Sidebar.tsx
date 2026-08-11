@@ -1,12 +1,12 @@
-import { useRef, useState } from 'react';
-import { Animated, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Link, usePathname } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { feedback, isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
+import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
 import { useAuth } from '@/hooks/useAuth';
 import { GlobalSearch } from './GlobalSearch';
 import { Logo } from './Logo';
-import { isActive, NAV_ITEMS, TAB_ITEMS } from './nav';
+import { isActive, NAV_ITEMS } from './nav';
 
 /**
  * Fixed-width, full-height rail. It must never grow or shrink with content —
@@ -106,80 +106,5 @@ export function Sidebar() {
         </View>
       </View>
     </View>
-  );
-}
-
-/**
- * Compact bottom bar used instead of the rail on phone-width viewports.
- *
- * The selected tab gets a filled pill behind its icon and a spring under the
- * finger — the two details that separate a native tab bar from a row of links.
- */
-export function BottomTabs() {
-  const pathname = usePathname();
-
-  return (
-    <View className="w-full shrink-0 flex-row border-t border-line bg-sand pb-1">
-      {TAB_ITEMS.map((item) => (
-        <BottomTab key={item.href} item={item} active={isActive(pathname, item.href)} />
-      ))}
-    </View>
-  );
-}
-
-function BottomTab({
-  item,
-  active,
-}: {
-  item: (typeof TAB_ITEMS)[number];
-  active: boolean;
-}) {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const spring = (toValue: number) =>
-    Animated.spring(scale, {
-      toValue,
-      speed: 50,
-      bounciness: 0,
-      useNativeDriver: Platform.OS !== 'web',
-    }).start();
-
-  return (
-    <Link href={item.href} asChild>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityState={{ selected: active }}
-        // The cue rides on press-in, not press: expo-router owns onPress here
-        // through `asChild`, and setting our own would race with navigation.
-        onPressIn={() => {
-          feedback('tap', 6);
-          spring(0.92);
-        }}
-        onPressOut={() => spring(1)}
-        className="flex-1 items-center py-1.5"
-      >
-        {/* The transform lives on the Animated.View and the utilities on a
-            plain View inside it: NativeWind does not apply className to an
-            Animated.View, so a styled one renders unstyled. */}
-        <Animated.View style={{ transform: [{ scale }] }}>
-          <View className="items-center gap-1">
-            <View
-              className={`h-7 w-12 items-center justify-center rounded-full ${
-                active ? 'bg-accent-soft' : ''
-              }`}
-            >
-              <Feather name={item.icon} size={18} color={active ? '#B4552D' : '#6F6A5F'} />
-            </View>
-            <Text
-              className={`text-[11px] ${
-                active ? 'font-semibold text-accent' : 'font-medium text-muted'
-              }`}
-            >
-              {item.shortLabel}
-            </Text>
-          </View>
-        </Animated.View>
-      </Pressable>
-    </Link>
   );
 }

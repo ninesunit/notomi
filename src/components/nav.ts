@@ -9,25 +9,37 @@ export type NavItem = {
 
 export const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Dashboard', shortLabel: 'Home', icon: 'home' },
-  { href: '/library', label: 'Library', shortLabel: 'Library', icon: 'folder' },
   { href: '/timetable', label: 'Timetable', shortLabel: 'Classes', icon: 'grid' },
+  { href: '/library', label: 'Library', shortLabel: 'Library', icon: 'folder' },
+  { href: '/program', label: 'Program structure', shortLabel: 'Program', icon: 'layers' },
+  { href: '/todos', label: 'Tasks', shortLabel: 'Tasks', icon: 'check-square' },
+  { href: '/calendar', label: 'Calendar', shortLabel: 'Calendar', icon: 'calendar' },
   { href: '/study', label: 'Study Center', shortLabel: 'Study', icon: 'zap' },
   { href: '/focus', label: 'Focus', shortLabel: 'Focus', icon: 'target' },
-  { href: '/todos', label: 'To-dos', shortLabel: 'To-dos', icon: 'check-square' },
   { href: '/capture', label: 'Capture', shortLabel: 'Capture', icon: 'camera' },
-  { href: '/calendar', label: 'Calendar', shortLabel: 'Calendar', icon: 'calendar' },
-  { href: '/program', label: 'Program', shortLabel: 'Program', icon: 'layers' },
+  { href: '/settings', label: 'Settings', shortLabel: 'Settings', icon: 'settings' },
 ];
 
 /**
- * The bottom bar holds fewer items than the rail — six 60px tabs already fill a
- * phone. Calendar, Program and Capture are cut: the first two are reached from
- * the dashboard, and Capture is a home-screen shortcut, which is the whole
- * point of it.
+ * The drawer groups rather than lists.
+ *
+ * Nine flat rows read as a wall; split into what a student is doing right now
+ * versus what they study with, each group is scannable in one glance. Settings
+ * is deliberately absent — it lives beside the profile at the foot of the
+ * drawer, which is where people look for it.
  */
-export const TAB_ITEMS: NavItem[] = NAV_ITEMS.filter(
-  (item) => !['/calendar', '/program', '/capture'].includes(item.href)
-);
+export const DRAWER_SECTIONS: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'Study',
+    items: NAV_ITEMS.filter((item) =>
+      ['/', '/timetable', '/library', '/program', '/todos', '/calendar'].includes(item.href)
+    ),
+  },
+  {
+    title: 'Tools',
+    items: NAV_ITEMS.filter((item) => ['/study', '/focus', '/capture'].includes(item.href)),
+  },
+];
 
 /** `/` only matches exactly; everything else matches its subtree. */
 export function isActive(pathname: string, href: string): boolean {

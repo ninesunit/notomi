@@ -3,35 +3,39 @@ import { Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
-import { CountdownChip } from '@/components/Countdown';
+import { ImportReview } from '@/components/ImportReview';
 import { LogComposer } from '@/components/LectureLog';
-import { ProgramMap } from '@/components/ProgramMap';
-import { RemindersCard } from '@/components/Reminders';
-import { CardGrid, GridItem, SubjectCard } from '@/components/SubjectCard';
 import { ScreenScroll } from '@/components/ScreenScroll';
-import { SubjectModal } from '@/components/SubjectModal';
 import { defaultScope, filterByTerm } from '@/components/TermFilter';
-import { UploadButton } from '@/components/UploadButton';
-import { Reveal } from '@/components/motion';
-import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
+import { FadeIn, Reveal } from '@/components/motion';
+import { Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { useIngest } from '@/hooks/useIngest';
-import { bucketFor, countdown, formatDue, toDate } from '@/lib/dates';
-import { getDb } from '@/services/firebase';
+import { useScheduleImport } from '@/hooks/useScheduleImport';
+import { bucketFor, formatDue, toDate } from '@/lib/dates';
 import { paths } from '@/lib/paths';
 import {
+  calculateGpa,
   minutesToLabel,
   todayIndex,
   type ClassBlock,
   type Semester,
-  type StudySession,
   type Subject,
   type Todo,
 } from '@/lib/schema';
-import { summarizeStreak } from '@/services/sessions';
+import { getDb } from '@/services/firebase';
 import { academicClasses, classesForDay } from '@/services/timetable';
 
+/**
+ * The dashboard.
+ *
+ * Three things, in the order a student needs them: the two AI engines that set
+ * the app up, what is happening today, and how the term is going. Everything
+ * else — the subject grid, the program map, the metric row, the reminder
+ * settings — moved to the screen that owns it. A dashboard that repeats every
+ * other screen is a table of contents, and nobody reads those twice.
+ */
 export default function Dashboard() {
   const uid = useUid();
   const { user } = useAuth();
@@ -50,24 +54,14 @@ export default function Dashboard() {
    */
   const todos = useCollection<Todo>(query(paths.todos(db, uid), orderBy('dueDate', 'asc')), [uid]);
   const classes = useCollection<ClassBlock>(paths.classes(db, uid), [uid]);
-  const sessions = useCollection<StudySession>(paths.sessions(db, uid), [uid]);
   const semesters = useCollection<Semester>(
     query(paths.semesters(db, uid), orderBy('order', 'asc')),
     [uid]
   );
 
-  const [editing, setEditing] = useState<Subject | null>(null);
   const { start } = useIngest();
+  const importer = useScheduleImport(subjects.data);
 
-  const open = useMemo(() => todos.data.filter((todo) => !todo.isCompleted), [todos.data]);
-
-  const streak = useMemo(() => summarizeStreak(sessions.data), [sessions.data]);
-  const today = todayIndex();
-
-  /**
-   * Only classes tied to a live subject in the current term. A stale block is
-   * not a real class, and neither is last semester's Monday lecture.
-   */
   const scope = useMemo(
     () => defaultScope(subjects.data, semesters.data),
     [subjects.data, semesters.data]
@@ -79,63 +73,29 @@ export default function Dashboard() {
     [subjects.data, scope, semesters.data]
   );
 
+  /**
+   * Only classes tied to a live subject in the current term. A block whose
+   * subject was deleted is not a real class, and neither is last semester's
+   * Monday lecture.
+   */
   const liveClasses = useMemo(
     () => academicClasses(classes.data, currentSubjects),
     [classes.data, currentSubjects]
   );
 
-  const scopeName =
-    scope === 'all'
-      ? null
-      : (semesters.data.find((semester) => semester.id === scope)?.name ?? null);
-  const todaysClasses = useMemo(() => classesForDay(liveClasses, today), [liveClasses, today]);
-  const tomorrowsClasses = useMemo(
-    () => classesForDay(liveClasses, (today + 1) % 7),
-    [liveClasses, today]
-  );
-
-  /**
-   * The next exam or major assessment, which is what a student actually wants
-   * counted down. A weekly reading with a date is not worth a banner.
-   */
-  const nextExam = useMemo(() => {
-    const now = new Date();
-    return open
-      .map((todo) => ({ todo, due: toDate(todo.dueDate) }))
-      .filter(
-        ({ todo, due }) =>
-          due !== null && due > now && /exam|final|midterm|test|paper/i.test(todo.title)
-      )
-      .sort((a, b) => (a.due?.getTime() ?? 0) - (b.due?.getTime() ?? 0))[0];
-  }, [open]);
-
-  const upcoming = useMemo(
-    () =>
-      open
-        .map((todo) => ({ todo, due: toDate(todo.dueDate) }))
-        .filter(({ due }) => due !== null)
-        .slice(0, 5),
-    [open]
-  );
-
-  const overdueCount = useMemo(
-    () => open.filter((todo) => bucketFor(toDate(todo.dueDate)) === 'overdue').length,
-    [open]
-  );
-
-  const sourceCount = useMemo(
-    () => subjects.data.reduce((total, subject) => total + (subject.documentCount ?? 0), 0),
-    [subjects.data]
-  );
-
+  const open = useMemo(() => todos.data.filter((todo) => !todo.isCompleted), [todos.data]);
   const firstName = (user?.displayName || '').split(' ')[0];
+  const setUp = subjects.data.length > 0 || classes.data.length > 0;
 
   return (
     <ScreenScroll>
       <PageHeader
         title={firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
-        subtitle="Upload a syllabus or lecture and Notomi will file it, summarise it, and pull out your deadlines."
-        actions={<UploadButton />}
+        subtitle={
+          setUp
+            ? 'Here is your day. Everything else is one tap away in the menu.'
+            : 'Two uploads and Notomi builds your semester — timetable, subject folders and deadlines.'
+        }
       />
 
       {subjects.error ? (
@@ -147,438 +107,357 @@ export default function Dashboard() {
         </View>
       ) : null}
 
-      {/* The hero answers the question a student actually opens the app with:
-          where do I need to be, and when. */}
-      <ClassHero classes={todaysClasses} tomorrow={tomorrowsClasses} loading={classes.loading} />
-
-      <MetricPills
-        streak={streak.current}
-        classesToday={todaysClasses.length}
-        pending={open.length}
-        overdue={overdueCount}
+      <Engines
+        scanning={importer.scanning}
+        onScan={() => void importer.scan()}
+        onUpload={() => void start()}
+        error={importer.error}
+        notice={importer.notice}
       />
 
-      <QuickActions onUpload={() => void start()} />
+      <UpNextToday
+        classes={liveClasses}
+        todos={open}
+        loading={classes.loading || todos.loading}
+        configured={setUp}
+      />
 
-      {/* The log sits high on the page on purpose: it is used walking out of a
-          lecture theatre, and anything below the fold does not get used then. */}
       {currentSubjects.length > 0 ? (
         <QuickLog uid={uid} subjects={currentSubjects} classes={liveClasses} />
       ) : null}
 
-      <RemindersCard />
-
-      {nextExam?.due ? <ExamBanner title={nextExam.todo.title} due={nextExam.due} /> : null}
-
-      {semesters.data.length > 0 ? (
-        <View className="mb-8 gap-3">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-lg font-semibold tracking-tight text-ink">Where you are</Text>
-            <Link href="/program" asChild>
-              <Button label="Full map" variant="ghost" size="sm" />
-            </Link>
-          </View>
-          <ProgramMap
-            compact
-            semesters={semesters.data}
-            subjects={subjects.data}
-            classes={classes.data}
-          />
-        </View>
-      ) : null}
-
-      <View className="mb-6 flex-row items-center justify-between">
-        <View className="flex-1">
-          <Text className="text-lg font-semibold tracking-tight text-ink">
-            {scopeName ? 'This term' : 'Your subjects'}
-          </Text>
-          {scopeName ? <Text className="text-xs text-muted">{scopeName}</Text> : null}
-        </View>
-        {subjects.data.length > 0 ? (
-          <Link href="/library" asChild>
-            <Button
-              label={
-                subjects.data.length > currentSubjects.length
-                  ? `All ${subjects.data.length} subjects`
-                  : 'View library'
-              }
-              variant="ghost"
-              size="sm"
-            />
-          </Link>
-        ) : null}
-      </View>
-
-      {subjects.loading ? (
-        <Loading label="Loading your subjects…" />
-      ) : currentSubjects.length === 0 ? (
-        <EmptyState
-          icon="upload-cloud"
-          title={subjects.data.length > 0 ? 'Nothing filed under this term' : 'No subjects yet'}
-          body={
-            subjects.data.length > 0
-              ? 'You have subjects on other terms. Assign them to this one in the program planner, or open the library to see everything.'
-              : 'Upload a PDF or DOCX. Notomi reads it on your device, then Gemini names the subject, summarises it and extracts every deadline it can find.'
-          }
-          action={
-            subjects.data.length > 0 ? (
-              <Link href="/program" asChild>
-                <Button label="Open the planner" variant="secondary" />
-              </Link>
-            ) : (
-              <UploadButton label="Upload your first document" />
-            )
-          }
-        />
-      ) : (
-        <CardGrid>
-          {currentSubjects.map((subject, index) => (
-            <GridItem key={subject.id} index={index}>
-              <SubjectCard subject={subject} onEdit={() => setEditing(subject)} />
-            </GridItem>
-          ))}
-        </CardGrid>
-      )}
-
-      <View className="mt-10 mb-6 flex-row items-center justify-between">
-        <Text className="text-lg font-semibold tracking-tight text-ink">Coming up</Text>
-        <Link href="/todos" asChild>
-          <Button label="All to-dos" variant="ghost" size="sm" />
-        </Link>
-      </View>
-
-      {upcoming.length === 0 ? (
-        <Card className="items-start">
-          <Text className="text-sm text-muted">
-            Nothing scheduled. Deadlines found in an uploaded syllabus land here automatically.
-          </Text>
-        </Card>
-      ) : (
-        <Card className="gap-0 p-0">
-          {upcoming.map(({ todo, due }, index) => {
-            const bucket = bucketFor(due);
-            return (
-              <View
-                key={todo.id}
-                className={`flex-row items-center gap-3 px-5 py-3.5 ${
-                  index > 0 ? 'border-t border-line' : ''
-                }`}
-              >
-                <View
-                  className={`h-2 w-2 rounded-full ${
-                    bucket === 'overdue' ? 'bg-rose' : bucket === 'today' ? 'bg-accent' : 'bg-subtle'
-                  }`}
-                />
-                <View className="flex-1 gap-0.5">
-                  <Text className="text-[15px] font-medium text-ink" numberOfLines={1}>
-                    {todo.title}
-                  </Text>
-                  {todo.subjectName ? (
-                    <Text className="text-xs text-subtle" numberOfLines={1}>
-                      {todo.subjectName}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text
-                  className={`text-[13px] font-medium ${
-                    bucket === 'overdue' ? 'text-rose' : 'text-muted'
-                  }`}
-                >
-                  {formatDue(due)}
-                </Text>
-              </View>
-            );
-          })}
-        </Card>
-      )}
-
-      <SubjectModal
-        uid={uid}
-        subject={editing}
-        visible={editing !== null}
-        onClose={() => setEditing(null)}
+      <TermProgress
+        subjects={currentSubjects}
+        semesters={semesters.data}
+        scope={scope}
+        classes={liveClasses}
       />
+
+      {importer.staged ? (
+        <ImportReview
+          uid={uid}
+          rows={importer.staged.rows}
+          skipped={importer.staged.skipped}
+          semesters={semesters.data}
+          onClose={() => importer.setStaged(null)}
+          onDone={importer.describe}
+        />
+      ) : null}
     </ScreenScroll>
   );
 }
 
 /* ------------------------------------------------------------------ *
- * Widgets
+ * The engines
  * ------------------------------------------------------------------ */
 
 /**
- * The hero: what is happening with classes right now.
+ * The two things that do the work.
  *
- * Three states, resolved against the wall clock — before the next class, inside
- * one, or finished for the day. Each says something different and offers a
- * different next step, which is the point: a card that always says the same
- * thing is a header, not a hero.
+ * Given the top of the screen because they are what makes Notomi worth
+ * installing: one screenshot builds the timetable, the library and the program
+ * map at once, and one syllabus fills the calendar. Everything else in the app
+ * is downstream of these two buttons.
  */
-function ClassHero({
+function Engines({
+  scanning,
+  onScan,
+  onUpload,
+  error,
+  notice,
+}: {
+  scanning: boolean;
+  onScan: () => void;
+  onUpload: () => void;
+  error: string | null;
+  notice: string | null;
+}) {
+  return (
+    <View className="mb-9 gap-3">
+      <View className="flex-row flex-wrap gap-3">
+        <EngineCard
+          index={0}
+          emoji="📸"
+          title="Scan schedule"
+          body="Upload a screenshot of your weekly timetable. Gemini reads it, you check it, and it builds your subjects, classes and program in one go."
+          action={scanning ? 'Reading your schedule…' : 'Start with a screenshot'}
+          icon="camera"
+          busy={scanning}
+          tint="#B4552D"
+          onPress={onScan}
+        />
+        <EngineCard
+          index={1}
+          emoji="📄"
+          title="Upload syllabus"
+          body="Drop in a course outline or lecture slides. Notomi reads them on your device, then pulls out the topics, key dates and deadlines."
+          action="Choose a document"
+          icon="upload-cloud"
+          tint="#4C5FA8"
+          onPress={onUpload}
+        />
+      </View>
+
+      {error ? <Notice title="Could not read that timetable" body={error} /> : null}
+      {notice ? <Notice tone="pine" title="Your semester is set up" body={notice} /> : null}
+    </View>
+  );
+}
+
+function EngineCard({
+  index,
+  emoji,
+  title,
+  body,
+  action,
+  icon,
+  tint,
+  busy = false,
+  onPress,
+}: {
+  index: number;
+  emoji: string;
+  title: string;
+  body: string;
+  action: string;
+  icon: React.ComponentProps<typeof Feather>['name'];
+  tint: string;
+  busy?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <View className="flex-1 grow" style={{ minWidth: 250, flexBasis: 250 }}>
+      <FadeIn index={index}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={title}
+          accessibilityState={{ busy }}
+          onPress={onPress}
+          disabled={busy}
+          className="h-full gap-3 overflow-hidden rounded-2xl border p-5"
+          style={{ backgroundColor: `${tint}12`, borderColor: `${tint}3D` }}
+        >
+          <View className="flex-row items-center gap-3">
+            <View
+              className="h-11 w-11 items-center justify-center rounded-xl"
+              style={{ backgroundColor: `${tint}24` }}
+            >
+              <Text className="text-xl">{emoji}</Text>
+            </View>
+            <Text className="flex-1 text-[17px] font-bold leading-6 text-ink">{title}</Text>
+          </View>
+
+          <Text className="text-[13px] leading-5 text-ink/70">{body}</Text>
+
+          <View className="mt-auto flex-row items-center gap-2 pt-1">
+            <Feather name={busy ? 'loader' : icon} size={14} color={tint} />
+            <Text className="text-[13px] font-semibold" style={{ color: tint }}>
+              {action}
+            </Text>
+          </View>
+        </Pressable>
+      </FadeIn>
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Up next today
+ * ------------------------------------------------------------------ */
+
+type Entry =
+  | { kind: 'class'; at: number; block: ClassBlock }
+  | { kind: 'task'; at: number; todo: Todo; overdue: boolean };
+
+/**
+ * What is left of today, classes and deadlines interleaved.
+ *
+ * Interleaved rather than two lists because the question is "what is next", not
+ * "what kind of thing is next". Anything already finished drops off: a feed
+ * still showing this morning's lecture at four in the afternoon is a timetable,
+ * and there is a whole screen for that.
+ */
+function UpNextToday({
   classes,
-  tomorrow,
+  todos,
   loading,
+  configured,
 }: {
   classes: ClassBlock[];
-  tomorrow: ClassBlock[];
+  todos: Todo[];
   loading: boolean;
+  configured: boolean;
 }) {
   const now = new Date();
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const today = todayIndex();
 
-  const inProgress = classes.find(
-    (block) => block.startMinute <= nowMinutes && block.endMinute > nowMinutes
-  );
-  const next = classes.find((block) => block.startMinute > nowMinutes);
+  const entries = useMemo(() => {
+    const rows: Entry[] = classesForDay(classes, today)
+      .filter((block) => block.endMinute > nowMinutes)
+      .map((block) => ({ kind: 'class' as const, at: block.startMinute, block }));
 
-  if (loading) {
-    return (
-      <View className="mb-5 h-28 justify-center rounded-2xl border border-line bg-surface px-5">
-        <Text className="text-sm text-muted">Checking your timetable…</Text>
+    for (const todo of todos) {
+      const due = toDate(todo.dueDate);
+      if (!due) continue;
+      const bucket = bucketFor(due, now);
+      if (bucket !== 'today' && bucket !== 'overdue') continue;
+      rows.push({
+        kind: 'task',
+        // An overdue task sorts to the top of the day, where it belongs.
+        at: bucket === 'overdue' ? -1 : due.getHours() * 60 + due.getMinutes(),
+        todo,
+        overdue: bucket === 'overdue',
+      });
+    }
+
+    return rows.sort((a, b) => a.at - b.at).slice(0, 6);
+    // `now` is derived from render time; the other four are the real inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classes, todos, today, nowMinutes]);
+
+  return (
+    <View className="mb-9 gap-3">
+      <View className="flex-row items-center justify-between">
+        <Text className="text-lg font-semibold tracking-tight text-ink">Up next today</Text>
+        <Link href="/timetable" asChild>
+          <Button label="Timetable" variant="ghost" size="sm" />
+        </Link>
       </View>
-    );
-  }
 
-  if (classes.length === 0) {
-    return (
-      <Link href="/timetable" asChild>
-        <Pressable
-          accessibilityRole="link"
-          className="mb-5 flex-row items-center gap-4 rounded-2xl border border-dashed border-line bg-surface p-5"
-        >
-          <Text className="text-2xl">🗓️</Text>
-          <View className="flex-1 gap-0.5">
-            <Text className="text-[15px] font-semibold text-ink">No classes today</Text>
-            <Text className="text-[13px] text-muted">
-              Scan a screenshot of your schedule to fill in your week.
-            </Text>
-          </View>
-          <Feather name="chevron-right" size={16} color="#9A9488" />
-        </Pressable>
-      </Link>
-    );
-  }
-
-  if (inProgress) {
-    const remaining = inProgress.endMinute - nowMinutes;
-    return (
-      <View
-        className="mb-5 overflow-hidden rounded-2xl border p-5"
-        style={{ backgroundColor: `${inProgress.color}1A`, borderColor: `${inProgress.color}59` }}
-      >
-        <View className="flex-row items-center gap-2">
-          <View className="h-2 w-2 rounded-full" style={{ backgroundColor: inProgress.color }} />
-          <Text className="text-[11px] font-bold uppercase tracking-wider" style={{ color: inProgress.color }}>
-            In class now
+      {loading ? (
+        <Loading label="Checking your day…" />
+      ) : entries.length === 0 ? (
+        <Card className="gap-1">
+          <Text className="text-[15px] font-semibold text-ink">
+            {configured ? 'Nothing left today 🎉' : 'Nothing scheduled yet'}
           </Text>
-        </View>
+          <Text className="text-sm leading-5 text-muted">
+            {configured
+              ? 'No more classes and no deadlines due. A good moment for a focus block.'
+              : 'Scan your schedule above and today’s classes will appear here automatically.'}
+          </Text>
+        </Card>
+      ) : (
+        <Card className="gap-0 p-0">
+          {entries.map((entry, index) =>
+            entry.kind === 'class' ? (
+              <ClassRow
+                key={`class-${entry.block.id}`}
+                block={entry.block}
+                nowMinutes={nowMinutes}
+                first={index === 0}
+              />
+            ) : (
+              <TaskRow key={`task-${entry.todo.id}`} entry={entry} first={index === 0} />
+            )
+          )}
+        </Card>
+      )}
+    </View>
+  );
+}
 
-        <Text className="mt-2 text-[22px] font-bold leading-7 text-ink" numberOfLines={2}>
-          {inProgress.title}
+function ClassRow({
+  block,
+  nowMinutes,
+  first,
+}: {
+  block: ClassBlock;
+  nowMinutes: number;
+  first: boolean;
+}) {
+  const live = block.startMinute <= nowMinutes && block.endMinute > nowMinutes;
+  const away = block.startMinute - nowMinutes;
+
+  const body = (
+    <View
+      className={`flex-row items-center gap-3.5 px-5 py-4 ${first ? '' : 'border-t border-line'}`}
+    >
+      <View className="h-10 w-1 rounded-full" style={{ backgroundColor: block.color }} />
+
+      <View className="flex-1 gap-0.5">
+        <Text className="text-[15px] font-semibold text-ink" numberOfLines={1}>
+          {block.subjectName || block.title}
         </Text>
-        <Text className="mt-1 text-[13px] text-muted">
+        <Text className="text-xs text-muted" numberOfLines={1}>
           {[
-            `Ends at ${minutesToLabel(inProgress.endMinute)}`,
-            `${remaining} min left`,
-            inProgress.venue,
+            `${minutesToLabel(block.startMinute)}–${minutesToLabel(block.endMinute)}`,
+            block.venue,
+            block.kind,
           ]
             .filter(Boolean)
-            .join(' · ')}
+            .join('  ·  ')}
         </Text>
-
-        {inProgress.subjectId ? (
-          <View className="mt-4 flex-row">
-            <Link href={`/library/${inProgress.subjectId}`} asChild>
-              <Button label="View class notes" icon="book-open" size="sm" />
-            </Link>
-          </View>
-        ) : null}
       </View>
-    );
-  }
 
-  if (next) {
-    const minutesAway = next.startMinute - nowMinutes;
-    const soon = minutesAway <= 30;
-
-    return (
-      <View
-        className="mb-5 overflow-hidden rounded-2xl border p-5"
-        style={{ backgroundColor: `${next.color}14`, borderColor: `${next.color}40` }}
-      >
-        <Text className="text-[11px] font-bold uppercase tracking-wider" style={{ color: next.color }}>
-          Next class
-        </Text>
-
-        <Text className="mt-2 text-[22px] font-bold leading-7 text-ink" numberOfLines={2}>
-          {next.title}
-        </Text>
-
-        <View className="mt-1 flex-row flex-wrap items-center gap-2">
-          <Text className={`text-[13px] font-semibold ${soon ? 'text-accent' : 'text-muted'}`}>
-            {minutesAway < 60
-              ? `in ${minutesAway} min`
-              : `at ${minutesToLabel(next.startMinute)}`}
-          </Text>
-          {next.venue ? <Text className="text-[13px] text-muted">· {next.venue}</Text> : null}
-          {next.kind ? <Text className="text-[13px] text-subtle">· {next.kind}</Text> : null}
+      {live ? (
+        <View className="rounded-full bg-accent px-2 py-1">
+          <Text className="text-[10px] font-bold uppercase tracking-wider text-paper">Now</Text>
         </View>
-
-        {next.subjectId ? (
-          <View className="mt-4 flex-row">
-            <Link href={`/library/${next.subjectId}`} asChild>
-              <Button label="View class notes" icon="book-open" size="sm" />
-            </Link>
-          </View>
-        ) : null}
-      </View>
-    );
-  }
-
-  return (
-    <View className="mb-5 rounded-2xl border border-pine/25 bg-pine-soft p-5">
-      <Text className="text-[22px] font-bold leading-7 text-ink">All done for today 🎉</Text>
-      <Text className="mt-1 text-[13px] text-muted">
-        {tomorrow.length === 0
-          ? 'Nothing scheduled tomorrow either.'
-          : `Tomorrow: ${tomorrow
-              .slice(0, 3)
-              .map((block) => `${block.title} at ${minutesToLabel(block.startMinute)}`)
-              .join(', ')}${tomorrow.length > 3 ? ` and ${tomorrow.length - 3} more` : ''}.`}
-      </Text>
-
-      <View className="mt-4 flex-row flex-wrap gap-2">
-        <Link href="/focus" asChild>
-          <Button label="Start a focus block" icon="target" size="sm" />
-        </Link>
-        <Link href="/study" asChild>
-          <Button label="Study" icon="zap" variant="secondary" size="sm" />
-        </Link>
-      </View>
-    </View>
-  );
-}
-
-/** One horizontal row of pills — denser than four stacked metric boxes. */
-function MetricPills({
-  streak,
-  classesToday,
-  pending,
-  overdue,
-}: {
-  streak: number;
-  classesToday: number;
-  pending: number;
-  overdue: number;
-}) {
-  return (
-    <View className="mb-5 flex-row flex-wrap gap-2">
-      <Pill href="/focus" emoji={streak > 0 ? '🔥' : '🌱'} value={streak} label="day streak" />
-      <Pill href="/timetable" emoji="🗓️" value={classesToday} label="classes today" />
-      <Pill href="/todos" emoji="✅" value={pending} label="tasks open" />
-      {overdue > 0 ? (
-        <Pill href="/todos" emoji="⚠️" value={overdue} label="overdue" tone="rose" />
-      ) : null}
-    </View>
-  );
-}
-
-function Pill({
-  href,
-  emoji,
-  value,
-  label,
-  tone = 'neutral',
-}: {
-  href: string;
-  emoji: string;
-  value: number;
-  label: string;
-  tone?: 'neutral' | 'rose';
-}) {
-  return (
-    <Link href={href as never} asChild>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={`${value} ${label}`}
-        className={`flex-row items-center gap-2 rounded-full border px-3.5 py-2 ${
-          tone === 'rose' ? 'border-rose/30 bg-rose-soft' : 'border-line bg-surface'
-        }`}
-      >
-        <Text className="text-sm">{emoji}</Text>
-        <Text className={`text-sm font-bold ${tone === 'rose' ? 'text-rose' : 'text-ink'}`}>
-          {value}
+      ) : (
+        <Text className="text-[13px] font-semibold text-muted">
+          {away < 60 ? `in ${away} min` : minutesToLabel(block.startMinute)}
         </Text>
-        <Text className="text-[13px] text-muted">{label}</Text>
+      )}
+    </View>
+  );
+
+  if (!block.subjectId) return body;
+
+  return (
+    <Link href={`/library/${block.subjectId}`} asChild>
+      <Pressable accessibilityRole="link" accessibilityLabel={`Open ${block.title}`}>
+        {body}
       </Pressable>
     </Link>
   );
 }
 
-function QuickActions({ onUpload }: { onUpload: () => void }) {
-  return (
-    <View className="mb-8 flex-row flex-wrap gap-2">
-      <Link href="/capture" asChild>
-        <Button label="Capture" icon="camera" variant="secondary" size="sm" />
-      </Link>
-      <Link href="/timetable" asChild>
-        <Button label="Scan schedule" icon="grid" variant="secondary" size="sm" />
-      </Link>
-      <Button
-        label="Upload material"
-        icon="upload-cloud"
-        variant="secondary"
-        size="sm"
-        onPress={onUpload}
-      />
-      <Link href="/todos" asChild>
-        <Button label="New task" icon="plus" variant="secondary" size="sm" />
-      </Link>
-    </View>
-  );
-}
-
-/**
- * Exam countdown.
- *
- * Only shown when something exam-shaped is actually coming, and it leads the
- * page when it is — an exam in four days outranks everything else on screen.
- */
-function ExamBanner({ title, due }: { title: string; due: Date }) {
-  const remaining = countdown(due);
-  const urgent = remaining !== null && remaining.days <= 7;
+function TaskRow({ entry, first }: { entry: Extract<Entry, { kind: 'task' }>; first: boolean }) {
+  const due = toDate(entry.todo.dueDate);
 
   return (
     <Link href="/todos" asChild>
       <Pressable
         accessibilityRole="link"
-        className={`mb-6 flex-row items-center gap-4 overflow-hidden rounded-2xl border p-5 ${
-          urgent ? 'border-rose/30 bg-rose-soft' : 'border-amber/25 bg-amber-soft'
-        }`}
+        accessibilityLabel={`Open ${entry.todo.title}`}
+        className={`flex-row items-center gap-3.5 px-5 py-4 ${first ? '' : 'border-t border-line'}`}
       >
         <View
-          className={`h-11 w-11 items-center justify-center rounded-xl ${
-            urgent ? 'bg-rose/15' : 'bg-amber/15'
+          className={`h-8 w-8 items-center justify-center rounded-lg ${
+            entry.overdue ? 'bg-rose-soft' : 'bg-sand'
           }`}
         >
-          <Feather name="alert-circle" size={19} color={urgent ? '#B0443E' : '#B4832A'} />
+          <Feather
+            name={entry.overdue ? 'alert-circle' : 'check-square'}
+            size={14}
+            color={entry.overdue ? '#B0443E' : '#6F6A5F'}
+          />
         </View>
 
-        <View className="flex-1 gap-1">
-          <Text className="text-[11px] font-bold uppercase tracking-wider text-muted">
-            Next assessment
+        <View className="flex-1 gap-0.5">
+          <Text className="text-[15px] font-medium text-ink" numberOfLines={1}>
+            {entry.todo.title}
           </Text>
-          <Text className="text-[15px] font-semibold text-ink" numberOfLines={1}>
-            {title}
-          </Text>
-          <Text className="text-xs text-muted">{formatDue(due)}</Text>
+          {entry.todo.subjectName ? (
+            <Text className="text-xs text-subtle" numberOfLines={1}>
+              {entry.todo.subjectName}
+            </Text>
+          ) : null}
         </View>
 
-        <CountdownChip due={due} />
+        <Text className={`text-[13px] font-semibold ${entry.overdue ? 'text-rose' : 'text-muted'}`}>
+          {formatDue(due)}
+        </Text>
       </Pressable>
     </Link>
   );
 }
+
+/* ------------------------------------------------------------------ *
+ * Quick lecture log
+ * ------------------------------------------------------------------ */
 
 /**
  * Log a class from the dashboard.
@@ -615,13 +494,14 @@ function QuickLog({
   }, [classes, today, nowMinutes]);
 
   const [subjectId, setSubjectId] = useState<string | null>(null);
-  const active = subjects.find((subject) => subject.id === (subjectId ?? suggestedId)) ?? subjects[0];
+  const active =
+    subjects.find((subject) => subject.id === (subjectId ?? suggestedId)) ?? subjects[0];
   const [open, setOpen] = useState(false);
 
   if (!active) return null;
 
   return (
-    <View className="mb-8 gap-3">
+    <View className="mb-9 gap-3">
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
@@ -634,9 +514,7 @@ function QuickLog({
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Log a class</Text>
           <Text className="text-xs text-muted" numberOfLines={1}>
-            {open
-              ? `Writing up ${active.name}`
-              : 'Say what you covered and Gemini writes the notes'}
+            {open ? `Writing up ${active.name}` : 'Say what you covered and Gemini writes the notes'}
           </Text>
         </View>
         <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
@@ -684,5 +562,88 @@ function QuickLog({
         </View>
       </Reveal>
     </View>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Term progress
+ * ------------------------------------------------------------------ */
+
+/**
+ * One bar, three numbers.
+ *
+ * Progress is measured in graded credits rather than in weeks elapsed: Notomi
+ * does not know a university's term dates, and inventing them would be worse
+ * than measuring something true.
+ */
+function TermProgress({
+  subjects,
+  semesters,
+  scope,
+  classes,
+}: {
+  subjects: Subject[];
+  semesters: Semester[];
+  scope: string;
+  classes: ClassBlock[];
+}) {
+  const termName =
+    semesters.find((semester) => semester.id === scope)?.name ??
+    (semesters.find((semester) => semester.isCurrent)?.name || 'This term');
+
+  const credits = subjects.reduce((total, subject) => total + (subject.creditHours ?? 0), 0);
+  const graded = subjects.filter((subject) => subject.grade);
+  const gradedCredits = graded.reduce((total, subject) => total + (subject.creditHours ?? 0), 0);
+  const { gpa } = calculateGpa(
+    subjects.map((subject) => ({ creditHours: subject.creditHours, grade: subject.grade }))
+  );
+
+  const hoursAWeek = classes.reduce(
+    (total, block) => total + (block.endMinute - block.startMinute) / 60,
+    0
+  );
+
+  if (subjects.length === 0) return null;
+
+  const fraction = credits > 0 ? gradedCredits / credits : 0;
+
+  return (
+    <Link href="/program" asChild>
+      <Pressable accessibilityRole="link" accessibilityLabel="Open your program structure">
+        <Card className="gap-3">
+          <View className="flex-row items-end justify-between">
+            <View className="flex-1">
+              <Text className="text-xs font-bold uppercase tracking-wider text-muted">
+                {termName}
+              </Text>
+              <Text className="mt-1 text-[15px] font-semibold text-ink">
+                {subjects.length} {subjects.length === 1 ? 'subject' : 'subjects'}
+                {credits > 0 ? ` · ${credits} credits` : ''}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={16} color="#9A9488" />
+          </View>
+
+          <View className="h-2 w-full overflow-hidden rounded-full bg-sand">
+            <View
+              className="h-full rounded-full bg-pine"
+              style={{ width: `${Math.round(fraction * 100)}%` }}
+            />
+          </View>
+
+          <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1">
+            <Text className="text-xs text-muted">
+              {graded.length} of {subjects.length} graded
+            </Text>
+            {hoursAWeek > 0 ? (
+              <Text className="text-xs text-muted">{Math.round(hoursAWeek)} h of class a week</Text>
+            ) : null}
+            {gpa !== null ? (
+              <Text className="text-xs font-semibold text-pine">GPA {gpa.toFixed(2)}</Text>
+            ) : null}
+          </View>
+        </Card>
+      </Pressable>
+    </Link>
   );
 }

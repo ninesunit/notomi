@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Platform,
+  Pressable,
+  Text,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
 import { ImportReview } from '@/components/ImportReview';
@@ -15,6 +22,7 @@ import {
 import { Button, EmptyState, Field, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
+import { useScheduleImport } from '@/hooks/useScheduleImport';
 import { paths } from '@/lib/paths';
 import {
   colorForSubject,
@@ -32,7 +40,6 @@ import {
 } from '@/lib/schema';
 import { feedback } from '@/lib/sound';
 import { getDb } from '@/services/firebase';
-import { pickMaterials, type MaterialFile } from '@/services/ingestion';
 import {
   academicClasses,
   classesForDay,
@@ -42,32 +49,23 @@ import {
   routinesForDay,
   saveClass,
   saveRoutine,
-  scanTimetableImage,
   unlinkedClasses,
   type ClassInput,
-  type StagedImport,
 } from '@/services/timetable';
 
 /**
- * The weekly timetable.
+ * The timetable.
  *
- * It is a real grid at every width — seven day columns against an hour ruler,
- * because that is the shape a student already has in their head, and seeing the
- * whole week at once is the point of a timetable. On a phone the columns take a
- * fixed width and the grid scrolls sideways under a pinned hour ruler, rather
- * than collapsing to one day at a time.
+ * Two layouts, one per shape of screen. On a desktop or landscape iPad the week
+ * is a grid: seven columns against an hour ruler, the shape a student already
+ * has in their head. On a phone it is a single day at full width under a sticky
+ * week strip — seven columns on a 390pt screen gave each class forty points and
+ * truncated every title, and sideways scrolling to read your own timetable is
+ * worse than tapping a day.
  */
 
-/** Above this width the seven columns share the available space. */
+/** At or above this width the whole week fits; below it, one day at a time. */
 const GRID_BREAKPOINT = 900;
-/** Pixels per hour in the grid. Enough for a title and a room at 45 minutes. */
-const HOUR_HEIGHT = 56;
-/** Width of one day column when the grid scrolls. ~3.5 days visible on a phone. */
-const COMPACT_DAY_WIDTH = 96;
-/** Width of the pinned hour ruler. */
-const RULER_WIDTH = 46;
-/** Height of the day-name header, needed to offset the ruler by the same amount. */
-const HEADER_HEIGHT = 38;
 
 export default function Timetable() {
   const uid = useUid();
@@ -75,14 +73,13 @@ export default function Timetable() {
   const { width } = useWindowDimensions();
 
   const [editing, setEditing] = useState<ClassBlock | 'new' | null>(null);
-  const [scanning, setScanning] = useState(false);
+  /** Failures from editing and deleting; the scan has its own inside the hook. */
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [selectedDay, setSelectedDay] = useState(todayIndex());
 
   const [showRoutines, setShowRoutines] = useState(true);
   const [editingRoutine, setEditingRoutine] = useState<RoutineBlock | 'new' | null>(null);
-  const [staged, setStaged] = useState<StagedImport | null>(null);
 
   const semesters = useCollection<Semester>(
     query(paths.semesters(db, uid), orderBy('order', 'asc')),
@@ -143,33 +140,46 @@ export default function Timetable() {
     return [Math.max(0, Math.floor(start / 60) - 1), Math.min(24, Math.ceil(end / 60) + 1)];
   }, [classes.data, routines.data, showRoutines]);
 
-  const scan = useCallback(async () => {
-    setError(null);
-    setNotice(null);
+  /**
+   * The day view gets its own range.
+   *
+   * Deriving it from the whole week put a Monday with one 9am class on a ruler
+   * starting at 2am because some other day had an early block. A day is drawn
+   * on a fixed 8-to-6 canvas — the shape of a normal timetable — which then
+   * stretches for a 7am lab or an evening lecture.
+   */
+  const [dayFirst, dayLast] = useMemo(() => {
+    const blocks = [
+      ...classesForDay(classes.data, selectedDay),
+      ...(showRoutines ? routinesForDay(routines.data, selectedDay) : []),
+    ];
+    if (blocks.length === 0) return [8, 18];
 
-    let picked: MaterialFile[] = [];
-    try {
-      picked = await pickMaterials();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-      return;
-    }
-    if (picked.length === 0) return;
+    const start = Math.min(...blocks.map((block) => block.startMinute));
+    const end = Math.max(...blocks.map((block) => block.endMinute));
+    return [
+      Math.min(8, Math.max(0, Math.floor(start / 60) - 1)),
+      Math.max(18, Math.min(24, Math.ceil(end / 60) + 1)),
+    ];
+  }, [classes.data, routines.data, showRoutines, selectedDay]);
 
-    setScanning(true);
-    try {
-      const file = picked[0];
-      const bytes = file.file ? await file.file.arrayBuffer() : await (await fetch(file.uri)).arrayBuffer();
-      // Staged, not saved: the student reviews before anything is written.
-      setStaged(
-        await scanTimetableImage(bytes, file.name, file.mimeType ?? '', subjects.data)
-      );
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setScanning(false);
-    }
-  }, [subjects.data]);
+  /** Classes per weekday, for the dots on the week strip. */
+  const perDay = useMemo(() => {
+    const counts = Array(7).fill(0) as number[];
+    for (const block of classes.data) counts[block.day] += 1;
+    if (showRoutines) for (const block of routines.data) counts[block.day] += 1;
+    return counts;
+  }, [classes.data, routines.data, showRoutines]);
+
+  /**
+   * A class stores no module code of its own — the code belongs to the subject
+   * — so the day view looks it up rather than parsing it back out of a title.
+   */
+  const codeFor = useCallback(
+    (block: ClassBlock) =>
+      subjects.data.find((subject) => subject.id === block.subjectId)?.moduleCode ?? null,
+    [subjects.data]
+  );
 
   const remove = useCallback(
     async (classId: string) => {
@@ -183,6 +193,7 @@ export default function Timetable() {
     [uid]
   );
 
+  const importer = useScheduleImport(subjects.data);
   const loading = classes.loading || subjects.loading;
 
   return (
@@ -197,12 +208,12 @@ export default function Timetable() {
         actions={
           <>
             <Button
-              label={scanning ? 'Reading…' : 'Scan screenshot'}
+              label={importer.scanning ? 'Reading…' : 'Scan screenshot'}
               icon="camera"
               size="sm"
-              loading={scanning}
-              disabled={scanning}
-              onPress={() => void scan()}
+              loading={importer.scanning}
+              disabled={importer.scanning}
+              onPress={() => void importer.scan()}
             />
             <Button
               label="Add class"
@@ -215,15 +226,18 @@ export default function Timetable() {
         }
       />
 
-      {error ? (
+      {error || importer.error ? (
         <View className="mb-6">
-          <Notice title="Could not read that timetable" body={error} />
+          <Notice
+            title={importer.error ? 'Could not read that timetable' : 'Something went wrong'}
+            body={importer.error ?? error ?? ''}
+          />
         </View>
       ) : null}
 
-      {notice ? (
+      {importer.notice ? (
         <View className="mb-6">
-          <Notice tone="pine" title="Timetable updated" body={notice} />
+          <Notice tone="pine" title="Timetable updated" body={importer.notice} />
         </View>
       ) : null}
 
@@ -251,8 +265,8 @@ export default function Timetable() {
             <Button
               label="Scan a screenshot"
               icon="camera"
-              loading={scanning}
-              onPress={() => void scan()}
+              loading={importer.scanning}
+              onPress={() => void importer.scan()}
             />
           }
         />
@@ -290,15 +304,30 @@ export default function Timetable() {
             />
           </View>
 
-          <WeekGrid
-            classes={classes.data}
-            routines={showRoutines ? routines.data : []}
-            firstHour={firstHour}
-            lastHour={lastHour}
-            compact={!grid}
-            onSelect={(block) => setEditing(block)}
-            onSelectRoutine={(block) => setEditingRoutine(block)}
-          />
+          {grid ? (
+            <WeekGrid
+              classes={classes.data}
+              routines={showRoutines ? routines.data : []}
+              firstHour={firstHour}
+              lastHour={lastHour}
+              onSelect={(block) => setEditing(block)}
+              onSelectRoutine={(block) => setEditingRoutine(block)}
+            />
+          ) : (
+            <View className="gap-3">
+              <WeekStrip day={selectedDay} onDay={setSelectedDay} counts={perDay} />
+              <DayTimeline
+                day={selectedDay}
+                classes={classes.data}
+                routines={showRoutines ? routines.data : []}
+                firstHour={dayFirst}
+                lastHour={dayLast}
+                codeFor={codeFor}
+                onSelect={(block) => setEditing(block)}
+                onSelectRoutine={(block) => setEditingRoutine(block)}
+              />
+            </View>
+          )}
 
           {unlinked.length > 0 ? (
             <Notice
@@ -396,28 +425,14 @@ export default function Timetable() {
         }}
       />
 
-      {staged ? (
+      {importer.staged ? (
         <ImportReview
           uid={uid}
-          rows={staged.rows}
-          skipped={staged.skipped}
+          rows={importer.staged.rows}
+          skipped={importer.staged.skipped}
           semesters={semesters.data}
-          onClose={() => setStaged(null)}
-          onDone={(outcome) => {
-            setStaged(null);
-            setNotice(
-              `Imported ${outcome.classesAdded} class${
-                outcome.classesAdded === 1 ? '' : 'es'
-              } across ${outcome.subjectsCreated + outcome.subjectsReused} subject${
-                outcome.subjectsCreated + outcome.subjectsReused === 1 ? '' : 's'
-              }` +
-                (outcome.subjectsCreated > 0
-                  ? ` — ${outcome.subjectsCreated} new library folder${
-                      outcome.subjectsCreated === 1 ? '' : 's'
-                    } created.`
-                  : '.')
-            );
-          }}
+          onClose={() => importer.setStaged(null)}
+          onDone={importer.describe}
         />
       ) : null}
 
@@ -457,12 +472,304 @@ function useNowMinute(): number {
   return minute;
 }
 
+/**
+ * The day picker that sits above the timeline.
+ *
+ * Sticky rather than scrolling away: the whole point of a single-day view is
+ * that changing day is one tap, and a picker that has scrolled off the top
+ * makes it a scroll plus a tap. `position: sticky` is a web-only style, so it
+ * is applied through a cast and simply not set anywhere else.
+ */
+const STICKY: ViewStyle | undefined =
+  Platform.OS === 'web'
+    ? ({ position: 'sticky', top: 0, zIndex: 20 } as unknown as ViewStyle)
+    : undefined;
+
+function WeekStrip({
+  day,
+  onDay,
+  counts,
+}: {
+  day: number;
+  onDay: (day: number) => void;
+  /** Blocks per weekday, so an empty day is visible before it is opened. */
+  counts: number[];
+}) {
+  const today = todayIndex();
+
+  return (
+    <View style={STICKY} className="-mx-1 bg-paper pb-2 pt-1">
+      <View className="flex-row gap-1 px-1">
+        {DAY_LABELS.map((label, index) => {
+          const active = index === day;
+          const count = counts[index] ?? 0;
+
+          return (
+            <Pressable
+              key={label}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${DAY_FULL[index]}, ${count} ${
+                count === 1 ? 'class' : 'classes'
+              }`}
+              onPress={() => {
+                feedback('toggle');
+                onDay(index);
+              }}
+              className={`flex-1 items-center gap-1 rounded-xl border py-2 ${
+                active
+                  ? 'border-ink bg-ink'
+                  : index === today
+                    ? 'border-accent/40 bg-accent-soft'
+                    : 'border-line bg-surface'
+              }`}
+            >
+              <Text
+                className={`text-[11px] font-bold uppercase tracking-wider ${
+                  active ? 'text-paper' : index === today ? 'text-accent' : 'text-muted'
+                }`}
+              >
+                {label}
+              </Text>
+              {/* A dot, not a number: at seven across a phone there is room for
+                  presence but not for a count, and presence is the question. */}
+              <View
+                className={`h-1.5 w-1.5 rounded-full ${
+                  count === 0
+                    ? 'bg-transparent'
+                    : active
+                      ? 'bg-paper'
+                      : index === today
+                        ? 'bg-accent'
+                        : 'bg-subtle'
+                }`}
+              />
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/** Pixels per hour on the single-day timeline. */
+const DAY_HOUR_HEIGHT = 76;
+/** Width of the hour gutter beside the timeline. */
+const GUTTER = 52;
+
+/**
+ * One day, full width.
+ *
+ * Seven columns on a phone gives each class about 40 points to say what it is,
+ * which truncates every title to "Introduction to…". A single day gives a block
+ * the whole width, so the subject, its code, its room and its hours all fit at
+ * a readable size — which is the entire reason this view exists.
+ */
+function DayTimeline({
+  day,
+  classes,
+  routines,
+  firstHour,
+  lastHour,
+  codeFor,
+  onSelect,
+  onSelectRoutine,
+}: {
+  day: number;
+  classes: ClassBlock[];
+  routines: RoutineBlock[];
+  firstHour: number;
+  lastHour: number;
+  /** Module code for a class, looked up from its subject. */
+  codeFor: (block: ClassBlock) => string | null;
+  onSelect: (block: ClassBlock) => void;
+  onSelectRoutine: (block: RoutineBlock) => void;
+}) {
+  const hours = Array.from({ length: lastHour - firstHour }, (_, index) => firstHour + index);
+  const height = hours.length * DAY_HOUR_HEIGHT;
+  const now = useNowMinute();
+  const isToday = day === todayIndex();
+
+  const blocks = classesForDay(classes, day);
+  const overlays = routinesForDay(routines, day);
+
+  const nowOffset =
+    isToday && now >= firstHour * 60 && now <= lastHour * 60
+      ? ((now - firstHour * 60) / 60) * DAY_HOUR_HEIGHT
+      : null;
+
+  if (blocks.length === 0 && overlays.length === 0) {
+    return (
+      <View className="items-center gap-2 rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-12">
+        <Text className="text-2xl">🌤️</Text>
+        <Text className="text-[15px] font-semibold text-ink">Nothing on {DAY_FULL[day]}</Text>
+        <Text className="text-center text-sm text-muted">
+          {isToday ? 'Your day is clear.' : 'No classes or routines scheduled.'}
+        </Text>
+      </View>
+    );
+  }
+
+  /** Fractional position and height of a block on the ruler. */
+  const place = (start: number, end: number, minimum: number) => ({
+    top: ((start - firstHour * 60) / 60) * DAY_HOUR_HEIGHT,
+    height: Math.max(minimum, ((end - start) / 60) * DAY_HOUR_HEIGHT - 6),
+  });
+
+  return (
+    <View className="overflow-hidden rounded-2xl border border-line bg-surface">
+      <View className="flex-row" style={{ height }}>
+        <View className="shrink-0 border-r border-line bg-sand/40" style={{ width: GUTTER }}>
+          {hours.map((hour) => (
+            <View key={hour} style={{ height: DAY_HOUR_HEIGHT }} className="items-end pr-2 pt-1">
+              <Text className="text-[11px] font-medium text-subtle">
+                {minutesToLabel(hour * 60)}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <View className="flex-1">
+          {hours.map((hour) => (
+            <View
+              key={hour}
+              style={{ height: DAY_HOUR_HEIGHT }}
+              className="border-b border-line/60"
+            />
+          ))}
+
+          {overlays.map((block) => {
+            const box = place(block.startMinute, block.endMinute, 34);
+            const meta = ROUTINE_CATEGORIES.find((entry) => entry.id === block.category);
+
+            return (
+              <Pressable
+                key={block.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
+                  block.startMinute
+                )}`}
+                onPress={() => {
+                  feedback('tap');
+                  onSelectRoutine(block);
+                }}
+                className="absolute left-2 right-2 justify-center overflow-hidden rounded-xl px-3"
+                style={{
+                  top: box.top + 3,
+                  height: box.height,
+                  backgroundColor: `${block.color}12`,
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  borderColor: `${block.color}59`,
+                }}
+              >
+                <Text className="text-[13px] font-medium text-muted" numberOfLines={1}>
+                  {meta?.emoji ?? '📌'} {block.title}
+                </Text>
+                <Text className="text-[11px] text-subtle" numberOfLines={1}>
+                  {minutesToLabel(block.startMinute)}–{minutesToLabel(block.endMinute)}
+                  {block.venue ? ` · ${block.venue}` : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
+
+          {blocks.map((block) => {
+            const box = place(block.startMinute, block.endMinute, 56);
+            const code = codeFor(block);
+            const live =
+              isToday && block.startMinute <= now && block.endMinute > now;
+
+            return (
+              <Pressable
+                key={block.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
+                  block.startMinute
+                )} to ${minutesToLabel(block.endMinute)}`}
+                onPress={() => {
+                  feedback('tap');
+                  onSelect(block);
+                }}
+                className="absolute left-2 right-2 justify-center overflow-hidden rounded-xl px-3.5 py-2.5"
+                style={{
+                  top: box.top + 3,
+                  height: box.height,
+                  backgroundColor: `${block.color}1F`,
+                  borderLeftWidth: 4,
+                  borderLeftColor: block.color,
+                }}
+              >
+                <View className="flex-row items-center gap-2">
+                  {code ? (
+                    <Text
+                      className="text-[11px] font-bold uppercase tracking-wider"
+                      style={{ color: block.color }}
+                    >
+                      {code}
+                    </Text>
+                  ) : null}
+                  {live ? (
+                    <View className="rounded-full bg-accent px-1.5 py-0.5">
+                      <Text className="text-[9px] font-bold uppercase tracking-wider text-paper">
+                        Now
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                <Text className="text-[15px] font-semibold leading-5 text-ink" numberOfLines={2}>
+                  {block.subjectName || block.title}
+                </Text>
+
+                {/* Full width means these never have to be truncated away. */}
+                {box.height > 62 ? (
+                  <Text className="text-xs leading-4 text-muted" numberOfLines={1}>
+                    {[
+                      `${minutesToLabel(block.startMinute)}–${minutesToLabel(block.endMinute)}`,
+                      block.venue,
+                      block.kind,
+                    ]
+                      .filter(Boolean)
+                      .join('  ·  ')}
+                  </Text>
+                ) : null}
+              </Pressable>
+            );
+          })}
+
+          {nowOffset !== null ? (
+            <View
+              pointerEvents="none"
+              className="absolute left-0 right-0 flex-row items-center"
+              style={{ top: nowOffset }}
+            >
+              <View className="h-2 w-2 rounded-full bg-accent" />
+              <View className="h-px flex-1 bg-accent/70" />
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Wide layout: the whole week at once
+ * ------------------------------------------------------------------ */
+
+/** Pixels per hour in the week grid. Enough for a title and a room at 45 minutes. */
+const HOUR_HEIGHT = 56;
+/** Width of the hour ruler beside the grid. */
+const RULER_WIDTH = 46;
+/** Height of the day-name header, so the ruler can be offset to match. */
+const HEADER_HEIGHT = 38;
+
 function WeekGrid({
   classes,
   routines,
   firstHour,
   lastHour,
-  compact,
   onSelect,
   onSelectRoutine,
 }: {
@@ -470,8 +777,6 @@ function WeekGrid({
   routines: RoutineBlock[];
   firstHour: number;
   lastHour: number;
-  /** Fixed-width columns that scroll sideways, for phone widths. */
-  compact: boolean;
   onSelect: (block: ClassBlock) => void;
   onSelectRoutine: (block: RoutineBlock) => void;
 }) {
@@ -479,164 +784,16 @@ function WeekGrid({
   const height = hours.length * HOUR_HEIGHT;
   const today = todayIndex();
   const now = useNowMinute();
-  const scroller = useRef<ScrollView>(null);
-
-  /**
-   * Open on today rather than on Monday. Yesterday is kept in view so the
-   * column does not look like the left edge of the week.
-   */
-  useEffect(() => {
-    if (!compact) return;
-    const target = Math.max(0, (today - 1) * COMPACT_DAY_WIDTH);
-    const id = setTimeout(() => scroller.current?.scrollTo({ x: target, animated: false }), 0);
-    return () => clearTimeout(id);
-  }, [compact, today]);
 
   const nowOffset =
     now >= firstHour * 60 && now <= lastHour * 60
       ? ((now - firstHour * 60) / 60) * HOUR_HEIGHT
       : null;
 
-  // Fixed width when scrolling, an equal share of the row when not.
-  const columnWidth = compact ? { width: COMPACT_DAY_WIDTH } : undefined;
-  const columnFlex = compact ? '' : 'flex-1';
-
-  const week = (
-    <View className={compact ? '' : 'flex-1'}>
-      <View className="flex-row border-b border-line bg-sand">
-        {DAY_LABELS.map((label, index) => (
-          <View
-            key={label}
-            style={[columnWidth, { height: HEADER_HEIGHT }]}
-            className={`${columnFlex} items-center justify-center ${
-              index === today ? 'bg-accent-soft' : ''
-            }`}
-          >
-            <Text
-              className={`text-xs font-bold uppercase tracking-wider ${
-                index === today ? 'text-accent' : 'text-muted'
-              }`}
-            >
-              {label}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      <View className="flex-row" style={{ height }}>
-        {DAY_LABELS.map((label, day) => (
-          <View
-            key={label}
-            style={columnWidth}
-            className={`${columnFlex} border-l border-line ${
-              day === today ? 'bg-accent-soft/25' : ''
-            }`}
-          >
-            {/* Hour lines sit behind the blocks as ordinary rows. */}
-            {hours.map((hour) => (
-              <View key={hour} style={{ height: HOUR_HEIGHT }} className="border-b border-line/60" />
-            ))}
-
-            {/* Routines are drawn first and inset, so an academic class always
-                reads as the thing in front. */}
-            {routinesForDay(routines, day).map((block) => {
-              const top = ((block.startMinute - firstHour * 60) / 60) * HOUR_HEIGHT;
-              const blockHeight = Math.max(
-                18,
-                ((block.endMinute - block.startMinute) / 60) * HOUR_HEIGHT - 3
-              );
-              const meta = ROUTINE_CATEGORIES.find((entry) => entry.id === block.category);
-
-              return (
-                <Pressable
-                  key={block.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
-                    block.startMinute
-                  )}`}
-                  onPress={() => {
-                    feedback('tap');
-                    onSelectRoutine(block);
-                  }}
-                  className="absolute left-1 right-1 overflow-hidden rounded-lg px-1.5 py-1"
-                  style={{
-                    top: top + 1,
-                    height: blockHeight,
-                    backgroundColor: `${block.color}14`,
-                    borderWidth: 1,
-                    borderStyle: 'dashed',
-                    borderColor: `${block.color}59`,
-                  }}
-                >
-                  <Text className="text-[10px] leading-tight text-muted" numberOfLines={1}>
-                    {meta?.emoji ?? '📌'} {block.title}
-                  </Text>
-                </Pressable>
-              );
-            })}
-
-            {classesForDay(classes, day).map((block) => {
-              const top = ((block.startMinute - firstHour * 60) / 60) * HOUR_HEIGHT;
-              const blockHeight = Math.max(
-                22,
-                ((block.endMinute - block.startMinute) / 60) * HOUR_HEIGHT - 3
-              );
-
-              return (
-                <Pressable
-                  key={block.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
-                    block.startMinute
-                  )} to ${minutesToLabel(block.endMinute)}`}
-                  onPress={() => {
-                    feedback('tap');
-                    onSelect(block);
-                  }}
-                  className="absolute left-1 right-1 overflow-hidden rounded-lg px-1.5 py-1"
-                  style={{
-                    top: top + 1,
-                    height: blockHeight,
-                    backgroundColor: `${block.color}24`,
-                    borderLeftWidth: 3,
-                    borderLeftColor: block.color,
-                  }}
-                >
-                  <Text className="text-[11px] font-semibold leading-tight text-ink" numberOfLines={2}>
-                    {block.title}
-                  </Text>
-                  {blockHeight > 42 ? (
-                    <Text className="text-[10px] leading-tight text-muted" numberOfLines={1}>
-                      {[minutesToLabel(block.startMinute), block.venue].filter(Boolean).join(' · ')}
-                    </Text>
-                  ) : null}
-                </Pressable>
-              );
-            })}
-
-            {/* Where the day has got to. Drawn last so it crosses the blocks. */}
-            {day === today && nowOffset !== null ? (
-              <View
-                pointerEvents="none"
-                className="absolute left-0 right-0 flex-row items-center"
-                style={{ top: nowOffset }}
-              >
-                <View className="h-1.5 w-1.5 rounded-full bg-accent" />
-                <View className="h-px flex-1 bg-accent/70" />
-              </View>
-            ) : null}
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-
   return (
     <FadeIn>
       <View className="overflow-hidden rounded-2xl border border-line bg-surface">
         <View className="flex-row">
-          {/* The ruler is a sibling of the scroller, not inside it: the hours
-              have to stay put while the days slide under them. */}
           <View className="shrink-0" style={{ width: RULER_WIDTH }}>
             <View
               className="border-b border-r border-line bg-sand"
@@ -653,21 +810,142 @@ function WeekGrid({
             </View>
           </View>
 
-          {compact ? (
-            <ScrollView
-              ref={scroller}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className="flex-1"
-              // Without an explicit height the scroller collapses to its
-              // intrinsic content height on web and clips the grid.
-              contentContainerStyle={{ height: HEADER_HEIGHT + height }}
-            >
-              {week}
-            </ScrollView>
-          ) : (
-            week
-          )}
+          <View className="flex-1">
+            <View className="flex-row border-b border-line bg-sand">
+              {DAY_LABELS.map((label, index) => (
+                <View
+                  key={label}
+                  style={{ height: HEADER_HEIGHT }}
+                  className={`flex-1 items-center justify-center ${
+                    index === today ? 'bg-accent-soft' : ''
+                  }`}
+                >
+                  <Text
+                    className={`text-xs font-bold uppercase tracking-wider ${
+                      index === today ? 'text-accent' : 'text-muted'
+                    }`}
+                  >
+                    {label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <View className="flex-row" style={{ height }}>
+              {DAY_LABELS.map((label, day) => (
+                <View
+                  key={label}
+                  className={`flex-1 border-l border-line ${
+                    day === today ? 'bg-accent-soft/25' : ''
+                  }`}
+                >
+                  {/* Hour lines sit behind the blocks as ordinary rows. */}
+                  {hours.map((hour) => (
+                    <View
+                      key={hour}
+                      style={{ height: HOUR_HEIGHT }}
+                      className="border-b border-line/60"
+                    />
+                  ))}
+
+                  {/* Routines are drawn first and inset, so an academic class
+                      always reads as the thing in front. */}
+                  {routinesForDay(routines, day).map((block) => {
+                    const top = ((block.startMinute - firstHour * 60) / 60) * HOUR_HEIGHT;
+                    const blockHeight = Math.max(
+                      18,
+                      ((block.endMinute - block.startMinute) / 60) * HOUR_HEIGHT - 3
+                    );
+                    const meta = ROUTINE_CATEGORIES.find((entry) => entry.id === block.category);
+
+                    return (
+                      <Pressable
+                        key={block.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
+                          block.startMinute
+                        )}`}
+                        onPress={() => {
+                          feedback('tap');
+                          onSelectRoutine(block);
+                        }}
+                        className="absolute left-1 right-1 overflow-hidden rounded-lg px-1.5 py-1"
+                        style={{
+                          top: top + 1,
+                          height: blockHeight,
+                          backgroundColor: `${block.color}14`,
+                          borderWidth: 1,
+                          borderStyle: 'dashed',
+                          borderColor: `${block.color}59`,
+                        }}
+                      >
+                        <Text className="text-[10px] leading-tight text-muted" numberOfLines={1}>
+                          {meta?.emoji ?? '📌'} {block.title}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+
+                  {classesForDay(classes, day).map((block) => {
+                    const top = ((block.startMinute - firstHour * 60) / 60) * HOUR_HEIGHT;
+                    const blockHeight = Math.max(
+                      22,
+                      ((block.endMinute - block.startMinute) / 60) * HOUR_HEIGHT - 3
+                    );
+
+                    return (
+                      <Pressable
+                        key={block.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
+                          block.startMinute
+                        )} to ${minutesToLabel(block.endMinute)}`}
+                        onPress={() => {
+                          feedback('tap');
+                          onSelect(block);
+                        }}
+                        className="absolute left-1 right-1 overflow-hidden rounded-lg px-1.5 py-1"
+                        style={{
+                          top: top + 1,
+                          height: blockHeight,
+                          backgroundColor: `${block.color}24`,
+                          borderLeftWidth: 3,
+                          borderLeftColor: block.color,
+                        }}
+                      >
+                        <Text
+                          className="text-[11px] font-semibold leading-tight text-ink"
+                          numberOfLines={2}
+                        >
+                          {block.title}
+                        </Text>
+                        {blockHeight > 42 ? (
+                          <Text className="text-[10px] leading-tight text-muted" numberOfLines={1}>
+                            {[minutesToLabel(block.startMinute), block.venue]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </Text>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+
+                  {/* Where the day has got to. Drawn last so it crosses the
+                      blocks. */}
+                  {day === today && nowOffset !== null ? (
+                    <View
+                      pointerEvents="none"
+                      className="absolute left-0 right-0 flex-row items-center"
+                      style={{ top: nowOffset }}
+                    >
+                      <View className="h-1.5 w-1.5 rounded-full bg-accent" />
+                      <View className="h-px flex-1 bg-accent/70" />
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
       </View>
     </FadeIn>
