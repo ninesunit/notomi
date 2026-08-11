@@ -10,8 +10,9 @@ import {
 import { AppState, Platform } from 'react-native';
 import { orderBy, query } from 'firebase/firestore';
 import { paths } from '@/lib/paths';
-import type { ClassBlock, RoutineBlock, Todo } from '@/lib/schema';
+import type { ClassBlock, RoutineBlock, Subject, Todo } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
+import { resolveClasses } from '@/services/timetable';
 import {
   DEFAULT_PREFS,
   fireDue,
@@ -63,15 +64,26 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
   const classes = useCollection<ClassBlock>(paths.classes(db, uid), [uid]);
   const routines = useCollection<RoutineBlock>(paths.routines(db, uid), [uid]);
   const todos = useCollection<Todo>(query(paths.todos(db, uid), orderBy('dueDate', 'asc')), [uid]);
+  const subjects = useCollection<Subject>(paths.subjects(db, uid), [uid]);
+
+  /**
+   * Joined, not filtered: a block with no subject is still a class the student
+   * put on their timetable and still deserves a nudge, but one that has a
+   * subject should be announced by the subject's current name.
+   */
+  const named = useMemo(
+    () => resolveClasses(classes.data, subjects.data),
+    [classes.data, subjects.data]
+  );
 
   const upcoming = useMemo(
     () =>
       upcomingReminders(
-        { classes: classes.data, routines: routines.data, todos: todos.data },
+        { classes: named, routines: routines.data, todos: todos.data },
         prefs,
         now
       ),
-    [classes.data, routines.data, todos.data, prefs, now]
+    [named, routines.data, todos.data, prefs, now]
   );
 
   // The clock, kept separate from the firing so that a page showing "in 12 min"

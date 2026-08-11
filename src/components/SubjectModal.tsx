@@ -6,6 +6,7 @@ import { Button, Field } from './ui';
 import { paths } from '@/lib/paths';
 import { colorForSubject, SUBJECT_EMOJI, SUBJECT_PALETTE, type Subject } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
+import { syncSubjectToClasses } from '@/services/timetable';
 
 /**
  * Create or edit a subject folder.
@@ -82,6 +83,13 @@ function SubjectForm({
     try {
       if (subject) {
         await updateDoc(paths.subject(db, uid, subject.id), fields);
+        // The timetable joins on subjectId and so is already correct; this is
+        // for the readers that cannot join — reminders, search, the calendar.
+        await syncSubjectToClasses(uid, {
+          id: subject.id,
+          name: fields.name,
+          color: fields.color,
+        });
         onClose();
       } else {
         const ref = doc(paths.subjects(db, uid));

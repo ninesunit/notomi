@@ -10,19 +10,38 @@
   html,
   body,
   #root {
-    height: 100%;
+    /*
+     * dvh, not vh or 100%.
+     *
+     * `height: 100%` resolves against the initial containing block, which iOS
+     * sizes to the *large* viewport — the page as it would be with the browser
+     * chrome hidden. The app was therefore always taller than what you could
+     * see, so the body itself scrolled: drag up to reach the bottom of the
+     * drawer and it rubber-bands straight back, hiding Sign out again. The
+     * dynamic viewport unit tracks the height actually on screen right now.
+     *
+     * The vh line is the fallback for browsers without dvh; anything that
+     * understands the second declaration ignores the first.
+     */
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
     margin: 0;
     background-color: #f7f5ee;
-    /* iOS Safari: stop the whole page from rubber-banding; panes scroll instead. */
+    /*
+     * Only the panes inside the shell scroll. Without this the document keeps
+     * its own scrollport and iOS rubber-banding fights every inner scroller.
+     */
+    overflow: hidden;
     overscroll-behavior: none;
   }
 
   #root {
     display: flex;
     flex-direction: column;
+    min-height: 0;
   }
 
-  /* Respect the iPhone/iPad safe areas without pushing layout off-screen. */
   body {
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;

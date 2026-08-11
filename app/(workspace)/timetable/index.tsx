@@ -51,6 +51,7 @@ import {
   saveRoutine,
   unlinkedClasses,
   type ClassInput,
+  type ResolvedClass,
 } from '@/services/timetable';
 
 /**
@@ -170,16 +171,6 @@ export default function Timetable() {
     if (showRoutines) for (const block of routines.data) counts[block.day] += 1;
     return counts;
   }, [classes.data, routines.data, showRoutines]);
-
-  /**
-   * A class stores no module code of its own — the code belongs to the subject
-   * — so the day view looks it up rather than parsing it back out of a title.
-   */
-  const codeFor = useCallback(
-    (block: ClassBlock) =>
-      subjects.data.find((subject) => subject.id === block.subjectId)?.moduleCode ?? null,
-    [subjects.data]
-  );
 
   const remove = useCallback(
     async (classId: string) => {
@@ -322,7 +313,6 @@ export default function Timetable() {
                 routines={showRoutines ? routines.data : []}
                 firstHour={dayFirst}
                 lastHour={dayLast}
-                codeFor={codeFor}
                 onSelect={(block) => setEditing(block)}
                 onSelectRoutine={(block) => setEditingRoutine(block)}
               />
@@ -571,17 +561,14 @@ function DayTimeline({
   routines,
   firstHour,
   lastHour,
-  codeFor,
   onSelect,
   onSelectRoutine,
 }: {
   day: number;
-  classes: ClassBlock[];
+  classes: ResolvedClass[];
   routines: RoutineBlock[];
   firstHour: number;
   lastHour: number;
-  /** Module code for a class, looked up from its subject. */
-  codeFor: (block: ClassBlock) => string | null;
   onSelect: (block: ClassBlock) => void;
   onSelectRoutine: (block: RoutineBlock) => void;
 }) {
@@ -676,7 +663,7 @@ function DayTimeline({
 
           {blocks.map((block) => {
             const box = place(block.startMinute, block.endMinute, 56);
-            const code = codeFor(block);
+            const code = block.code;
             const live =
               isToday && block.startMinute <= now && block.endMinute > now;
 
@@ -773,7 +760,7 @@ function WeekGrid({
   onSelect,
   onSelectRoutine,
 }: {
-  classes: ClassBlock[];
+  classes: ResolvedClass[];
   routines: RoutineBlock[];
   firstHour: number;
   lastHour: number;
@@ -917,11 +904,13 @@ function WeekGrid({
                           className="text-[11px] font-semibold leading-tight text-ink"
                           numberOfLines={2}
                         >
-                          {block.title}
+                          {/* The subject's own name, joined on render, so a
+                              rename in the library shows here immediately. */}
+                          {block.subjectName || block.title}
                         </Text>
                         {blockHeight > 42 ? (
                           <Text className="text-[10px] leading-tight text-muted" numberOfLines={1}>
-                            {[minutesToLabel(block.startMinute), block.venue]
+                            {[block.code, minutesToLabel(block.startMinute), block.venue]
                               .filter(Boolean)
                               .join(' · ')}
                           </Text>
@@ -1011,16 +1000,22 @@ function ClassForm({
   const startMinute = parseClock(start);
   const endMinute = parseClock(end);
   const timesValid = startMinute !== null && endMinute !== null && endMinute > startMinute;
-  const valid = title.trim().length > 0 && timesValid;
+
+  const linked = subjects.find((candidate) => candidate.id === subjectId) ?? null;
+  // A session is identified by its subject; only an unlinked block needs a name
+  // typed for it.
+  const valid = (linked !== null || title.trim().length > 0) && timesValid;
 
   async function save() {
     if (!valid || startMinute === null || endMinute === null) return;
     setSaving(true);
     setError(null);
 
-    const subject = subjects.find((candidate) => candidate.id === subjectId) ?? null;
+    const subject = linked;
     const input: ClassInput = {
-      title: title.trim(),
+      // Derived, not typed: the subject owns the name, and storing a divergent
+      // copy here is exactly what stopped a library rename reaching the grid.
+      title: subject ? subject.name : title.trim(),
       kind: kind.trim() || null,
       subjectId: subject?.id ?? null,
       subjectName: subject?.name ?? null,
@@ -1069,7 +1064,59 @@ function ClassForm({
         </>
       }
     >
-        <Field label="Class" value={title} onChangeText={setTitle} placeholder="CS2040 Lecture" />
+        {subjects.length > 0 ? (
+          <View className="gap-2">
+            <Text className="text-sm font-medium text-muted">Subject</Text>
+            <Text className="text-xs leading-4 text-subtle">
+              The session belongs to a subject in your library. Its name, code and colour come
+              from there, so renaming it in the library renames it here.
+            </Text>
+            <View className="flex-row flex-wrap gap-1.5">
+              {subjects.map((subject) => (
+                <Pressable
+                  key={subject.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: subjectId === subject.id }}
+                  onPress={() => setSubjectId(subjectId === subject.id ? null : subject.id)}
+                  className={`rounded-lg border px-3 py-1.5 ${
+                    subjectId === subject.id
+                      ? 'border-accent bg-accent-soft'
+                      : 'border-line bg-paper'
+                  }`}
+                >
+                  <Text
+                    className={`text-xs font-medium ${
+                      subjectId === subject.id ? 'text-accent' : 'text-muted'
+                    }`}
+                  >
+                    {subject.emoji ? `${subject.emoji} ` : ''}
+                    {subject.moduleCode || subject.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {linked ? (
+          <View className="flex-row items-center gap-3 rounded-xl border border-line bg-paper p-3">
+            <View className="h-2 w-2 rounded-full" style={{ backgroundColor: linked.color }} />
+            <View className="flex-1">
+              <Text className="text-sm font-semibold text-ink">{linked.name}</Text>
+              <Text className="text-xs text-subtle">
+                {linked.moduleCode ? `${linked.moduleCode} · ` : ''}Named by the library
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Field
+            label="Class"
+            value={title}
+            onChangeText={setTitle}
+            placeholder="CS2040 Lecture"
+            hint="Pick a subject above to have this named for you."
+          />
+        )}
 
         <View className="gap-2">
           <Text className="text-sm font-medium text-muted">Day</Text>
@@ -1116,42 +1163,12 @@ function ClassForm({
 
         <View className="flex-row gap-3">
           <View className="flex-1">
-            <Field label="Type" value={kind} onChangeText={setKind} placeholder="Lecture" />
+            <Field label="Session type" value={kind} onChangeText={setKind} placeholder="Lecture" />
           </View>
           <View className="flex-1">
             <Field label="Room" value={venue} onChangeText={setVenue} placeholder="LT-15" />
           </View>
         </View>
-
-        {subjects.length > 0 ? (
-          <View className="gap-2">
-            <Text className="text-sm font-medium text-muted">Subject (optional)</Text>
-            <Text className="text-xs text-subtle">
-              Linking a class colours it to match the subject and lets the dashboard show it.
-            </Text>
-            <View className="flex-row flex-wrap gap-1.5">
-              {subjects.map((subject) => (
-                <Pressable
-                  key={subject.id}
-                  accessibilityRole="button"
-                  onPress={() => setSubjectId(subjectId === subject.id ? null : subject.id)}
-                  className={`rounded-lg border px-3 py-1.5 ${
-                    subjectId === subject.id ? 'border-accent bg-accent-soft' : 'border-line bg-paper'
-                  }`}
-                >
-                  <Text
-                    className={`text-xs font-medium ${
-                      subjectId === subject.id ? 'text-accent' : 'text-muted'
-                    }`}
-                  >
-                    {subject.emoji ? `${subject.emoji} ` : ''}
-                    {subject.moduleCode || subject.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
 
       {error ? <Text className="text-xs text-rose">{error}</Text> : null}
     </Sheet>

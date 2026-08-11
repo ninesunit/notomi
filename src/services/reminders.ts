@@ -188,7 +188,8 @@ export function upcomingReminders(
     if (at.getTime() > horizon) return;
     out.push({
       id: `${kind}:${block.id}:${starts.getTime()}`,
-      title: block.title,
+      // subjectName is the joined value where the caller resolved it.
+      title: ('subjectName' in block && block.subjectName) || block.title,
       body,
       at,
       starts,

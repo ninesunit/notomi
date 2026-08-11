@@ -4,6 +4,7 @@ import { Link, usePathname } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
 import { useAuth } from '@/hooks/useAuth';
+import { useSafeArea } from '@/hooks/useSafeArea';
 import { GlobalSearch } from './GlobalSearch';
 import { Logo } from './Logo';
 import { isActive, NAV_ITEMS } from './nav';
@@ -16,13 +17,18 @@ import { isActive, NAV_ITEMS } from './nav';
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logOut } = useAuth();
+  const insets = useSafeArea();
   const [sound, setSound] = useState(isSoundEnabled);
 
   const displayName = user?.displayName || (user?.isAnonymous ? 'Guest' : user?.email) || 'You';
   const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <View className="h-full w-64 shrink-0 border-r border-line bg-sand">
+    <View
+      className="h-full w-64 shrink-0 border-r border-line bg-sand"
+      style={{ paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left }}
+    >
+      {/* A column: the nav scrolls, the profile block never does. */}
       <View className="min-h-0 flex-1 justify-between p-4">
         {/* min-h-0 + a scroller: the shell clips overflow, so on a short
             viewport the nav has to scroll rather than lose its last items. */}

@@ -230,7 +230,9 @@ export function NavDrawer({
             Animated.View, and a styled one renders with no background. */}
         <View
           className="h-full w-full border-r border-line bg-sand"
-          style={{ paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 8) }}
+          // calc(0.75rem + safe-area-inset-bottom), in the units RN speaks:
+          // the home indicator overlaps the last row otherwise.
+          style={{ paddingTop: insets.top, paddingBottom: insets.bottom + 12 }}
         >
           <View className="flex-row items-center gap-2.5 px-5 pb-3 pt-4">
             <Logo size={30} />

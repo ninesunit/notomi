@@ -1,4 +1,13 @@
-import { doc, getDocs, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import {
+  doc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+  writeBatch,
+} from 'firebase/firestore';
 import { extractTimetable } from '@/lib/ai';
 import { paths } from '@/lib/paths';
 import {
@@ -127,6 +136,78 @@ export type ImportRow = {
   /** Set when this maps onto a subject the student already has. */
   existingSubjectId: string | null;
 };
+
+/**
+ * One subject and every session detected for it.
+ *
+ * The scan produces rows — one per block on the screenshot — but a student
+ * thinks in subjects: "CS2102, three sessions", not "eight classes". Grouping
+ * before review means the code and the name are typed once instead of once per
+ * block, which on a real timetable is the difference between two edits and
+ * eight.
+ */
+export type ImportGroup = {
+  /** Stable across edits, so re-keying a card does not remount it. */
+  id: string;
+  code: string;
+  title: string;
+  /** Set when this maps onto a subject the student already has. */
+  existingSubjectId: string | null;
+  include: boolean;
+  sessions: ImportRow[];
+};
+
+/** Collapses scanned rows into one entry per course. */
+export function groupImportRows(rows: ImportRow[]): ImportGroup[] {
+  const groups = new Map<string, ImportGroup>();
+
+  for (const row of rows) {
+    const key = (row.code.trim() || row.title.trim()).toLowerCase();
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.sessions.push(row);
+      // A later row may carry the detail an earlier one lacked.
+      existing.code ||= row.code;
+      existing.title ||= row.title;
+      existing.existingSubjectId ??= row.existingSubjectId;
+      continue;
+    }
+
+    groups.set(key, {
+      id: `group-${key || row.id}`,
+      code: row.code,
+      title: row.title,
+      existingSubjectId: row.existingSubjectId,
+      include: true,
+      sessions: [row],
+    });
+  }
+
+  for (const group of groups.values()) {
+    group.sessions.sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
+  }
+
+  return [...groups.values()];
+}
+
+/**
+ * Back to flat rows for the commit.
+ *
+ * The subject-level fields are stamped onto every session, which is what makes
+ * one edit at the top of a card apply to all of its blocks.
+ */
+export function flattenImportGroups(groups: ImportGroup[]): ImportRow[] {
+  return groups.flatMap((group) =>
+    group.sessions.map((session) => ({
+      ...session,
+      code: group.code,
+      title: group.title,
+      existingSubjectId: group.existingSubjectId,
+      include: group.include && session.include,
+    }))
+  );
+}
 
 export type StagedImport = {
   rows: ImportRow[];
@@ -278,11 +359,16 @@ export async function commitImport(
       const endMinute = parseClock(row.end);
       if (startMinute === null || endMinute === null || endMinute <= startMinute) continue;
 
+      // The block's name is the subject's name, not a concatenation of its
+      // own: the subject owns the identity, and this copy is only a cache for
+      // the readers that cannot join.
+      const subjectName = lead.title.trim() || lead.code.trim();
+
       classes.push({
-        title: [row.code.trim(), row.title.trim()].filter(Boolean).join(' ').trim(),
+        title: subjectName,
         kind: row.kind.trim() || null,
         subjectId,
-        subjectName: lead.title.trim() || lead.code.trim(),
+        subjectName,
         day: row.day,
         startMinute,
         endMinute,
@@ -405,9 +491,77 @@ export async function deleteRoutine(uid: string, routineId: string): Promise<voi
  * course the student no longer has. Blocks are only shown once they are linked
  * to a live subject, which is what keeps the grid and the library in step.
  */
-export function academicClasses(classes: ClassBlock[], subjects: Subject[]): ClassBlock[] {
-  const live = new Set(subjects.map((subject) => subject.id));
-  return classes.filter((block) => block.subjectId !== null && live.has(block.subjectId));
+/**
+ * A class block joined to the subject it belongs to.
+ *
+ * The subject is the source of truth for a class's name, code and colour; the
+ * copies stored on the block are a cache for the places that cannot join —
+ * notifications, search, the calendar. Renaming a subject in the library
+ * therefore changes every block on the timetable the moment the snapshot
+ * arrives, with no migration and nothing to keep in step by hand.
+ */
+export type ResolvedClass = ClassBlock & {
+  /** Module code, from the parent subject. */
+  code: string | null;
+  /** False when the block points at a subject that no longer exists. */
+  linked: boolean;
+};
+
+/** Joins each block to its subject, leaving unlinked blocks marked as such. */
+export function resolveClasses(classes: ClassBlock[], subjects: Subject[]): ResolvedClass[] {
+  const byId = new Map(subjects.map((subject) => [subject.id, subject]));
+
+  return classes.map((block) => {
+    const subject = block.subjectId ? byId.get(block.subjectId) : undefined;
+    if (!subject) return { ...block, code: null, linked: false };
+
+    return {
+      ...block,
+      // The join wins over the stored copy, which may be a rename behind.
+      subjectName: subject.name,
+      color: subject.color || block.color,
+      code: subject.moduleCode,
+      linked: true,
+    };
+  });
+}
+
+/** Only blocks whose subject is live, joined to it. */
+export function academicClasses(classes: ClassBlock[], subjects: Subject[]): ResolvedClass[] {
+  return resolveClasses(classes, subjects).filter((block) => block.linked);
+}
+
+/**
+ * Pushes a renamed, recoloured or recoded subject down onto its blocks.
+ *
+ * The UI does not need this — it joins on render — but the notification
+ * scheduler, the calendar and global search read stored fields, and a reminder
+ * that names last week's title is a bug a student would notice. Cheap to keep
+ * consistent, so it is kept consistent.
+ */
+export async function syncSubjectToClasses(
+  uid: string,
+  subject: { id: string; name: string; color: string }
+): Promise<number> {
+  const db = getDb();
+  const snapshot = await getDocs(
+    query(paths.classes(db, uid), where('subjectId', '==', subject.id))
+  );
+  if (snapshot.empty) return 0;
+
+  const batch = writeBatch(db);
+  for (const document of snapshot.docs) {
+    batch.update(document.ref, {
+      // The title tracks the subject too: under the relational model a block is
+      // "this subject, this session type", not a free-text name of its own.
+      title: subject.name,
+      subjectName: subject.name,
+      color: subject.color,
+    });
+  }
+  await batch.commit();
+
+  return snapshot.size;
 }
 
 /** Blocks whose subject is missing, so the UI can offer to link or remove them. */
@@ -416,8 +570,8 @@ export function unlinkedClasses(classes: ClassBlock[], subjects: Subject[]): Cla
   return classes.filter((block) => block.subjectId === null || !live.has(block.subjectId));
 }
 
-/** Blocks for one day, earliest first. */
-export function classesForDay(classes: ClassBlock[], day: number): ClassBlock[] {
+/** Blocks for one day, earliest first. Generic so a join is not lost here. */
+export function classesForDay<T extends ClassBlock>(classes: T[], day: number): T[] {
   return classes
     .filter((block) => block.day === day)
     .sort((a, b) => a.startMinute - b.startMinute);

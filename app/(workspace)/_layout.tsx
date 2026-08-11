@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, useWindowDimensions, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import { Slot, usePathname } from 'expo-router';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
@@ -14,6 +20,16 @@ import { UndoProvider } from '@/hooks/useUndo';
 export const RAIL_BREAKPOINT = 900;
 
 /**
+ * The shell's height, in the one unit that means "what you can actually see".
+ * Cast because React Native's style types know nothing of CSS units; on native
+ * this is simply not applied and flex does the work.
+ */
+const VIEWPORT =
+  Platform.OS === 'web'
+    ? ({ height: '100dvh', maxHeight: '100dvh', overflow: 'hidden' } as unknown as ViewStyle)
+    : undefined;
+
+/**
  * Workspace shell.
  *
  * The grey block that used to escape below "Your subjects" was a height-chain
@@ -22,10 +38,13 @@ export const RAIL_BREAKPOINT = 900;
  * sand-coloured rail painted past the viewport instead of scrolling inside it.
  *
  * Three things keep it contained now:
- *   1. html / body / #root are pinned to 100% height in global.css, giving the
- *      percentage chain something real to resolve against.
- *   2. This root is `flex-row w-full h-full min-h-screen bg-paper` — a bounded
- *      row that fills the viewport and no more.
+ *   1. html / body / #root are pinned to 100dvh in global.css with the document
+ *      scrollport switched off, giving the percentage chain something real —
+ *      and something *visible* — to resolve against.
+ *   2. This root is a bounded row/column of exactly that height. It must never
+ *      carry min-h-screen: 100vh is the large viewport on iOS, taller than what
+ *      is on screen, which is what pushed the drawer's Sign out under the home
+ *      indicator and made the whole page rubber-band.
  *   3. The main pane is `flex-1 min-w-0 h-full overflow-hidden`, so overflow is
  *      clipped here and scrolling happens inside each screen's own scroller
  *      (see ScreenScroll) rather than spilling out of the shell.
@@ -75,7 +94,8 @@ export default function WorkspaceLayout() {
               its own background fills the notch area, rather than leaving a
               bare strip of paper above a floating bar. */}
           <View
-            className={`w-full h-full min-h-screen bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}
+            className={`w-full h-full bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}
+            style={VIEWPORT}
           >
             {showRail ? <Sidebar /> : null}
 
