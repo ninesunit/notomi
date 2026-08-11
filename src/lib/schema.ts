@@ -288,6 +288,8 @@ export type ClassBlock = {
   endMinute: number;
   venue: string | null;
   color: string;
+  /** The Outlook event this class was published as, when it has been. */
+  msEventId?: string | null;
   createdAt: Timestamp | null;
 };
 
@@ -565,8 +567,17 @@ export type Todo = {
   priority: Priority;
   subTasks: SubTask[];
   /** Set when the deadline was auto-extracted from an uploaded syllabus. */
-  source: 'manual' | 'syllabus';
+  source: 'manual' | 'syllabus' | 'microsoft';
   sourceDocumentId: string | null;
+  /**
+   * The id this task has in whatever system it came from.
+   *
+   * It is what stops a background pull creating the same assignment again on
+   * every run, and it survives the student renaming the task.
+   */
+  externalId?: string | null;
+  /** Where to open it, for tasks that live somewhere else too. */
+  externalUrl?: string | null;
   createdAt: Timestamp | null;
   completedAt: Timestamp | null;
 };

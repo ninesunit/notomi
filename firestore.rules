@@ -7,6 +7,20 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
+    // Whether the caller may see userId's shared week.
+    //
+    // Deliberately checks the document in *userId's* list, never the caller's.
+    // A caller owns their own list and could mark anyone "accepted" there, so
+    // reading their copy would let anyone grant themselves access. The copy
+    // that matters is the one only userId can promote — and that userId can
+    // delete at any moment to take the access back.
+    function isAcceptedFriend(userId) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(userId)/friends/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(userId)/friends/$(request.auth.uid))
+             .data.status == 'accepted';
+    }
+
     // Every Notomi document lives under users/{userId}, so ownership is the
     // only rule the app needs. Nothing is readable across accounts.
     match /users/{userId} {
@@ -65,8 +79,8 @@ service cloud.firestore {
 
         match /documents/{documentId} {
           allow read, delete: if isOwner(userId);
-          // Source text is passed wholesale into Gemini's context window, but a
-          // single Firestore document still has to fit under 1 MiB.
+          // Source text is passed wholesale into the model's context window,
+          // but a single document still has to fit under 1 MiB.
           allow create, update: if isOwner(userId)
             && request.resource.data.rawText is string
             && request.resource.data.rawText.size() < 900000;
@@ -119,6 +133,78 @@ service cloud.firestore {
       match /weak_concepts/{conceptId} {
         allow read, write: if isOwner(userId);
       }
+
+      // Your friend list, and the one place another account may write.
+      //
+      // A request has two halves and no backend to write the second one, so the
+      // sender writes both. The rules make that safe by allowing exactly one
+      // shape of foreign write: a document that names the sender, marked
+      // incoming. Everything else about your list stays yours.
+      match /friends/{friendId} {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId) && friendId != userId;
+
+        // Someone asking to be your friend.
+        allow create: if request.auth != null
+          && request.auth.uid == friendId
+          && friendId != userId
+          && request.resource.data.status == 'incoming'
+          && request.resource.data.handle is string
+          && request.resource.data.handle.size() <= 24
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() <= 60;
+
+        // Someone accepting a request *you* sent. Only the status may move, and
+        // never out of 'incoming' — that is the state meaning "they asked you",
+        // so refusing it is what stops anyone accepting their own request and
+        // granting themselves a friendship. 'accepted' is allowed through as a
+        // no-op so a repeated accept is not an error.
+        allow update: if request.auth != null
+          && request.auth.uid == friendId
+          && resource.data.status != 'incoming'
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+        // Unfriending is symmetric: either side can break the pair.
+        allow delete: if request.auth != null && request.auth.uid == friendId;
+      }
+    }
+
+    // The only cross-account lookup in the app: a handle, a display name and a
+    // colour. Nothing here is derived from anyone's coursework.
+    match /profiles/{userId} {
+      allow get: if request.auth != null;
+      // Capped so the directory can be searched but not harvested in bulk.
+      allow list: if request.auth != null && request.query.limit <= 5;
+
+      allow create, update: if isOwner(userId)
+        && request.resource.data.handle is string
+        && request.resource.data.handle.size() >= 3
+        && request.resource.data.handle.size() <= 24
+        && request.resource.data.handle.matches('^[a-z0-9._-]+$')
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 60;
+      allow delete: if isOwner(userId);
+    }
+
+    // A week reduced to when you are busy — day, start, end, and nothing else.
+    // Readable only by someone you have accepted.
+    match /busy/{userId} {
+      allow read: if isOwner(userId) || isAcceptedFriend(userId);
+      allow create, update: if isOwner(userId)
+        && request.resource.data.intervals is list
+        && request.resource.data.intervals.size() <= 300;
+      allow delete: if isOwner(userId);
+    }
+
+    // Live focus status. Expires by its own `until`, so a stale document says
+    // nothing rather than lying.
+    match /presence/{userId} {
+      allow read: if isOwner(userId) || isAcceptedFriend(userId);
+      allow create, update: if isOwner(userId)
+        && request.resource.data.status in ['focus', 'idle'];
+      allow delete: if isOwner(userId);
     }
 
     // Deny anything not explicitly matched above.

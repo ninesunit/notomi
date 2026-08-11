@@ -7,8 +7,10 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Slot, usePathname } from 'expo-router';
+import { Copilot } from '@/components/Copilot';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
+import { MicrosoftPull } from '@/components/MicrosoftPull';
 import { useSafeArea } from '@/hooks/useSafeArea';
 import { Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/hooks/useAuth';
@@ -60,6 +62,7 @@ export default function WorkspaceLayout() {
   const showRail = width >= RAIL_BREAKPOINT;
 
   const [drawer, setDrawer] = useState(false);
+  const [asking, setAsking] = useState(false);
 
   /**
    * Navigating closes the drawer.
@@ -97,7 +100,7 @@ export default function WorkspaceLayout() {
             className={`w-full h-full bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}
             style={VIEWPORT}
           >
-            {showRail ? <Sidebar /> : null}
+            {showRail ? <Sidebar onAsk={() => setAsking(true)} /> : null}
 
             <View
               className={`flex-1 min-w-0 h-full bg-paper ${
@@ -105,9 +108,12 @@ export default function WorkspaceLayout() {
               }`}
               style={showRail ? { paddingRight: insets.right } : undefined}
             >
-              {showRail ? null : <MobileTopBar onMenu={() => setDrawer(true)} />}
+              {showRail ? null : (
+                <MobileTopBar onMenu={() => setDrawer(true)} onAsk={() => setAsking(true)} />
+              )}
 
               <IngestBanner />
+              <MicrosoftPull />
 
               {/* min-h-0 lets this shrink below its content so the banner is
                   never pushed off-screen and the scroller keeps its bounds. */}
@@ -125,6 +131,8 @@ export default function WorkspaceLayout() {
             {showRail ? null : (
               <NavDrawer open={drawer} onClose={() => setDrawer(false)} pathname={pathname} />
             )}
+
+            <Copilot visible={asking} onClose={() => setAsking(false)} />
           </View>
         </ReminderProvider>
       </UndoProvider>

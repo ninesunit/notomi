@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { orderBy, query } from 'firebase/firestore';
+import { onSnapshot, orderBy, query } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Badge, Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
@@ -11,6 +11,14 @@ import { paths } from '@/lib/paths';
 import type { StudySession, Subject } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { formatMinutes, logSession, summarizeStreak } from '@/services/sessions';
+import {
+  friendsPath,
+  isFocusing,
+  presencePath,
+  setPresence,
+  type Friend,
+  type Presence,
+} from '@/services/social';
 
 /**
  * Pomodoro timer.
@@ -51,6 +59,15 @@ export default function Focus() {
 
   /** Wall-clock instant the current phase ends; null whenever paused. */
   const deadline = useRef<number | null>(null);
+  /**
+   * Seconds actually spent running this block, accumulated by the tick.
+   *
+   * Deriving the figure from the clock face instead — total minus remaining —
+   * silently over-credits a block that did not start at full length, which is
+   * exactly what joining a friend mid-session does.
+   */
+  const worked = useRef(0);
+  const lastTick = useRef(0);
 
   const total = phase === 'break' && completed % CYCLES_TO_LONG_BREAK === 0 && completed > 0
     ? LONG_BREAK
@@ -58,6 +75,43 @@ export default function Focus() {
 
   const subject = subjects.data.find((candidate) => candidate.id === subjectId) ?? null;
   const streak = useMemo(() => summarizeStreak(sessions.data), [sessions.data]);
+
+  const friends = useCollection<Friend>(friendsPath(db, uid), [uid]);
+  const room = useMemo(
+    () => friends.data.filter((friend) => friend.status === 'accepted'),
+    [friends.data]
+  );
+
+  /**
+   * Presence is broadcast only while a focus block is actually running, and
+   * only when somebody is there to see it. The remaining time is read from a
+   * ref: it changes four times a second, and this must not fire on every tick.
+   */
+  const remainingRef = useRef(remaining);
+  remainingRef.current = remaining;
+
+  useEffect(() => {
+    if (room.length === 0) return;
+
+    if (running && phase === 'focus') {
+      void setPresence(uid, {
+        status: 'focus',
+        subjectName: subject?.name ?? null,
+        minutes: Math.max(1, Math.ceil(remainingRef.current / 60)),
+      }).catch(() => undefined);
+    } else {
+      void setPresence(uid, { status: 'idle' }).catch(() => undefined);
+    }
+  }, [running, phase, subject?.name, uid, room.length]);
+
+  // Leaving the screen ends the broadcast. A closed tab writes nothing at all,
+  // which is why the document also carries its own expiry.
+  useEffect(
+    () => () => {
+      void setPresence(uid, { status: 'idle' }).catch(() => undefined);
+    },
+    [uid]
+  );
 
   const finish = useCallback(
     async (elapsedSeconds: number) => {
@@ -99,6 +153,7 @@ export default function Focus() {
 
       setRunning(false);
       deadline.current = null;
+      worked.current = 0;
       chime();
     },
     [completed, finish, phase]
@@ -106,13 +161,18 @@ export default function Focus() {
 
   useEffect(() => {
     if (!running) return;
+    lastTick.current = Date.now();
 
     const tick = () => {
       if (deadline.current === null) return;
-      const left = Math.round((deadline.current - Date.now()) / 1000);
+      const now = Date.now();
+      worked.current += (now - lastTick.current) / 1000;
+      lastTick.current = now;
+
+      const left = Math.round((deadline.current - now) / 1000);
       if (left <= 0) {
         setRemaining(0);
-        advance(total);
+        advance(worked.current);
         return;
       }
       setRemaining(left);
@@ -121,11 +181,12 @@ export default function Focus() {
     const id = setInterval(tick, 250);
     tick();
     return () => clearInterval(id);
-  }, [running, advance, total]);
+  }, [running, advance]);
 
   function start() {
     setJustLogged(null);
     deadline.current = Date.now() + remaining * 1000;
+    lastTick.current = Date.now();
     setRunning(true);
   }
 
@@ -139,8 +200,9 @@ export default function Focus() {
 
   /** Ends the block early but still banks the minutes actually worked. */
   function stop() {
-    const elapsed = total - remaining;
+    const elapsed = worked.current;
     deadline.current = null;
+    worked.current = 0;
     setRunning(false);
     if (phase === 'focus' && elapsed >= 60) void finish(elapsed);
     setRemaining(total);
@@ -148,9 +210,30 @@ export default function Focus() {
 
   function reset(next: Phase) {
     deadline.current = null;
+    worked.current = 0;
     setRunning(false);
     setPhase(next);
     setRemaining(next === 'focus' ? LENGTHS.focus : LENGTHS.break);
+  }
+
+  /**
+   * Sits down with a friend already working: same subject, same finish time.
+   * Ending together is the whole point, so the block is short by however long
+   * they have been at it rather than starting a fresh twenty-five.
+   */
+  function join(seconds: number, subjectName: string | null) {
+    const matched = subjectName
+      ? subjects.data.find((candidate) => candidate.name === subjectName)
+      : null;
+    if (matched) setSubjectId(matched.id);
+
+    setJustLogged(null);
+    setPhase('focus');
+    setRemaining(seconds);
+    worked.current = 0;
+    lastTick.current = Date.now();
+    deadline.current = Date.now() + seconds * 1000;
+    setRunning(true);
   }
 
   const progress = total > 0 ? 1 - remaining / total : 0;
@@ -222,7 +305,15 @@ export default function Focus() {
             {subject ? ` to ${subject.name}` : ''}.
           </Text>
         ) : null}
+
+        {room.length > 0 && running && phase === 'focus' ? (
+          <Text className="text-[11px] text-subtle">
+            Your friends can see that you are focusing{subject ? ` on ${subject.name}` : ''}.
+          </Text>
+        ) : null}
       </Card>
+
+      <FocusRoom friends={room} onJoin={join} />
 
       <Card className="mb-6 gap-3">
         <Text className="text-sm font-semibold text-ink">What are you working on?</Text>
@@ -275,6 +366,105 @@ export default function Focus() {
         Stopping early still banks the minutes you worked.
       </Text>
     </ScreenScroll>
+  );
+}
+
+/**
+ * Who else is working right now.
+ *
+ * Studying alone is the part students drop out of, so the room shows only the
+ * friends actually mid-block and offers the one action that matters: finish at
+ * the same time as them. It renders nothing when nobody is working — an empty
+ * room is worse than no room.
+ */
+function FocusRoom({
+  friends,
+  onJoin,
+}: {
+  friends: Friend[];
+  onJoin: (seconds: number, subjectName: string | null) => void;
+}) {
+  const db = getDb();
+  const [presence, setPresenceMap] = useState<Record<string, Presence>>({});
+  // Re-renders once a minute so a block that has run out stops showing as live.
+  const [, setClock] = useState(0);
+
+  useEffect(() => {
+    const stops = friends.map((friend) =>
+      onSnapshot(
+        presencePath(db, friend.id),
+        (snapshot) => {
+          const data = snapshot.data();
+          if (!data) return;
+          setPresenceMap((current) => ({
+            ...current,
+            [friend.id]: { id: friend.id, ...data } as Presence,
+          }));
+        },
+        () => undefined
+      )
+    );
+    return () => stops.forEach((stop) => stop());
+  }, [db, friends]);
+
+  useEffect(() => {
+    const id = setInterval(() => setClock((value) => value + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const live = friends
+    .map((friend) => ({ friend, presence: presence[friend.id] }))
+    .filter((entry) => isFocusing(entry.presence));
+
+  if (live.length === 0) return null;
+
+  return (
+    <Card className="mb-6 gap-3">
+      <View className="flex-row items-center gap-2">
+        <View className="h-2 w-2 rounded-full bg-rose" />
+        <Text className="text-sm font-semibold text-ink">
+          {live.length === 1 ? 'A friend is working' : `${live.length} friends are working`}
+        </Text>
+      </View>
+
+      {live.map(({ friend, presence: state }) => {
+        const until = state?.until?.toDate?.();
+        const left = until ? Math.max(0, Math.round((until.getTime() - Date.now()) / 1000)) : 0;
+
+        return (
+          <View key={friend.id} className="flex-row items-center gap-3">
+            <View
+              className="h-9 w-9 items-center justify-center rounded-full"
+              style={{ backgroundColor: `${friend.color}24` }}
+            >
+              <Text className="text-xs font-bold" style={{ color: friend.color }}>
+                {friend.displayName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <View className="flex-1">
+              <Text className="text-sm font-medium text-ink" numberOfLines={1}>
+                {friend.displayName}
+              </Text>
+              <Text className="text-xs text-subtle" numberOfLines={1}>
+                {state?.subjectName ? `Deep focus · ${state.subjectName}` : 'In deep focus'} ·{' '}
+                {Math.ceil(left / 60)} min left
+              </Text>
+            </View>
+            <Button
+              label="Join"
+              size="sm"
+              variant="secondary"
+              disabled={left < 60}
+              onPress={() => onJoin(left, state?.subjectName ?? null)}
+            />
+          </View>
+        );
+      })}
+
+      <Text className="text-[11px] leading-4 text-subtle">
+        Joining sets your timer to end when theirs does.
+      </Text>
+    </Card>
   );
 }
 

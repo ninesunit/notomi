@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { RemindersCard } from '@/components/Reminders';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -58,6 +59,23 @@ export default function Settings() {
           </Pressable>
         </View>
       </Card>
+
+      <Link href="/connections" asChild>
+        <Pressable accessibilityRole="link">
+          <Card className="mb-8 flex-row items-center gap-3">
+            <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
+              <Feather name="link" size={16} color="#6F6A5F" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-[15px] font-semibold text-ink">Connections</Text>
+              <Text className="text-xs text-muted">
+                Publish your timetable to Outlook and pull assignments from Teams.
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={16} color="#9A9488" />
+          </Card>
+        </Pressable>
+      </Link>
 
       <Card className="mb-8 gap-4">
         <View className="flex-row items-center gap-3">

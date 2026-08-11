@@ -1,6 +1,7 @@
 import {
   getGenerativeModel,
   Schema,
+  type FunctionDeclarationsTool,
   type GenerativeModel,
   type ModelParams,
 } from 'firebase/ai';
@@ -1145,4 +1146,183 @@ ${input.text.slice(0, MAX_CONTEXT_CHARS)}`,
     dueDate: parsed.dueDate?.trim() || null,
     dueTime: parsed.dueTime?.trim() || null,
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * The co-pilot
+ * ------------------------------------------------------------------ */
+
+/**
+ * One tool the assistant can reach for.
+ *
+ * The declarations live here and the implementations live in
+ * services/copilot, because what the model is allowed to do is a different
+ * question from how the app does it — and only one of those two should change
+ * when Firestore does.
+ */
+export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
+  {
+    functionDeclarations: [
+      {
+        name: 'find_subject',
+        description:
+          'Find a subject in the student’s library by name or course code. Call this ' +
+          'before any tool that needs a subjectId. Returns the closest matches.',
+        parameters: Schema.object({
+          properties: {
+            query: Schema.string({ description: 'Name, partial name or course code.' }),
+          },
+        }),
+      },
+      {
+        name: 'create_task',
+        description:
+          'Add a to-do with an optional deadline. Use for anything the student says they ' +
+          'have to do, hand in, revise or prepare.',
+        parameters: Schema.object({
+          properties: {
+            title: Schema.string({ description: 'What has to be done, in their words.' }),
+            subjectId: Schema.string({ description: 'From find_subject. Empty if none fits.' }),
+            dueDate: Schema.string({ description: 'ISO YYYY-MM-DD. Empty if not stated.' }),
+            dueTime: Schema.string({ description: '24-hour HH:MM. Empty if not stated.' }),
+            priority: Schema.string({ description: 'low, medium or high.' }),
+          },
+          optionalProperties: ['subjectId', 'dueDate', 'dueTime', 'priority'],
+        }),
+      },
+      {
+        name: 'get_schedule',
+        description:
+          'Read the student’s timetable. Returns their classes with day, time, room and ' +
+          'session. Use for "where is my next class", "what do I have tomorrow", "am I free".',
+        parameters: Schema.object({
+          properties: {
+            when: Schema.string({
+              description: '"next", "today", "tomorrow", a weekday name, or "week".',
+            }),
+          },
+          optionalProperties: ['when'],
+        }),
+      },
+      {
+        name: 'get_tasks',
+        description: 'Read open to-dos and their deadlines, soonest first.',
+        parameters: Schema.object({
+          properties: {
+            subjectId: Schema.string({ description: 'Limit to one subject. Empty for all.' }),
+          },
+          optionalProperties: ['subjectId'],
+        }),
+      },
+      {
+        name: 'search_material',
+        description:
+          'Answer a question from the material the student has uploaded for one subject, ' +
+          'or summarise it. Use for "summarise my notes on…", "what did we cover in…".',
+        parameters: Schema.object({
+          properties: {
+            subjectId: Schema.string({ description: 'From find_subject.' }),
+            question: Schema.string({ description: 'What to answer or summarise.' }),
+          },
+        }),
+      },
+      {
+        name: 'log_lecture',
+        description:
+          'Record what a class covered, in the student’s own words, so it is written up ' +
+          'and filed under the subject.',
+        parameters: Schema.object({
+          properties: {
+            subjectId: Schema.string({ description: 'From find_subject.' }),
+            entry: Schema.string({ description: 'What they said the class covered.' }),
+          },
+        }),
+      },
+    ],
+  },
+];
+
+export type CopilotTurn = { role: 'user' | 'model'; text: string };
+
+/** What a tool call did, so the UI can show it rather than just the prose. */
+export type CopilotAction = { tool: string; summary: string };
+
+/**
+ * One exchange with the assistant, including any tools it decides to use.
+ *
+ * The loop is capped: a model that keeps calling tools without answering would
+ * otherwise spend a student's quota in a circle. Four rounds is more than any
+ * real request needs — find a subject, read something, write something, answer.
+ */
+export async function copilotTurn(input: {
+  message: string;
+  history: CopilotTurn[];
+  /** A short brief of who the student is and what today looks like. */
+  brief: string;
+  run: (name: string, args: Record<string, unknown>) => Promise<{ result: unknown; summary?: string }>;
+}): Promise<{ reply: string; actions: CopilotAction[] }> {
+  const chat = model({
+    tools: COPILOT_TOOLS,
+    systemInstruction: `You are Notomi, a study assistant inside a student's own app.
+
+You can read and change their timetable, subjects, notes and to-dos through the
+tools you have. Use them rather than guessing: if they ask where their next
+class is, call get_schedule; if they mention something due, call create_task.
+
+- Look up a subject with find_subject before using its id. If nothing matches,
+  say so and ask which subject they mean rather than inventing one.
+- Confirm what you did in one short sentence. "Added 'Essay draft' to Research
+  Method, due Friday 14 March." No preamble, no bullet lists for one fact.
+- Never invent a deadline, a room or a fact about their material. If it is not
+  in what the tools return, say you do not have it.
+- They are usually on a phone, often walking. Two sentences is a good answer;
+  five is a bad one.
+
+TODAY
+${input.brief}`,
+    generationConfig: { temperature: 0.3 },
+  }).startChat({
+    history: input.history.map((turn) => ({
+      role: turn.role,
+      parts: [{ text: turn.text }],
+    })),
+  });
+
+  const actions: CopilotAction[] = [];
+
+  try {
+    let response = (await chat.sendMessage(input.message)).response;
+
+    for (let round = 0; round < 4; round += 1) {
+      const calls = response.functionCalls();
+      if (!calls || calls.length === 0) break;
+
+      const replies = [];
+      for (const call of calls) {
+        const args = (call.args ?? {}) as Record<string, unknown>;
+        let outcome: { result: unknown; summary?: string };
+
+        try {
+          outcome = await input.run(call.name, args);
+        } catch (error) {
+          // Handed back to the model rather than thrown: it can tell the
+          // student what failed far better than a stack trace can.
+          outcome = {
+            result: { error: error instanceof Error ? error.message : String(error) },
+          };
+        }
+
+        if (outcome.summary) actions.push({ tool: call.name, summary: outcome.summary });
+        replies.push({
+          functionResponse: { name: call.name, response: { result: outcome.result } },
+        });
+      }
+
+      response = (await chat.sendMessage(replies)).response;
+    }
+
+    return { reply: response.text().trim(), actions };
+  } catch (error) {
+    throw new AiError(describe(error), error);
+  }
 }

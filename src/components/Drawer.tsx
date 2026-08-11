@@ -86,7 +86,13 @@ export function EdgeSwipeArea({
  * Top bar
  * ------------------------------------------------------------------ */
 
-export function MobileTopBar({ onMenu }: { onMenu: () => void }) {
+export function MobileTopBar({
+  onMenu,
+  onAsk,
+}: {
+  onMenu: () => void;
+  onAsk: () => void;
+}) {
   const insets = useSafeArea();
 
   return (
@@ -117,6 +123,19 @@ export function MobileTopBar({ onMenu }: { onMenu: () => void }) {
         <View className="flex-1">
           <GlobalSearch />
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ask Notomi"
+          onPress={() => {
+            feedback('tap');
+            onAsk();
+          }}
+          hitSlop={8}
+          className="h-10 w-10 items-center justify-center rounded-xl bg-ink"
+        >
+          <Feather name="zap" size={17} color="#F7F5EE" />
+        </Pressable>
       </View>
     </View>
   );

@@ -14,7 +14,7 @@ import { isActive, NAV_ITEMS } from './nav';
  * the workspace layout depends on it holding exactly w-64 so the main pane can
  * own the remaining width.
  */
-export function Sidebar() {
+export function Sidebar({ onAsk }: { onAsk: () => void }) {
   const pathname = usePathname();
   const { user, logOut } = useAuth();
   const insets = useSafeArea();
@@ -41,6 +41,16 @@ export function Sidebar() {
           </Link>
 
           <GlobalSearch />
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ask Notomi"
+            onPress={onAsk}
+            className="flex-row items-center gap-2.5 rounded-xl bg-ink px-3 py-2.5"
+          >
+            <Feather name="zap" size={15} color="#F7F5EE" />
+            <Text className="text-[15px] font-semibold text-paper">Ask Notomi</Text>
+          </Pressable>
 
           <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-1 pb-2">
             {NAV_ITEMS.map((item) => {

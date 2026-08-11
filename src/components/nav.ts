@@ -17,6 +17,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/study', label: 'Study Center', shortLabel: 'Study', icon: 'zap' },
   { href: '/focus', label: 'Focus', shortLabel: 'Focus', icon: 'target' },
   { href: '/capture', label: 'Capture', shortLabel: 'Capture', icon: 'camera' },
+  { href: '/friends', label: 'Friends', shortLabel: 'Friends', icon: 'users' },
   { href: '/settings', label: 'Settings', shortLabel: 'Settings', icon: 'settings' },
 ];
 
@@ -37,7 +38,9 @@ export const DRAWER_SECTIONS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: 'Tools',
-    items: NAV_ITEMS.filter((item) => ['/study', '/focus', '/capture'].includes(item.href)),
+    items: NAV_ITEMS.filter((item) =>
+      ['/study', '/focus', '/capture', '/friends'].includes(item.href)
+    ),
   },
 ];
 
