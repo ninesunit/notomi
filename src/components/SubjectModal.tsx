@@ -4,7 +4,13 @@ import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { Sheet } from './Sheet';
 import { Button, Field } from './ui';
 import { paths } from '@/lib/paths';
-import { colorForSubject, SUBJECT_EMOJI, SUBJECT_PALETTE, type Subject } from '@/lib/schema';
+import {
+  colorForSubject,
+  SUBJECT_EMOJI,
+  SUBJECT_PALETTE,
+  tidyName,
+  type Subject,
+} from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { syncSubjectToClasses } from '@/services/timetable';
 
@@ -55,7 +61,12 @@ function SubjectForm({
   onClose: () => void;
   onCreated?: (subjectId: string) => void;
 }) {
-  const [name, setName] = useState(subject?.name ?? '');
+  /**
+   * A name captured from a screenshot arrives in block capitals. The editor
+   * offers the calmed version pre-typed rather than rewriting it behind the
+   * student's back — one tap on Save if they agree, ignore it if they do not.
+   */
+  const [name, setName] = useState(tidyName(subject?.name ?? ''));
   const [moduleCode, setModuleCode] = useState(subject?.moduleCode ?? '');
   const [tag, setTag] = useState(subject?.tag ?? '');
   const [emoji, setEmoji] = useState<string | null>(subject?.emoji ?? null);

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
@@ -172,13 +172,26 @@ function Engines({
   error: string | null;
   notice: string | null;
 }) {
+  const { width } = useWindowDimensions();
+  /**
+   * Two tiles side by side on a phone, two full cards on anything wider.
+   *
+   * The explanatory paragraph is what a landing page needs; on a 393pt screen
+   * it pushed the actual content of the app below the fold, which is the
+   * opposite of what a home screen is for. The short form says the same thing
+   * in the space a native app would give it.
+   */
+  const compact = width < 560;
+
   return (
-    <View className="mb-9 gap-3">
+    <View className="mb-8 gap-3">
       <View className="flex-row flex-wrap gap-3">
         <EngineCard
           index={0}
+          compact={compact}
           emoji="📸"
           title="Scan schedule"
+          caption="Your timetable from a screenshot"
           body="Upload a screenshot of your weekly timetable. Gemini reads it, you check it, and it builds your subjects, classes and program in one go."
           action={scanning ? 'Reading your schedule…' : 'Start with a screenshot'}
           icon="camera"
@@ -188,8 +201,10 @@ function Engines({
         />
         <EngineCard
           index={1}
+          compact={compact}
           emoji="📄"
           title="Upload syllabus"
+          caption="Deadlines and topics from a PDF"
           body="Drop in a course outline or lecture slides. Notomi reads them on your device, then pulls out the topics, key dates and deadlines."
           action="Choose a document"
           icon="upload-cloud"
@@ -206,8 +221,10 @@ function Engines({
 
 function EngineCard({
   index,
+  compact,
   emoji,
   title,
+  caption,
   body,
   action,
   icon,
@@ -216,8 +233,11 @@ function EngineCard({
   onPress,
 }: {
   index: number;
+  compact: boolean;
   emoji: string;
   title: string;
+  /** The one-line form, used where there is no room for the paragraph. */
+  caption: string;
   body: string;
   action: string;
   icon: React.ComponentProps<typeof Feather>['name'];
@@ -226,7 +246,10 @@ function EngineCard({
   onPress: () => void;
 }) {
   return (
-    <View className="flex-1 grow" style={{ minWidth: 250, flexBasis: 250 }}>
+    <View
+      className="flex-1 grow"
+      style={compact ? { flexBasis: 0, minWidth: 0 } : { minWidth: 250, flexBasis: 250 }}
+    >
       <FadeIn index={index}>
         <Pressable
           accessibilityRole="button"
@@ -234,27 +257,43 @@ function EngineCard({
           accessibilityState={{ busy }}
           onPress={onPress}
           disabled={busy}
-          className="h-full gap-3 overflow-hidden rounded-2xl border p-5"
+          className={`h-full overflow-hidden rounded-2xl border ${
+            compact ? 'gap-2 p-4' : 'gap-3 p-5'
+          }`}
           style={{ backgroundColor: `${tint}12`, borderColor: `${tint}3D` }}
         >
-          <View className="flex-row items-center gap-3">
-            <View
-              className="h-11 w-11 items-center justify-center rounded-xl"
-              style={{ backgroundColor: `${tint}24` }}
-            >
-              <Text className="text-xl">{emoji}</Text>
-            </View>
-            <Text className="flex-1 text-[17px] font-bold leading-6 text-ink">{title}</Text>
+          <View
+            className={`items-center justify-center rounded-xl ${
+              compact ? 'h-10 w-10' : 'h-11 w-11'
+            }`}
+            style={{ backgroundColor: `${tint}24` }}
+          >
+            <Text className={compact ? 'text-lg' : 'text-xl'}>{emoji}</Text>
           </View>
 
-          <Text className="text-[13px] leading-5 text-ink/70">{body}</Text>
-
-          <View className="mt-auto flex-row items-center gap-2 pt-1">
-            <Feather name={busy ? 'loader' : icon} size={14} color={tint} />
-            <Text className="text-[13px] font-semibold" style={{ color: tint }}>
-              {action}
-            </Text>
-          </View>
+          {compact ? (
+            <>
+              <Text className="text-[15px] font-bold leading-5 text-ink">{title}</Text>
+              <Text className="text-[12px] leading-4 text-ink/70">{caption}</Text>
+              <View className="mt-auto flex-row items-center gap-1.5 pt-1.5">
+                <Feather name={busy ? 'loader' : icon} size={12} color={tint} />
+                <Text className="text-[12px] font-semibold" style={{ color: tint }}>
+                  {busy ? 'Reading…' : 'Start'}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text className="text-[17px] font-bold leading-6 text-ink">{title}</Text>
+              <Text className="text-[13px] leading-5 text-ink/70">{body}</Text>
+              <View className="mt-auto flex-row items-center gap-2 pt-1">
+                <Feather name={busy ? 'loader' : icon} size={14} color={tint} />
+                <Text className="text-[13px] font-semibold" style={{ color: tint }}>
+                  {action}
+                </Text>
+              </View>
+            </>
+          )}
         </Pressable>
       </FadeIn>
     </View>
@@ -377,7 +416,7 @@ function ClassRow({
       <View className="h-10 w-1 rounded-full" style={{ backgroundColor: block.color }} />
 
       <View className="flex-1 gap-0.5">
-        <Text className="text-[15px] font-semibold text-ink" numberOfLines={1}>
+        <Text className="text-[15px] font-semibold leading-5 text-ink" numberOfLines={2}>
           {block.subjectName || block.title}
         </Text>
         <Text className="text-xs text-muted" numberOfLines={1}>
@@ -392,11 +431,11 @@ function ClassRow({
       </View>
 
       {live ? (
-        <View className="rounded-full bg-accent px-2 py-1">
+        <View className="shrink-0 rounded-full bg-accent px-2 py-1">
           <Text className="text-[10px] font-bold uppercase tracking-wider text-paper">Now</Text>
         </View>
       ) : (
-        <Text className="text-[13px] font-semibold text-muted">
+        <Text className="shrink-0 text-[13px] font-semibold text-muted">
           {away < 60 ? `in ${away} min` : minutesToLabel(block.startMinute)}
         </Text>
       )}

@@ -709,9 +709,14 @@ function DayTimeline({
                   {block.subjectName || block.title}
                 </Text>
 
-                {/* Full width means these never have to be truncated away. */}
+                {/* Full width means these never have to be truncated away, and
+                    a long room name gets a second line once the block is tall
+                    enough to hold one. */}
                 {box.height > 62 ? (
-                  <Text className="text-xs leading-4 text-muted" numberOfLines={1}>
+                  <Text
+                    className="text-xs leading-4 text-muted"
+                    numberOfLines={box.height > 96 ? 2 : 1}
+                  >
                     {[
                       `${minutesToLabel(block.startMinute)}–${minutesToLabel(block.endMinute)}`,
                       block.venue,

@@ -91,6 +91,40 @@ export function calculateGpa(
   return { gpa: graded > 0 ? points / graded : null, credits, graded };
 }
 
+/**
+ * Calms a name a schedule printed in block capitals.
+ *
+ * University systems shout: "FUNDAMENTALS OF DIGITAL MEDIA" is what comes off
+ * the screenshot, and a library of those reads like an argument. Only strings
+ * that are entirely uppercase are touched — anything with a lowercase letter in
+ * it was written that way deliberately — and codes and roman numerals keep
+ * their capitals.
+ */
+const MINOR_WORDS = new Set([
+  'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'of', 'on',
+  'or', 'the', 'to', 'via', 'vs', 'with',
+]);
+
+export function tidyName(raw: string): string {
+  const text = raw.trim().replace(/\s+/g, ' ');
+  if (!text || text !== text.toUpperCase() || !/[A-Z]{4}/.test(text)) return text;
+
+  return text
+    .toLowerCase()
+    .split(' ')
+    .map((word, index) => {
+      // A code keeps its shape: CS2040, MA1101R, IT-101.
+      if (/\d/.test(word)) return word.toUpperCase();
+      if (/^(i{1,3}|iv|vi{0,3}|ix|xi{0,3})$/.test(word)) return word.toUpperCase();
+      if (index > 0 && MINOR_WORDS.has(word)) return word;
+      // Capitalise after a bracket or hyphen too: "(part two)" → "(Part Two)".
+      return word.replace(/(^|[([{\-/])([a-z])/g, (_, prefix: string, letter: string) =>
+        `${prefix}${letter.toUpperCase()}`
+      );
+    })
+    .join(' ');
+}
+
 /** users/{uid}/subjects/{subjectId} */
 export type Subject = {
   id: string;

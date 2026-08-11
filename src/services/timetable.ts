@@ -15,6 +15,7 @@ import {
   DAY_FULL,
   minutesToClock,
   parseClock,
+  tidyName,
   type ClassBlock,
   type ExtractedClass,
   type RoutineBlock,
@@ -239,8 +240,10 @@ export function toImportRows(entries: ExtractedClass[], subjects: Subject[]): St
     // Many schedules print a code and a session type but no course name. The
     // code is then the subject's identity, and the student renames it later if
     // they want — inventing a title here would be worse than showing the code.
-    const code = entry.code?.trim() ?? '';
-    const title = entry.title?.trim() || code || 'Untitled class';
+    const code = entry.code?.trim().toUpperCase() ?? '';
+    // Schedules print course names in block capitals; a library of those reads
+    // like shouting, so the staged name is calmed before it is ever shown.
+    const title = tidyName(entry.title?.trim() || '') || code || 'Untitled class';
     const existing = matchSubject(title, code, subjects);
 
     rows.push({
