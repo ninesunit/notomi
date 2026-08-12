@@ -40,7 +40,8 @@ yarn-error.*
 /ios
 /android
 
-# pdf.js worker is copied from node_modules by scripts/copy-pdf-worker.mjs
+# pdf.js browser assets are copied from node_modules by scripts/copy-pdf-worker.mjs
+public/pdf.min.mjs
 public/pdf.worker.min.mjs
 
 # local env files

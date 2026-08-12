@@ -12,6 +12,16 @@ export type Semester = {
   gpaTarget?: number | null;
   /** Manual ordering; lower sorts first. */
   order: number;
+  /** Optional anchors imported from an official academic calendar. */
+  startDate?: Timestamp | null;
+  teachingEndDate?: Timestamp | null;
+  studyLeaveStart?: Timestamp | null;
+  studyLeaveEnd?: Timestamp | null;
+  examStart?: Timestamp | null;
+  examEnd?: Timestamp | null;
+  endDate?: Timestamp | null;
+  teachingWeeks?: number | null;
+  calendarSourceName?: string | null;
   createdAt: Timestamp | null;
 };
 
@@ -73,7 +83,10 @@ export const GRADE_OPTIONS = Object.keys(GRADE_POINTS);
  * silently gets a GPA of null over zero credits.
  */
 export function calculateGpa(
-  entries: { creditHours: number | null | undefined; grade: string | null | undefined }[]
+  entries: {
+    creditHours: number | null | undefined;
+    grade: string | null | undefined;
+  }[]
 ): { gpa: number | null; credits: number; graded: number } {
   let points = 0;
   let credits = 0;
@@ -139,8 +152,24 @@ export function parseCourseCode(raw: string | null | undefined): {
  * their capitals.
  */
 const MINOR_WORDS = new Set([
-  'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'of', 'on',
-  'or', 'the', 'to', 'via', 'vs', 'with',
+  'a',
+  'an',
+  'and',
+  'as',
+  'at',
+  'but',
+  'by',
+  'for',
+  'from',
+  'in',
+  'of',
+  'on',
+  'or',
+  'the',
+  'to',
+  'via',
+  'vs',
+  'with',
 ]);
 
 export function tidyName(raw: string): string {
@@ -156,8 +185,9 @@ export function tidyName(raw: string): string {
       if (/^(i{1,3}|iv|vi{0,3}|ix|xi{0,3})$/.test(word)) return word.toUpperCase();
       if (index > 0 && MINOR_WORDS.has(word)) return word;
       // Capitalise after a bracket or hyphen too: "(part two)" → "(Part Two)".
-      return word.replace(/(^|[([{\-/])([a-z])/g, (_, prefix: string, letter: string) =>
-        `${prefix}${letter.toUpperCase()}`
+      return word.replace(
+        /(^|[([{\-/])([a-z])/g,
+        (_, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`
       );
     })
     .join(' ');
@@ -179,6 +209,9 @@ export type Subject = {
   creditHours: number;
   /** Recorded grade, keyed into GRADE_POINTS. */
   grade: string | null;
+  /** Attendance Guard counters; missing values are treated as zero. */
+  attendanceAttended?: number;
+  attendanceMissed?: number;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
 };
@@ -201,8 +234,22 @@ export const SUBJECT_PALETTE = [
 
 /** Emoji offered in the folder picker — one row of academic shorthand. */
 export const SUBJECT_EMOJI = [
-  '📘', '📐', '🧪', '🧬', '💻', '⚖️', '🩺', '🎨',
-  '🌍', '🧠', '📊', '🏛️', '🔬', '🎼', '🗣️', '⚙️',
+  '📘',
+  '📐',
+  '🧪',
+  '🧬',
+  '💻',
+  '⚖️',
+  '🩺',
+  '🎨',
+  '🌍',
+  '🧠',
+  '📊',
+  '🏛️',
+  '🔬',
+  '🎼',
+  '🗣️',
+  '⚙️',
 ];
 
 /** users/{uid}/subjects/{subjectId}/documents/{documentId} */
@@ -288,6 +335,10 @@ export type ClassBlock = {
   endMinute: number;
   venue: string | null;
   color: string;
+  /** Term anchor copied from the parent Semester at import time. */
+  semesterId?: string | null;
+  startDate?: Timestamp | null;
+  endDate?: Timestamp | null;
   createdAt: Timestamp | null;
 };
 
@@ -312,7 +363,12 @@ export type RoutineBlock = {
   createdAt: Timestamp | null;
 };
 
-export const ROUTINE_CATEGORIES: { id: string; label: string; emoji: string; color: string }[] = [
+export const ROUTINE_CATEGORIES: {
+  id: string;
+  label: string;
+  emoji: string;
+  color: string;
+}[] = [
   { id: 'study', label: 'Study', emoji: '📖', color: '#4C5FA8' },
   { id: 'gym', label: 'Gym', emoji: '🏋️', color: '#2E6F5E' },
   { id: 'meal', label: 'Meal', emoji: '🍽️', color: '#B4832A' },
@@ -342,7 +398,9 @@ export function minutesToLabel(minutes: number): string {
   const minute = minutes % 60;
   const suffix = hour < 12 ? 'am' : 'pm';
   const display = hour % 12 === 0 ? 12 : hour % 12;
-  return minute === 0 ? `${display}${suffix}` : `${display}:${String(minute).padStart(2, '0')}${suffix}`;
+  return minute === 0
+    ? `${display}${suffix}`
+    : `${display}:${String(minute).padStart(2, '0')}${suffix}`;
 }
 
 /**
@@ -553,6 +611,8 @@ export type SubTask = {
   id: string;
   title: string;
   isCompleted: boolean;
+  /** Weekly milestone date when a syllabus decompiler supplied one. */
+  dueDate?: Timestamp | null;
 };
 
 export type Todo = {
@@ -565,8 +625,10 @@ export type Todo = {
   priority: Priority;
   subTasks: SubTask[];
   /** Set when the deadline was auto-extracted from an uploaded syllabus. */
-  source: 'manual' | 'syllabus';
+  source: 'manual' | 'syllabus' | 'planner';
   sourceDocumentId: string | null;
+  /** assignment | exam | revision | milestone | other */
+  kind?: string | null;
   createdAt: Timestamp | null;
   completedAt: Timestamp | null;
 };
@@ -597,6 +659,12 @@ export type ExtractedDeadline = {
   dueTime: string | null;
   /** assignment | exam | quiz | lab | project | reading | presentation | other */
   kind: string | null;
+  /** Large deliverables may be split into dated work packets before the due date. */
+  milestones?: {
+    title: string;
+    /** Whole weeks before the parent deadline. */
+    weeksBeforeDue: number;
+  }[];
 };
 
 export type ExtractedMetadata = {
@@ -641,6 +709,28 @@ export type ExtractedClass = {
   start: string;
   end: string;
   venue: string | null;
+};
+
+/** A term window read from an institution-neutral academic calendar. */
+export type ExtractedAcademicTerm = {
+  name: string;
+  code: string | null;
+  startDate: string;
+  teachingEndDate: string;
+  teachingWeeks: number;
+  studyLeaveStart: string | null;
+  studyLeaveEnd: string | null;
+  examStart: string | null;
+  examEnd: string | null;
+  endDate: string;
+};
+
+export type RevisionPlanItem = {
+  subjectId: string;
+  title: string;
+  date: string;
+  minutes: number;
+  focus: string;
 };
 
 export type GeneratedCard = {

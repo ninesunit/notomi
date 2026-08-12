@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { useFonts } from 'expo-font';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -42,9 +44,27 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
+  // Load Claude's original Feather icon set before mounting the workspace.
+  // Without this gate, a slow or stale browser cache can briefly render the
+  // private-use glyphs as empty squares and never repaint them.
+  const [iconsLoaded, iconError] = useFonts(Feather.font);
+
   // Registered once, at the top of the tree: an installed home-screen app has
   // no other moment where it reliably checks whether a deploy has landed.
   useEffect(() => registerServiceWorker(), []);
+
+  useEffect(() => {
+    if (iconError) console.error('[fonts] Feather icon font failed to load.', iconError);
+  }, [iconError]);
+
+  if (!iconsLoaded && !iconError) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <Splash />
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>

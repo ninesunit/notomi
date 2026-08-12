@@ -161,14 +161,18 @@ function requireWeb(format: string): void {
 async function extractPdf(data: ArrayBuffer): Promise<ParsedFile> {
   requireWeb('PDF');
 
-  // Lazily imported so the ~1MB pdf.js bundle stays out of the initial payload.
-  const pdfjs = await import('pdfjs-dist');
-  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+  // Loaded by the browser rather than Metro. See scripts/copy-pdf-worker.mjs:
+  // this keeps the parser lazy without tying it to a deploy-specific numeric
+  // module id, which is what made uploads fail in already-open PWA sessions.
+  const pdfjs = await loadPdfJs();
+  pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
 
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(data) });
   let pdf;
   try {
-    pdf = await pdfjs.getDocument({ data: new Uint8Array(data) }).promise;
+    pdf = await loadingTask.promise;
   } catch (error) {
+    await loadingTask.destroy();
     const message = error instanceof Error ? error.message : String(error);
     if (/password/i.test(message)) {
       throw new ParseError('That PDF is password protected. Remove the password and try again.');
@@ -176,24 +180,51 @@ async function extractPdf(data: ArrayBuffer): Promise<ParsedFile> {
     throw new ParseError(`Could not read that PDF: ${message}`);
   }
 
-  const pages: string[] = [];
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
-    pages.push(joinTextItems(content.items));
-    page.cleanup();
-  }
-  const numPages = pdf.numPages;
-  await pdf.destroy();
+  try {
+    const pages: string[] = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      pages.push(joinTextItems(content.items));
+      page.cleanup();
+    }
 
-  const text = pages.join('\n\n').trim();
-  if (!text) {
-    throw new ParseError(
-      'No selectable text found — that PDF is probably a scan. Export the pages as images and ' +
-        'upload those instead; Notomi will read them with OCR.'
-    );
+    const text = pages.join('\n\n').trim();
+    if (!text) {
+      throw new ParseError(
+        'No selectable text found — that PDF is probably a scan. Export the pages as images and ' +
+          'upload those instead; Notomi will read them with OCR.'
+      );
+    }
+    return { text, pageCount: pdf.numPages, kind: 'pdf' };
+  } finally {
+    try {
+      await pdf.cleanup();
+    } finally {
+      await loadingTask.destroy();
+    }
   }
-  return { text, pageCount: numPages, kind: 'pdf' };
+}
+
+type PdfJs = typeof import('pdfjs-dist');
+let pdfJsPromise: Promise<PdfJs> | null = null;
+const PDFJS_ASSET_VERSION = '6.2.108';
+const PDFJS_PARSER_URL = `/pdf.min.mjs?v=${PDFJS_ASSET_VERSION}`;
+const PDFJS_WORKER_URL = `/pdf.worker.min.mjs?v=${PDFJS_ASSET_VERSION}`;
+
+/** A native browser import which Metro cannot rewrite into an async bundle. */
+function loadPdfJs(): Promise<PdfJs> {
+  if (!pdfJsPromise) {
+    const importFromUrl = new Function('url', 'return import(url)') as (
+      url: string
+    ) => Promise<PdfJs>;
+    pdfJsPromise = importFromUrl(PDFJS_PARSER_URL).catch((error) => {
+      // A transient network failure should be retryable on the next upload.
+      pdfJsPromise = null;
+      throw error;
+    });
+  }
+  return pdfJsPromise;
 }
 
 /**

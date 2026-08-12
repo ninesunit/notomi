@@ -1,6 +1,11 @@
 import { Platform } from 'react-native';
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
-import { initializeAppCheck, ReCaptchaV3Provider, type AppCheck } from 'firebase/app-check';
+import {
+  getToken as getAppCheckToken,
+  initializeAppCheck,
+  ReCaptchaV3Provider,
+  type AppCheck,
+} from 'firebase/app-check';
 import {
   browserLocalPersistence,
   browserPopupRedirectResolver,
@@ -38,7 +43,7 @@ export const missingFirebaseConfigKeys: string[] = REQUIRED_KEYS.filter(
 
 export const isFirebaseConfigured = missingFirebaseConfigKeys.length === 0;
 
-export const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-2.5-flash';
+export const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-3.6-flash';
 
 /**
  * Point Auth/Firestore at `firebase emulators:start` instead of the live
@@ -105,6 +110,26 @@ function setUpAppCheck(app: FirebaseApp): void {
     console.info(
       `[firebase] App Check initialized with site key ${APP_CHECK_SITE_KEY.slice(0, 12)}…`
     );
+
+    // Prime attestation once so a bad key/domain is visible before an AI call
+    // turns the browser's CORS-shaped failure into a generic network error.
+    // getToken reuses its cached/in-flight token, so the AI SDK does not pay for
+    // a second exchange immediately afterwards.
+    void getAppCheckToken(appCheckRef, false)
+      .then(() => console.info('[firebase] App Check token ready.'))
+      .catch((error: unknown) => {
+        const detail = error as {
+          code?: string;
+          message?: string;
+          customData?: { httpStatus?: number; originalErrorMessage?: string };
+        };
+        console.error('[firebase] App Check token request failed.', {
+          code: detail.code ?? null,
+          httpStatus: detail.customData?.httpStatus ?? null,
+          message: detail.message ?? String(error),
+          originalError: detail.customData?.originalErrorMessage ?? null,
+        });
+      });
   } catch (error) {
     // A misconfigured App Check must not stop the app from loading; the
     // affected calls will surface their own errors.

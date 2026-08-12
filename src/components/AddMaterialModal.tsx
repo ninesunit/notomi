@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { FileDropZone } from './FileDropZone';
 import { Sheet } from './Sheet';
 import { Button, Notice } from './ui';
 import { useUid } from '@/hooks/useAuth';
@@ -65,35 +66,39 @@ export function AddMaterialModal({
     }
   }, [visible]);
 
+  const queue = useCallback((picked: MaterialFile[]) => {
+    if (picked.length === 0) return;
+    setFiles(
+      picked.map((file) => {
+        const kind = classify(file.name, file.mimeType ?? '');
+        const entry: FileState = {
+          file,
+          stage: null,
+          kind: kind === 'unknown' ? null : kind,
+          status: 'queued',
+        };
+        try {
+          checkUploadSize(file);
+        } catch (caught) {
+          return {
+            ...entry,
+            status: 'failed',
+            message: describeIngestError(caught),
+          };
+        }
+        return entry;
+      })
+    );
+  }, []);
+
   const choose = useCallback(async () => {
     setError(null);
     try {
-      const picked = await pickMaterials();
-      if (picked.length === 0) return;
-
-      // Oversized files are rejected here rather than mid-upload, so the
-      // student can swap them out before starting a long batch.
-      setFiles(
-        picked.map((file) => {
-          const kind = classify(file.name, file.mimeType ?? '');
-          const entry: FileState = {
-            file,
-            stage: null,
-            kind: kind === 'unknown' ? null : kind,
-            status: 'queued',
-          };
-          try {
-            checkUploadSize(file);
-          } catch (caught) {
-            return { ...entry, status: 'failed', message: describeIngestError(caught) };
-          }
-          return entry;
-        })
-      );
+      queue(await pickMaterials());
     } catch (caught) {
       setError(describeIngestError(caught));
     }
-  }, []);
+  }, [queue]);
 
   const run = useCallback(async () => {
     setRunning(true);
@@ -130,7 +135,8 @@ export function AddMaterialModal({
     setRunning(false);
   }, [files, subjectId, uid]);
 
-  const allDone = files.length > 0 && files.every((f) => f.status === 'done' || f.status === 'failed');
+  const allDone =
+    files.length > 0 && files.every((f) => f.status === 'done' || f.status === 'failed');
   const succeeded = files.filter((f) => f.status === 'done').length;
 
   return (
@@ -175,33 +181,26 @@ export function AddMaterialModal({
         ) : undefined
       }
     >
-            {!isR2Configured() ? (
-              <Notice
-                tone="amber"
-                title="Original files will not be stored"
-                body={r2ConfigHint()}
-              />
-            ) : null}
+      {!isR2Configured() ? (
+        <Notice tone="amber" title="Original files will not be stored" body={r2ConfigHint()} />
+      ) : null}
 
-            {error ? <Notice title="Could not read that file" body={error} /> : null}
+      {error ? <Notice title="Could not read that file" body={error} /> : null}
 
-            {files.length === 0 ? (
-              <View className="items-center gap-4 rounded-xl border border-dashed border-line px-6 py-10">
-                <Feather name="file-plus" size={22} color="#9A9488" />
-                <Text className="text-center text-sm leading-5 text-muted">
-                  Choose PDFs, Word docs, slide decks, notes, photos of a whiteboard, or a lecture
-                  recording. Notomi reads the text out of all of them and files it under this
-                  subject.
-                </Text>
-                <Button label="Choose files" icon="folder" variant="secondary" onPress={() => void choose()} />
-              </View>
-            ) : (
-              <View className="gap-3">
-                {files.map((entry, index) => (
-                  <FileRow key={`${entry.file.name}-${index}`} entry={entry} />
-                ))}
-              </View>
-            )}
+      {files.length === 0 ? (
+        <FileDropZone
+          busy={running}
+          title={`Add material to ${subjectName}`}
+          body="Drop or choose up to 10 files. Maximum 25 MB total. Every accepted file stays in this subject folder."
+          onFiles={queue}
+        />
+      ) : (
+        <View className="gap-3">
+          {files.map((entry, index) => (
+            <FileRow key={`${entry.file.name}-${index}`} entry={entry} />
+          ))}
+        </View>
+      )}
     </Sheet>
   );
 }
@@ -209,11 +208,7 @@ export function AddMaterialModal({
 function FileRow({ entry }: { entry: FileState }) {
   const stageIndex = entry.stage ? STAGE_ORDER.indexOf(entry.stage) : -1;
   const progress =
-    entry.status === 'done'
-      ? 1
-      : stageIndex >= 0
-        ? (stageIndex + 1) / (STAGE_ORDER.length + 1)
-        : 0;
+    entry.status === 'done' ? 1 : stageIndex >= 0 ? (stageIndex + 1) / (STAGE_ORDER.length + 1) : 0;
 
   const tint =
     entry.status === 'failed' ? 'bg-rose' : entry.status === 'done' ? 'bg-pine' : 'bg-accent';
@@ -232,7 +227,9 @@ function FileRow({ entry }: { entry: FileState }) {
                   : 'file-text'
           }
           size={15}
-          color={entry.status === 'done' ? '#2E6F5E' : entry.status === 'failed' ? '#B0443E' : '#6F6A5F'}
+          color={
+            entry.status === 'done' ? '#2E6F5E' : entry.status === 'failed' ? '#B0443E' : '#6F6A5F'
+          }
         />
         <Text className="flex-1 text-sm font-medium text-ink" numberOfLines={1}>
           {entry.file.name}
@@ -257,7 +254,7 @@ function FileRow({ entry }: { entry: FileState }) {
         {entry.status === 'failed'
           ? entry.message
           : entry.status === 'done'
-            ? entry.message ?? 'Added to your library'
+            ? (entry.message ?? 'Added to your library')
             : entry.stage
               ? stageLabel(entry.stage, entry.kind)
               : 'Ready to upload'}

@@ -76,6 +76,10 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
         });
         feedback(outcome.actions.length ? 'success' : 'chime');
       } catch (caught) {
+        // lib/ai logs the Firebase error code and HTTP status. Keep the UI edge
+        // logged too so a failed turn can be correlated with what the student
+        // saw without logging their message or account id.
+        console.error('[copilot] Ask Notomi request failed.', caught);
         setError(caught instanceof Error ? caught.message : String(caught));
         feedback('error');
       } finally {

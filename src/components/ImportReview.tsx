@@ -62,7 +62,14 @@ export function ImportReview({
   );
   const [term, setTerm] = useState('');
   const [semesterId, setSemesterId] = useState<string | null>(
-    semesters.find((semester) => semester.isCurrent)?.id ?? null
+    semesters.find((semester) => {
+      const start = semester.startDate?.toDate?.();
+      const end = semester.endDate?.toDate?.();
+      const now = new Date();
+      return start && end && start <= now && end >= now;
+    })?.id ??
+      semesters.find((semester) => semester.isCurrent)?.id ??
+      null
   );
   const [saving, setSaving] = useState(false);
   const [discarding, setDiscarding] = useState(false);
@@ -82,6 +89,13 @@ export function ImportReview({
     0
   );
   const totalSessions = groups.reduce((total, group) => total + group.sessions.length, 0);
+  const conflictCount = groups.reduce(
+    (total, group) =>
+      total +
+      group.sessions.filter((session) => session.include && session.conflicts.length > 0).length,
+    0
+  );
+  const sourceCount = new Set(initialRows.map((row) => row.sourceFile).filter(Boolean)).size;
 
   /** Edit the subject: one write, applied to every session beneath it. */
   const patchGroup = (id: string, change: Partial<ImportGroup>) =>
@@ -175,9 +189,18 @@ export function ImportReview({
       }
     >
       <Text className="text-xs leading-5 text-subtle">
-        Check this before it is saved. Importing creates one library folder per subject, fills
-        your weekly timetable, and files everything under the term you choose.
+        Check this before it is saved. {sourceCount || 1} file
+        {sourceCount === 1 ? '' : 's'} produced these rows. Importing creates one library folder per
+        subject, fills your weekly timetable, and anchors the sessions to the term you choose.
       </Text>
+
+      {conflictCount > 0 ? (
+        <Notice
+          tone="amber"
+          title={`${conflictCount} session${conflictCount === 1 ? '' : 's'} overlap existing plans`}
+          body="Conflicts with classes and routines are marked below. They stay excluded only if you untick them; Notomi never deletes an existing block automatically."
+        />
+      ) : null}
 
       {skipped > 0 ? (
         <Notice
@@ -249,7 +272,10 @@ export function ImportReview({
             onPress={() =>
               setGroups((previous) => {
                 const turningOn = includedGroups.length !== previous.length;
-                return previous.map((group) => ({ ...group, include: turningOn }));
+                return previous.map((group) => ({
+                  ...group,
+                  include: turningOn,
+                }));
               })
             }
             hitSlop={6}
@@ -420,6 +446,21 @@ function SessionRow({
         </Text>
       </View>
 
+      {session.conflicts.length > 0 ? (
+        <View className="gap-1 rounded-lg bg-amber-soft px-3 py-2">
+          <View className="flex-row items-center gap-2">
+            <Feather name="alert-triangle" size={12} color="#B4832A" />
+            <Text className="text-xs font-semibold text-amber">Schedule conflict</Text>
+          </View>
+          {session.conflicts.map((conflict) => (
+            <Text key={`${conflict.type}-${conflict.id}`} className="text-xs leading-4 text-ink/75">
+              {conflict.type === 'routine' ? 'Routine' : 'Class'}: {conflict.title},{' '}
+              {minutesToLabel(conflict.startMinute)}-{minutesToLabel(conflict.endMinute)}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       <View className="flex-row gap-2">
         <View className="flex-1">
           <Field
@@ -456,9 +497,7 @@ function SessionRow({
               accessibilityRole="button"
               accessibilityState={{ selected: session.day === index }}
               onPress={() => onPatch({ day: index })}
-              className={`rounded-lg px-2.5 py-1.5 ${
-                session.day === index ? 'bg-ink' : 'bg-sand'
-              }`}
+              className={`rounded-lg px-2.5 py-1.5 ${session.day === index ? 'bg-ink' : 'bg-sand'}`}
             >
               <Text
                 className={`text-[11px] font-semibold ${

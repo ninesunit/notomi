@@ -5,16 +5,13 @@ import { ScreenScroll } from '@/components/ScreenScroll';
 import { useRouter } from 'expo-router';
 import { CardGrid, GridItem, SubjectCard } from '@/components/SubjectCard';
 import { SubjectModal } from '@/components/SubjectModal';
-import {
-  defaultScope,
-  filterByTerm,
-  TermFilter,
-  type TermScope,
-} from '@/components/TermFilter';
+import { defaultScope, filterByTerm, TermFilter, type TermScope } from '@/components/TermFilter';
 import { UploadButton } from '@/components/UploadButton';
+import { FileDropZone } from '@/components/FileDropZone';
 import { Button, EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
+import { useIngest } from '@/hooks/useIngest';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { Semester, Subject } from '@/lib/schema';
@@ -23,6 +20,7 @@ import type { Semester, Subject } from '@/lib/schema';
 export default function Library() {
   const uid = useUid();
   const router = useRouter();
+  const ingest = useIngest();
   const [search, setSearch] = useState('');
   /** 'new' opens the create flow; a Subject opens the editor for that folder. */
   const [editing, setEditing] = useState<Subject | 'new' | null>(null);
@@ -98,6 +96,17 @@ export default function Library() {
         }
       />
 
+      <View className="mb-6">
+        <FileDropZone
+          busy={ingest.busy}
+          title="Add course materials"
+          body="Drop or choose up to 10 PDFs, images or slide decks. Notomi routes each file to the matching subject folder. Maximum 25 MB per batch."
+          onFiles={async (files) => {
+            await ingest.startFiles(files);
+          }}
+        />
+      </View>
+
       {error ? (
         <View className="mb-6">
           <Notice title="Could not load your library" body={error.message} />
@@ -145,7 +154,11 @@ export default function Library() {
           }
           action={
             search.trim() ? undefined : (
-              <Button label="Show all subjects" variant="secondary" onPress={() => setScope('all')} />
+              <Button
+                label="Show all subjects"
+                variant="secondary"
+                onPress={() => setScope('all')}
+              />
             )
           }
         />

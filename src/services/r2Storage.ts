@@ -10,9 +10,9 @@ import { getFirebaseAuth } from '@/services/firebase';
  *
  * Two transports, because where the signing key lives decides which is safe:
  *
- *   broker  (default on web) — the app asks a Cloudflare Worker for a
- *           short-lived presigned URL and PUTs/GETs R2 directly. The R2 secret
- *           lives in Worker secrets and never reaches the browser.
+ *   broker  (default on web) — the app sends authenticated requests to a
+ *           Cloudflare Worker whose R2 binding reads and writes the bucket.
+ *           No R2 access key exists in the browser or Worker configuration.
  *
  *   direct  (native / local dev) — this module signs requests itself with
  *           EXPO_PUBLIC_R2_ACCESS_KEY_ID / _SECRET_ACCESS_KEY.
@@ -161,23 +161,11 @@ export async function uploadFileToR2(
   const fileKey = buildFileKey(userId, subjectId, fileName);
 
   if (mode === 'broker') {
-    // Ask the Worker to presign a PUT, then send the bytes straight to R2 so
-    // the file never transits the Worker.
-    const signed = await brokerFetch('/presign-upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileKey, contentType, subjectId }),
-    });
-    const { uploadUrl } = (await signed.json()) as { uploadUrl: string };
-
-    const put = await fetch(uploadUrl, {
+    await brokerFetch(`/object?key=${encodeURIComponent(fileKey)}`, {
       method: 'PUT',
       headers: { 'Content-Type': contentType },
       body: new Uint8Array(body),
     });
-    if (!put.ok) {
-      throw new R2Error(`R2 rejected the upload (${put.status}). Check the bucket CORS policy.`);
-    }
   } else {
     try {
       const { PutObjectCommand } = await import('@aws-sdk/client-s3');
@@ -213,11 +201,25 @@ export async function getR2FileUrl(fileKey: string, expiresInSeconds = 3600): Pr
   if (mode === 'unconfigured') throw new R2Error(r2ConfigHint());
 
   if (mode === 'broker') {
-    const res = await brokerFetch(
-      `/presign-download?key=${encodeURIComponent(fileKey)}&expires=${expiresInSeconds}`
-    );
-    const { downloadUrl } = (await res.json()) as { downloadUrl: string };
-    return downloadUrl;
+    const res = await brokerFetch(`/object?key=${encodeURIComponent(fileKey)}`);
+    const blob = await res.blob();
+
+    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const objectUrl = URL.createObjectURL(blob);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), Math.max(60, expiresInSeconds) * 1000);
+      return objectUrl;
+    }
+
+    if (typeof FileReader !== 'undefined') {
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new R2Error('Could not open the stored original.'));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    throw new R2Error('Opening stored originals is not supported on this platform.');
   }
 
   try {

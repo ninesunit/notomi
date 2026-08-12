@@ -4,22 +4,41 @@ import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
 import { AddMaterialModal } from '@/components/AddMaterialModal';
+import { AttendanceGuard } from '@/components/AcademicInsights';
 import { AssignmentsPanel } from '@/components/Assignments';
 import { LectureLogPanel } from '@/components/LectureLog';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { SubjectModal } from '@/components/SubjectModal';
 import { Tabs, TabPanel, type Tab } from '@/components/Tabs';
-import { Badge, Button, Card, EmptyState, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  IconButton,
+  Loading,
+  Notice,
+  PageHeader,
+} from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { formatDateTime } from '@/lib/dates';
 import { formatChars } from '@/lib/format';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
-import type { Assignment, LectureLog, SourceDocument, StudySession, Subject } from '@/lib/schema';
+import type {
+  Assignment,
+  ClassBlock,
+  LectureLog,
+  Semester,
+  SourceDocument,
+  StudySession,
+  Subject,
+} from '@/lib/schema';
 import { deleteMaterial, deleteSubject } from '@/services/ingestion';
 import { getR2FileUrl } from '@/services/r2Storage';
 import { describeLastStudied, formatMinutes, studyBySubject } from '@/services/sessions';
+import { findActiveSemester } from '@/services/academicPlanner';
 
 type TabId = 'sources' | 'tasks' | 'log';
 
@@ -42,6 +61,8 @@ export default function SubjectFolder() {
     [uid, subjectId]
   );
   const sessions = useCollection<StudySession>(paths.sessions(db, uid), [uid]);
+  const classes = useCollection<ClassBlock>(paths.classes(db, uid), [uid]);
+  const semesters = useCollection<Semester>(paths.semesters(db, uid), [uid]);
 
   // Subscribed here only for the tab counts. The panels open their own
   // listeners on the same queries, which the SDK serves from one watch.
@@ -54,6 +75,13 @@ export default function SubjectFolder() {
   const study = useMemo(
     () => studyBySubject(sessions.data).get(subjectId) ?? null,
     [sessions.data, subjectId]
+  );
+
+  const attendanceSemester = useMemo(
+    () =>
+      semesters.data.find((entry) => entry.id === subject.data?.semesterId) ??
+      findActiveSemester(semesters.data),
+    [semesters.data, subject.data?.semesterId]
   );
 
   /** Task 3 asks for modules grouped inside the folder. */
@@ -143,7 +171,12 @@ export default function SubjectFolder() {
   const hasText = documents.data.some((document) => (document.charCount ?? 0) > 0);
 
   const TABS: Tab<TabId>[] = [
-    { id: 'sources', label: 'Sources', icon: 'file-text', count: documents.data.length },
+    {
+      id: 'sources',
+      label: 'Sources',
+      icon: 'file-text',
+      count: documents.data.length,
+    },
     {
       id: 'tasks',
       label: 'Tutorials & assignments',
@@ -152,7 +185,12 @@ export default function SubjectFolder() {
       // wants to know what is left, not what they have ever handed in.
       count: assignments.data.filter((row) => row.status !== 'done').length,
     },
-    { id: 'log', label: 'Lecture log', icon: 'book-open', count: lectures.data.length },
+    {
+      id: 'log',
+      label: 'Lecture log',
+      icon: 'book-open',
+      count: lectures.data.length,
+    },
   ];
 
   return (
@@ -201,7 +239,13 @@ export default function SubjectFolder() {
               <Button label="Open Reader" icon="message-circle" size="sm" disabled={!hasText} />
             </Link>
             <Link href={`/study?subjectId=${subjectId}`} asChild>
-              <Button label="Take Quiz" icon="zap" variant="secondary" size="sm" disabled={!hasText} />
+              <Button
+                label="Take Quiz"
+                icon="zap"
+                variant="secondary"
+                size="sm"
+                disabled={!hasText}
+              />
             </Link>
             <IconButton icon="edit-2" label="Edit subject" onPress={() => setEditOpen(true)} />
           </>
@@ -214,14 +258,19 @@ export default function SubjectFolder() {
         </View>
       ) : null}
 
+      <AttendanceGuard
+        uid={uid}
+        subject={subject.data}
+        classes={classes.data}
+        semester={attendanceSemester}
+      />
+
       {/* Study time is already logged against this subject by the focus timer
           and the study centre; this is where a student sees it back. */}
       <View className="mb-6 flex-row flex-wrap items-center gap-2">
         <View className="flex-row items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2">
           <Feather name="clock" size={13} color="#9A9488" />
-          <Text className="text-sm font-bold text-ink">
-            {formatMinutes(study?.minutes ?? 0)}
-          </Text>
+          <Text className="text-sm font-bold text-ink">{formatMinutes(study?.minutes ?? 0)}</Text>
           <Text className="text-[13px] text-muted">studied</Text>
         </View>
 
@@ -302,9 +351,7 @@ export default function SubjectFolder() {
                               <Text className="text-xs text-subtle">
                                 {[
                                   formatDateTime(document.createdAt),
-                                  document.charCount
-                                    ? formatChars(document.charCount)
-                                    : null,
+                                  document.charCount ? formatChars(document.charCount) : null,
                                   document.sizeBytes
                                     ? `${(document.sizeBytes / 1024 / 1024).toFixed(1)} MB`
                                     : null,
@@ -341,7 +388,9 @@ export default function SubjectFolder() {
                           <Text className="text-sm leading-6 text-ink/75">{document.summary}</Text>
                         ) : null}
 
-                        {document.error ? <Badge label="Analysed with warnings" tone="amber" /> : null}
+                        {document.error ? (
+                          <Badge label="Analysed with warnings" tone="amber" />
+                        ) : null}
                       </Card>
                     ))}
                   </View>

@@ -1,14 +1,17 @@
 import {
   getGenerativeModel,
   Schema,
+  type Content,
   type FunctionDeclarationsTool,
   type GenerativeModel,
   type ModelParams,
+  type Part,
 } from 'firebase/ai';
-import { GEMINI_MODEL, getAiClient, getModel, isAppCheckEnabled } from '@/services/firebase';
+import { GEMINI_MODEL, getAiClient, isAppCheckEnabled } from '@/services/firebase';
 import type {
   AnswerGrade,
   AssignmentBreakdown,
+  ExtractedAcademicTerm,
   ExtractedClass,
   ExtractedMetadata,
   GeneratedCard,
@@ -16,6 +19,7 @@ import type {
   OpenQuestion,
   PodcastLine,
   QuizQuestion,
+  RevisionPlanItem,
 } from './schema';
 
 /**
@@ -27,7 +31,10 @@ import type {
 export const MAX_CONTEXT_CHARS = 600_000;
 
 export class AiError extends Error {
-  constructor(message: string, readonly cause?: unknown) {
+  constructor(
+    message: string,
+    readonly cause?: unknown
+  ) {
     super(message);
     this.name = 'AiError';
   }
@@ -41,27 +48,152 @@ export class AiError extends Error {
 const REQUEST_TIMEOUT_MS = 120_000;
 
 /**
- * Google retires and renames Gemini models on its own schedule, and the model
- * id lives in an env var that is easy to set to something that no longer
- * exists. Rather than take every AI feature down, the first "no such model"
- * failure pins this fallback for the rest of the session.
+ * Keep current stable models from separate quota pools available. A project
+ * can exhaust one model's RPM/RPD allowance while another model is still
+ * healthy, and model retirement should not take every AI surface down at once.
  */
-const FALLBACK_MODEL = 'gemini-2.5-flash';
-let activeModel = GEMINI_MODEL;
+const FALLBACK_MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite'] as const;
+const MODEL_POOL: readonly string[] = [GEMINI_MODEL, ...FALLBACK_MODELS];
+const ACTIVE_MODEL_KEY = 'notomi:active-ai-model';
+
+function rememberedModel(): string {
+  if (typeof sessionStorage === 'undefined') return GEMINI_MODEL;
+  try {
+    const value = sessionStorage.getItem(ACTIVE_MODEL_KEY);
+    return value && MODEL_POOL.includes(value) ? value : GEMINI_MODEL;
+  } catch {
+    return GEMINI_MODEL;
+  }
+}
+
+let activeModel = rememberedModel();
+
+function rememberModel(modelName: string): void {
+  activeModel = modelName;
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(ACTIVE_MODEL_KEY, modelName);
+  } catch {
+    /* Private browsing can reject storage; the in-memory fallback still works. */
+  }
+}
 
 const isUnknownModel = (raw: string): boolean =>
   /not found|NOT_FOUND|is not supported|does not exist|unsupported model|invalid model/i.test(raw);
 
-function model(params: Omit<ModelParams, 'model'> = {}): GenerativeModel {
+function modelFor(modelName: string, params: Omit<ModelParams, 'model'> = {}): GenerativeModel {
   return getGenerativeModel(
     getAiClient(),
-    { model: activeModel, ...params },
+    { model: modelName, ...params },
     { timeout: REQUEST_TIMEOUT_MS }
   );
 }
 
 /** The model id actually in use, after any fallback. */
 export const currentModel = (): string => activeModel;
+
+type SdkErrorShape = {
+  name?: string;
+  code?: string;
+  message?: string;
+  cause?: unknown;
+  customData?: { httpStatus?: number; status?: number; statusText?: string };
+  customErrorData?: { status?: number; statusText?: string };
+};
+
+/** Finds Firebase's HTTP metadata even when it is wrapped by Notomi's AiError. */
+function errorDetails(error: unknown): {
+  name: string | null;
+  code: string | null;
+  message: string;
+  httpStatus: number | null;
+  statusText: string | null;
+} {
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+  let fallback: SdkErrorShape = {};
+
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const detail = current as SdkErrorShape;
+    fallback = detail;
+    const status =
+      detail.customErrorData?.status ?? detail.customData?.httpStatus ?? detail.customData?.status;
+    if (typeof status === 'number') {
+      return {
+        name: detail.name ?? null,
+        code: detail.code ?? null,
+        message: detail.message ?? String(error),
+        httpStatus: status,
+        statusText: detail.customErrorData?.statusText ?? detail.customData?.statusText ?? null,
+      };
+    }
+    current = detail.cause;
+  }
+
+  return {
+    name: fallback.name ?? (error instanceof Error ? error.name : null),
+    code: fallback.code ?? null,
+    message: fallback.message ?? (error instanceof Error ? error.message : String(error)),
+    httpStatus: null,
+    statusText: null,
+  };
+}
+
+/** Detailed deploy diagnostics; prompts and student data are deliberately absent. */
+function logAiFailure(operation: string, error: unknown, modelName = activeModel): void {
+  const detail = errorDetails(error);
+  // A single serialized line survives browser log collectors which otherwise
+  // collapse the useful object to the word "Object".
+  console.error(
+    `[ai] ${operation} failed: ${JSON.stringify({
+      model: modelName,
+      appCheckEnabled: isAppCheckEnabled(),
+      online: typeof navigator === 'undefined' ? null : navigator.onLine,
+      ...detail,
+    })}`
+  );
+}
+
+function canTryAnotherModel(error: unknown): boolean {
+  const { httpStatus, message } = errorDetails(error);
+  return (
+    httpStatus === 404 ||
+    httpStatus === 429 ||
+    httpStatus === 503 ||
+    isUnknownModel(message) ||
+    /quota|RESOURCE_EXHAUSTED|rate.?limit|model.*overloaded|UNAVAILABLE/i.test(message)
+  );
+}
+
+/** Runs one request through the active model and current stable fallbacks. */
+async function runWithModelFallback<T>(
+  operation: string,
+  params: Omit<ModelParams, 'model'>,
+  run: (candidate: GenerativeModel) => Promise<T>
+): Promise<T> {
+  const candidates = [...new Set([activeModel, ...MODEL_POOL])];
+  let lastError: unknown;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    try {
+      const value = await run(modelFor(candidate, params));
+      if (candidate !== activeModel) {
+        console.info(`[ai] switched from ${activeModel} to ${candidate}.`);
+        rememberModel(candidate);
+      }
+      return value;
+    } catch (error) {
+      lastError = error;
+      logAiFailure(operation, error, candidate);
+      if (!canTryAnotherModel(error) || index === candidates.length - 1) throw error;
+      console.warn(`[ai] ${candidate} is unavailable; trying ${candidates[index + 1]}.`);
+    }
+  }
+
+  throw lastError;
+}
 
 /**
  * The diagnostic, for whoever deployed this — not for the student.
@@ -85,6 +217,7 @@ function logSetupHint(kind: 'missing-token' | 'token-refused', raw: string): voi
 /** Turns an unknown SDK failure into something worth showing a student. */
 function describe(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
+  const { httpStatus } = errorDetails(error);
 
   if (/API key not valid/i.test(raw)) {
     console.warn(`[ai] the API key was rejected: ${raw.slice(0, 200)}`);
@@ -96,6 +229,9 @@ function describe(error: unknown): string {
   }
   if (/quota|RESOURCE_EXHAUSTED|429/i.test(raw)) {
     return 'Too many AI requests just now. Wait a moment and try again.';
+  }
+  if (httpStatus === 400) {
+    return 'The AI service could not process that request. Try asking in a different way.';
   }
 
   // Two very different failures both mention attestation, and they need
@@ -111,7 +247,6 @@ function describe(error: unknown): string {
 
   if (/timed? ?out|deadline/i.test(raw)) return 'That took too long to come back. Try again.';
   if (/network|fetch|Failed to fetch|ERR_/i.test(raw)) {
-    logSetupHint(isAppCheckEnabled() ? 'token-refused' : 'missing-token', raw);
     return 'Could not reach the AI service. Check your connection and try again.';
   }
 
@@ -167,22 +302,11 @@ export function buildContext(sources: { title: string; text: string }[]): string
 
 async function generate(params: Omit<ModelParams, 'model'>, prompt: string): Promise<string> {
   try {
-    const result = await model(params).generateContent(prompt);
+    const result = await runWithModelFallback('generateContent', params, (candidate) =>
+      candidate.generateContent(prompt)
+    );
     return result.response.text();
   } catch (error) {
-    const raw = error instanceof Error ? error.message : String(error);
-
-    if (isUnknownModel(raw) && activeModel !== FALLBACK_MODEL) {
-      console.warn(`[ai] model "${activeModel}" unavailable; falling back to ${FALLBACK_MODEL}`);
-      activeModel = FALLBACK_MODEL;
-      const retry = await model(params)
-        .generateContent(prompt)
-        .catch((second) => {
-          throw new AiError(describe(second), second);
-        });
-      return retry.response.text();
-    }
-
     throw new AiError(describe(error), error);
   }
 }
@@ -217,16 +341,17 @@ async function generateJson<T>(
       lastError = new AiError('The response came back in a shape Notomi could not read.');
     } catch (error) {
       // A transport or quota failure will not be fixed by retrying the parse.
-      if (error instanceof AiError && !/not valid JSON|unexpected shape/i.test(error.message)) {
+      if (
+        error instanceof AiError &&
+        !/not valid JSON|unexpected shape|shape Notomi could not read/i.test(error.message)
+      ) {
         throw error;
       }
       lastError = error;
     }
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new AiError('The response could not be used.');
+  throw lastError instanceof Error ? lastError : new AiError('The response could not be used.');
 }
 
 /**
@@ -243,16 +368,7 @@ export async function summarizeDocument(text: string): Promise<string> {
     `Describe what it teaches, not what kind of document it is. ` +
     `Plain prose, no markdown, no preamble.\n\n${text.slice(0, MAX_CONTEXT_CHARS)}`;
 
-  // getModel() is the shared instance from services/firebase; generate() adds
-  // the model fallback and error mapping the rest of the app relies on.
-  try {
-    const result = await getModel().generateContent(prompt);
-    return result.response.text().trim();
-  } catch (error) {
-    const raw = error instanceof Error ? error.message : String(error);
-    if (isUnknownModel(raw)) return (await generate({}, prompt)).trim();
-    throw new AiError(describe(error), error);
-  }
+  return (await generate({}, prompt)).trim();
 }
 
 /**
@@ -289,17 +405,22 @@ async function generateFromMedia(
   generationConfig: Record<string, unknown> = {}
 ): Promise<string> {
   try {
-    const result = await model({
-      generationConfig: { temperature: 0.1, ...generationConfig },
-    }).generateContent([
-      { inlineData: { data: toBase64(data), mimeType } },
-      { text: prompt },
-    ]);
+    const result = await runWithModelFallback(
+      'generateFromMedia',
+      { generationConfig: { temperature: 0.1, ...generationConfig } },
+      (candidate) =>
+        candidate.generateContent([
+          { inlineData: { data: toBase64(data), mimeType } },
+          { text: prompt },
+        ])
+    );
     return result.response.text();
   } catch (error) {
     const raw = error instanceof Error ? error.message : String(error);
     if (/too large|payload|request entity/i.test(raw)) {
-      throw new AiError('That image is too large to send in one go. Crop it and retry.');
+      throw new AiError(
+        'That file is too large to send in one request. Compress or split it and retry.'
+      );
     }
     throw new AiError(describe(error), error);
   }
@@ -365,18 +486,39 @@ const metadataSchema = Schema.object({
       description: 'Course/module code such as "CS3243". Empty string if absent.',
     }),
     subjectName: Schema.string({ description: 'Human readable subject name.' }),
-    summary: Schema.string({ description: '2-4 sentence summary of the document.' }),
+    summary: Schema.string({
+      description: '2-4 sentence summary of the document.',
+    }),
     deadlines: Schema.array({
       items: Schema.object({
         properties: {
-          title: Schema.string({ description: 'What is due, e.g. "Problem Set 3".' }),
-          dueDate: Schema.string({ description: 'ISO 8601 date (YYYY-MM-DD), or empty if unknown.' }),
-          dueTime: Schema.string({ description: '24h HH:MM if a time is stated, else empty.' }),
+          title: Schema.string({
+            description: 'What is due, e.g. "Problem Set 3".',
+          }),
+          dueDate: Schema.string({
+            description: 'ISO 8601 date (YYYY-MM-DD), or empty if unknown.',
+          }),
+          dueTime: Schema.string({
+            description: '24h HH:MM if a time is stated, else empty.',
+          }),
           kind: Schema.string({
-            description: 'One of: assignment, exam, quiz, lab, project, reading, presentation, other.',
+            description:
+              'One of: assignment, exam, quiz, lab, project, reading, presentation, other.',
+          }),
+          milestones: Schema.array({
+            items: Schema.object({
+              properties: {
+                title: Schema.string({
+                  description: 'One concrete work milestone.',
+                }),
+                weeksBeforeDue: Schema.number({
+                  description: 'Whole weeks before the parent due date, from 1 to 8.',
+                }),
+              },
+            }),
           }),
         },
-        optionalProperties: ['dueDate', 'dueTime', 'kind'],
+        optionalProperties: ['dueDate', 'dueTime', 'kind', 'milestones'],
       }),
     }),
   },
@@ -412,6 +554,9 @@ Rules:
   · "dueTime" only when the document states one (e.g. "by 5pm" -> "17:00").
     Leave it empty rather than inventing a time.
   · "kind" classifies it; use "other" when unclear.
+  · For a large assignment, project or presentation, add 3-6 "milestones" that
+    decompile it into realistic weekly work packets. "weeksBeforeDue" is a whole
+    number from 1-8. Do not add milestones for exams, quizzes, readings or labs.
   · A recurring item ("weekly quizzes") is not a dated deadline — skip it.
   · Titles must be self-contained: "Essay 1 draft", not "the draft".
   · Return [] when the document has no dated assessments.
@@ -433,6 +578,20 @@ ${text.slice(0, MAX_CONTEXT_CHARS)}`,
             dueDate: d.dueDate?.trim() || null,
             dueTime: (d as { dueTime?: string }).dueTime?.trim() || null,
             kind: (d as { kind?: string }).kind?.trim() || null,
+            milestones: Array.isArray(d.milestones)
+              ? d.milestones
+                  .filter(
+                    (milestone) =>
+                      milestone &&
+                      typeof milestone.title === 'string' &&
+                      milestone.title.trim() &&
+                      Number.isFinite(milestone.weeksBeforeDue)
+                  )
+                  .map((milestone) => ({
+                    title: milestone.title.trim(),
+                    weeksBeforeDue: Math.max(1, Math.min(8, Math.round(milestone.weeksBeforeDue))),
+                  }))
+              : [],
           }))
       : [],
   };
@@ -446,7 +605,7 @@ export const READER_SYSTEM_PROMPT = [
   'You are Notomi, an expert tutor for a university student.',
   '',
   'GROUNDING — this is absolute:',
-  '- Answer ONLY from the SOURCES below. They are the student\'s own uploaded material.',
+  "- Answer ONLY from the SOURCES below. They are the student's own uploaded material.",
   '- Never use outside knowledge to add facts, even if you are confident they are true.',
   '- If the sources do not answer the question, say exactly what is missing and',
   '  suggest what the student could upload. Do not guess or pad.',
@@ -476,16 +635,22 @@ export async function askSources(
   history: ChatTurn[],
   question: string
 ): Promise<string> {
-  const chatModel = model({
+  const params: Omit<ModelParams, 'model'> = {
     systemInstruction: `${READER_SYSTEM_PROMPT}\n\nSOURCES:\n${context}`,
     generationConfig: { temperature: 0.3 },
-  });
+  };
+  const contents: Content[] = [
+    ...history.map((turn) => ({
+      role: turn.role,
+      parts: [{ text: turn.text }],
+    })),
+    { role: 'user', parts: [{ text: question }] },
+  ];
 
   try {
-    const chat = chatModel.startChat({
-      history: history.map((turn) => ({ role: turn.role, parts: [{ text: turn.text }] })),
-    });
-    const result = await chat.sendMessage(question);
+    const result = await runWithModelFallback('askSources', params, (candidate) =>
+      candidate.generateContent({ contents })
+    );
     return result.response.text();
   } catch (error) {
     throw new AiError(describe(error), error);
@@ -547,9 +712,13 @@ const quizSchema = Schema.array({
     properties: {
       question: Schema.string(),
       options: Schema.array({ items: Schema.string() }),
-      correctAnswerIndex: Schema.number({ description: 'Zero-based index into options.' }),
+      correctAnswerIndex: Schema.number({
+        description: 'Zero-based index into options.',
+      }),
       explanation: Schema.string(),
-      concept: Schema.string({ description: 'The 2-5 word concept being tested.' }),
+      concept: Schema.string({
+        description: 'The 2-5 word concept being tested.',
+      }),
     },
     optionalProperties: ['concept'],
   }),
@@ -620,15 +789,23 @@ const timetableSchema = Schema.array({
   items: Schema.object({
     properties: {
       title: Schema.string({ description: 'Course name without the code.' }),
-      code: Schema.string({ description: 'Module code such as "CS2040". Empty if absent.' }),
+      code: Schema.string({
+        description: 'Module code such as "CS2040". Empty if absent.',
+      }),
       section: Schema.string({
         description: 'Section/session id for this block, such as "TC1L" or "G3". Empty if absent.',
       }),
-      kind: Schema.string({ description: 'Lecture, Tutorial, Lab, Seminar… or empty.' }),
-      day: Schema.string({ description: 'Full weekday name in English, e.g. "Monday".' }),
+      kind: Schema.string({
+        description: 'Lecture, Tutorial, Lab, Seminar… or empty.',
+      }),
+      day: Schema.string({
+        description: 'Full weekday name in English, e.g. "Monday".',
+      }),
       start: Schema.string({ description: '24-hour HH:MM.' }),
       end: Schema.string({ description: '24-hour HH:MM.' }),
-      venue: Schema.string({ description: 'Room or building. Empty string if absent.' }),
+      venue: Schema.string({
+        description: 'Room or building. Empty string if absent.',
+      }),
     },
     optionalProperties: ['code', 'section', 'kind', 'venue'],
   }),
@@ -641,14 +818,7 @@ const timetableSchema = Schema.array({
  * a row header, so the cell alone never carries the information — the prompt
  * has to force the model to resolve each block against both axes.
  */
-export async function extractTimetable(
-  data: ArrayBuffer,
-  mimeType: string
-): Promise<ExtractedClass[]> {
-  const raw = await generateFromMedia(
-    data,
-    mimeType,
-    `This image is a university class timetable. Extract every scheduled class.
+const TIMETABLE_PROMPT = `This document contains a class schedule or timetable. Extract every scheduled class.
 
 DAY
 - The day comes from the column or row header the block sits under. Headers
@@ -666,9 +836,10 @@ TIME
   17:00. A timetable running 9-6 is 09:00-18:00, never 09:00-06:00.
 
 IDENTITY
-- "code" is the module or course code and nothing else: letters then three or
-  more digits, such as CS2040, CW6123, MA1101R, PU3312, LDCW6123. Take it
-  exactly as printed.
+- "code" is the complete module or course code and nothing else: letters then
+  three or more digits, such as CS2040, CPT6123, LDCW6123, LMPU3312 or MA1101R.
+  Take every character exactly as printed. Look closely at the left edge and
+  never drop leading letters from a code.
 - "section" is the section or session identifier printed beside the code, such
   as TC1L, TC2L, TL1L, TL2L, G1, L2, S3. It has one or two digits. It is NOT
   part of the code.
@@ -678,7 +849,8 @@ IDENTITY
   LDCW6123 TL1L are the SAME course, two of its sessions. Never fold the
   section into "code", and never treat two sections of one course as two
   courses.
-- "title" is the course name if one is printed. Many schedules show only a code
+- "title" is the complete course name if one is printed. Never abbreviate or
+  truncate a printed name. Many schedules show only a code
   and a session type — in that case leave "title" empty rather than inventing a
   name or repeating the code.
 - "kind" is the session type if shown: Lecture, Tutorial, Lab, Seminar,
@@ -694,19 +866,15 @@ ROWS
   is its own entry.
 - Ignore breaks, lunch, empty cells, filter controls and legend text.
 
-Return every class you can read. Return an empty array only if the image
-contains no schedule at all.`,
-    { responseMimeType: 'application/json', responseSchema: timetableSchema }
-  );
+Return every class you can read. Return an empty array only if the document
+contains no schedule at all.`;
 
+function normaliseExtractedClasses(raw: string): ExtractedClass[] {
   const parsed = parseJson<ExtractedClass[]>(raw);
   if (!Array.isArray(parsed)) {
-    throw new AiError('No timetable could be read from that image.');
+    throw new AiError('No timetable could be read from that file.');
   }
 
-  // A row needs a day, a start and an end. It does NOT need a title: plenty of
-  // schedules print only a code and a session type, and demanding a course name
-  // silently dropped every class on those.
   return parsed
     .filter(
       (entry) =>
@@ -729,6 +897,260 @@ contains no schedule at all.`,
     }));
 }
 
+/** Full document transcription for scanned PDFs that have no selectable text. */
+export async function readDocument(
+  data: ArrayBuffer,
+  mimeType = 'application/pdf'
+): Promise<string> {
+  return (
+    await generateFromMedia(
+      data,
+      mimeType,
+      `Transcribe the complete attached study document in reading order.
+
+- Preserve headings, bullets and tables as Markdown.
+- Transcribe formulas in LaTeX between $ delimiters.
+- For diagrams or charts, include their labels and one line beginning "Figure:" describing the relationship shown.
+- Do not summarise, correct or add commentary. Output only the document content.
+- Inspect every page, including pages made entirely from scanned images.`
+    )
+  ).trim();
+}
+
+export async function extractTimetable(
+  data: ArrayBuffer,
+  mimeType: string
+): Promise<ExtractedClass[]> {
+  const raw = await generateFromMedia(data, mimeType, TIMETABLE_PROMPT, {
+    responseMimeType: 'application/json',
+    responseSchema: timetableSchema,
+  });
+  return normaliseExtractedClasses(raw);
+}
+
+/** Schedule extraction for presentation decks after their slide text is parsed locally. */
+export async function extractTimetableFromText(text: string): Promise<ExtractedClass[]> {
+  const raw = await generate(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: timetableSchema,
+        temperature: 0.1,
+      },
+    },
+    `${TIMETABLE_PROMPT}\n\nEXTRACTED DOCUMENT TEXT:\n${text.slice(0, MAX_CONTEXT_CHARS)}`
+  );
+  return normaliseExtractedClasses(raw);
+}
+
+/**
+ * Reads routing metadata and deliverables from the original PDF/image bytes.
+ * This is independent of pdf.js, so image-only and stale-worker PDFs still
+ * reach the same subject/deadline pipeline as selectable-text documents.
+ */
+export async function extractMetadataFromMedia(
+  data: ArrayBuffer,
+  mimeType: string
+): Promise<ExtractedMetadata> {
+  const raw = await generateFromMedia(
+    data,
+    mimeType,
+    `Analyze the complete attached university study material.
+
+${todayContext()}
+
+- moduleCode: the official course code, or empty.
+- subjectName: the course name in title case; infer it when necessary.
+- summary: 2-4 sentences describing what the material teaches.
+- deadlines: every dated assessment, assignment, examination, laboratory,
+  project or presentation. Resolve dates to ISO YYYY-MM-DD and stated times to
+  24-hour HH:MM. Never invent a missing time.
+- For each large assignment, project or presentation, add 3-6 concrete weekly
+  milestones and set weeksBeforeDue from 1-8. Do not create milestones for
+  exams, quizzes, readings or labs.
+- Inspect every page, including scanned images. Return an empty deadlines array
+  when none are stated.`,
+    { responseMimeType: 'application/json', responseSchema: metadataSchema }
+  );
+
+  const parsed = parseJson<Partial<ExtractedMetadata>>(raw);
+  if (!isMetadata(parsed)) throw new AiError('The document metadata could not be read.');
+
+  return {
+    moduleCode: parsed.moduleCode?.trim() || null,
+    subjectName: parsed.subjectName?.trim() || null,
+    summary: parsed.summary?.trim() || null,
+    deadlines: Array.isArray(parsed.deadlines)
+      ? parsed.deadlines
+          .filter(
+            (deadline) => deadline && typeof deadline.title === 'string' && deadline.title.trim()
+          )
+          .map((deadline) => ({
+            title: deadline.title.trim(),
+            dueDate: deadline.dueDate?.trim() || null,
+            dueTime: deadline.dueTime?.trim() || null,
+            kind: deadline.kind?.trim() || null,
+            milestones: Array.isArray(deadline.milestones)
+              ? deadline.milestones
+                  .filter(
+                    (milestone) =>
+                      milestone?.title?.trim() && Number.isFinite(milestone.weeksBeforeDue)
+                  )
+                  .map((milestone) => ({
+                    title: milestone.title.trim(),
+                    weeksBeforeDue: Math.max(1, Math.min(8, Math.round(milestone.weeksBeforeDue))),
+                  }))
+              : [],
+          }))
+      : [],
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Academic calendar and exam strategy
+ * ------------------------------------------------------------------ */
+
+const academicCalendarSchema = Schema.array({
+  items: Schema.object({
+    properties: {
+      name: Schema.string({ description: 'Institution-neutral term name.' }),
+      code: Schema.string({ description: 'Official term code, or empty.' }),
+      startDate: Schema.string({
+        description: 'First teaching date, ISO YYYY-MM-DD.',
+      }),
+      teachingEndDate: Schema.string({
+        description: 'Last teaching date, ISO YYYY-MM-DD.',
+      }),
+      teachingWeeks: Schema.number({
+        description: 'Published teaching duration in weeks.',
+      }),
+      studyLeaveStart: Schema.string({ description: 'ISO date, or empty.' }),
+      studyLeaveEnd: Schema.string({ description: 'ISO date, or empty.' }),
+      examStart: Schema.string({ description: 'ISO date, or empty.' }),
+      examEnd: Schema.string({ description: 'ISO date, or empty.' }),
+      endDate: Schema.string({
+        description: 'End of exam or term break window, ISO YYYY-MM-DD.',
+      }),
+    },
+    optionalProperties: ['code'],
+  }),
+});
+
+function isoOrNull(value: unknown): string | null {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
+/** Reads any institution's official term calendar; names and branding are ignored. */
+export async function extractAcademicCalendar(
+  data: ArrayBuffer,
+  mimeType: string
+): Promise<ExtractedAcademicTerm[]> {
+  const raw = await generateFromMedia(
+    data,
+    mimeType,
+    `This is an official academic calendar. Extract every teaching term shown.
+
+This must work across universities, colleges and training providers. Do not
+assume semesters, trimesters, quarters, 14-week terms or any institution name.
+Use the document's own dates and labels.
+
+- "startDate" and "teachingEndDate" are the teaching/learning window, not orientation.
+- "teachingWeeks" is the stated teaching duration. If unstated, calculate whole
+  calendar weeks covered by teaching and round to the nearest sensible integer.
+- Keep study/revision leave separate from examinations.
+- Always return studyLeaveStart, studyLeaveEnd, examStart and examEnd. Use an
+  empty string only when the document truly has no such window. A range printed
+  over two rows or columns still has both a start and an end.
+- "endDate" is the latest boundary belonging to that term: exam end, or term
+  break end when the calendar explicitly includes that break.
+- Expand every date to ISO YYYY-MM-DD. Resolve cross-year ranges correctly.
+- Return all terms in chronological order. Ignore branding and disclaimers.`,
+    {
+      responseMimeType: 'application/json',
+      responseSchema: academicCalendarSchema,
+    }
+  );
+
+  const parsed = parseJson<ExtractedAcademicTerm[]>(raw);
+  if (!Array.isArray(parsed)) throw new AiError('No academic terms could be read from that file.');
+
+  return parsed
+    .map((term) => ({
+      name: String(term?.name ?? '').trim(),
+      code: String(term?.code ?? '').trim() || null,
+      startDate: isoOrNull(term?.startDate) ?? '',
+      teachingEndDate: isoOrNull(term?.teachingEndDate) ?? '',
+      teachingWeeks: Math.max(1, Math.min(30, Math.round(Number(term?.teachingWeeks) || 0))),
+      studyLeaveStart: isoOrNull(term?.studyLeaveStart),
+      studyLeaveEnd: isoOrNull(term?.studyLeaveEnd),
+      examStart: isoOrNull(term?.examStart),
+      examEnd: isoOrNull(term?.examEnd),
+      endDate: isoOrNull(term?.endDate) ?? '',
+    }))
+    .filter((term) => term.name && term.startDate && term.teachingEndDate && term.endDate)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+const revisionPlanSchema = Schema.array({
+  items: Schema.object({
+    properties: {
+      subjectId: Schema.string(),
+      title: Schema.string(),
+      date: Schema.string({ description: 'ISO YYYY-MM-DD.' }),
+      minutes: Schema.number(),
+      focus: Schema.string(),
+    },
+  }),
+});
+
+export async function generateExamRevisionPlan(input: {
+  studyLeaveStart: string;
+  studyLeaveEnd: string;
+  subjects: {
+    id: string;
+    name: string;
+    creditHours: number;
+    examDate: string;
+  }[];
+}): Promise<RevisionPlanItem[]> {
+  const parsed = await generateJson<RevisionPlanItem[]>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: revisionPlanSchema,
+        temperature: 0.15,
+      },
+    },
+    `Build a revision plan from ${input.studyLeaveStart} through ${input.studyLeaveEnd}.
+
+Allocate more time to higher-credit subjects and exams that arrive sooner, while
+leaving recovery space between long sessions. Every item must be on a date inside
+the window, last 30-180 minutes, use the exact supplied subjectId, and name a
+specific revision outcome rather than "study subject". The exam order and gaps
+are constraints, not suggestions.
+
+SUBJECTS AND EXAMS:
+${JSON.stringify(input.subjects)}`,
+    (value): value is RevisionPlanItem[] => Array.isArray(value)
+  );
+
+  return parsed
+    .filter(
+      (item) =>
+        item &&
+        input.subjects.some((subject) => subject.id === item.subjectId) &&
+        /^\d{4}-\d{2}-\d{2}$/.test(item.date)
+    )
+    .map((item) => ({
+      subjectId: item.subjectId,
+      title: item.title.trim(),
+      date: item.date,
+      minutes: Math.max(30, Math.min(180, Math.round(item.minutes / 15) * 15)),
+      focus: item.focus.trim(),
+    }));
+}
+
 /* ------------------------------------------------------------------ *
  * Flashcards
  * ------------------------------------------------------------------ */
@@ -736,7 +1158,9 @@ contains no schedule at all.`,
 const flashcardSchema = Schema.array({
   items: Schema.object({
     properties: {
-      front: Schema.string({ description: 'The prompt side: a question or a term.' }),
+      front: Schema.string({
+        description: 'The prompt side: a question or a term.',
+      }),
       back: Schema.string({ description: 'The answer side.' }),
       concept: Schema.string({ description: '2-5 word topic label.' }),
     },
@@ -744,10 +1168,7 @@ const flashcardSchema = Schema.array({
   }),
 });
 
-export async function generateFlashcards(
-  context: string,
-  count = 20
-): Promise<GeneratedCard[]> {
+export async function generateFlashcards(context: string, count = 20): Promise<GeneratedCard[]> {
   const parsed = await generateJson<GeneratedCard[]>(
     {
       generationConfig: {
@@ -792,7 +1213,9 @@ const openQuestionSchema = Schema.array({
   items: Schema.object({
     properties: {
       question: Schema.string(),
-      modelAnswer: Schema.string({ description: 'What a full-mark answer contains.' }),
+      modelAnswer: Schema.string({
+        description: 'What a full-mark answer contains.',
+      }),
       concept: Schema.string({ description: '2-5 word topic label.' }),
     },
     optionalProperties: ['concept'],
@@ -850,7 +1273,9 @@ ${context}`,
 const gradeSchema = Schema.object({
   properties: {
     score: Schema.number({ description: '0-100. Partial credit is expected.' }),
-    verdict: Schema.string({ description: 'One short sentence of overall judgement.' }),
+    verdict: Schema.string({
+      description: 'One short sentence of overall judgement.',
+    }),
     whatWentWell: Schema.string(),
     whatWasMissing: Schema.string(),
     followUp: Schema.string({ description: 'Next question, or empty to end.' }),
@@ -927,12 +1352,18 @@ ${context.slice(0, 120_000)}`,
 
 const lectureSchema = Schema.object({
   properties: {
-    title: Schema.string({ description: 'Short title for the class, max 8 words.' }),
-    topic: Schema.string({ description: 'Chapter or topic covered, as named by the course.' }),
+    title: Schema.string({
+      description: 'Short title for the class, max 8 words.',
+    }),
+    topic: Schema.string({
+      description: 'Chapter or topic covered, as named by the course.',
+    }),
     reachedSection: Schema.string({
       description: 'How far inside the topic the class reached, e.g. "4.2". Empty if unstated.',
     }),
-    notes: Schema.string({ description: 'Markdown rundown of what the class covered.' }),
+    notes: Schema.string({
+      description: 'Markdown rundown of what the class covered.',
+    }),
     keyPoints: Schema.array({ items: Schema.string() }),
     followUps: Schema.array({ items: Schema.string() }),
   },
@@ -1006,7 +1437,8 @@ Rules:
 
 SOURCE MATERIAL
 ${input.context.slice(0, 300_000) || '(none uploaded for this subject yet)'}`,
-    (value): value is LectureRundown => !!value && typeof (value as LectureRundown).notes === 'string'
+    (value): value is LectureRundown =>
+      !!value && typeof (value as LectureRundown).notes === 'string'
   );
 
   return {
@@ -1060,8 +1492,12 @@ ${input.context.slice(0, 200_000) || '(none uploaded yet)'}`,
 const assignmentSchema = Schema.object({
   properties: {
     title: Schema.string({ description: 'The task as the brief names it.' }),
-    kind: Schema.string({ description: 'assignment | tutorial | lab | project' }),
-    summary: Schema.string({ description: 'Markdown rundown of what is being asked.' }),
+    kind: Schema.string({
+      description: 'assignment | tutorial | lab | project',
+    }),
+    summary: Schema.string({
+      description: 'Markdown rundown of what is being asked.',
+    }),
     steps: Schema.array({
       items: Schema.object({
         properties: {
@@ -1072,9 +1508,15 @@ const assignmentSchema = Schema.object({
       }),
     }),
     deliverables: Schema.array({ items: Schema.string() }),
-    markingNotes: Schema.string({ description: 'How it is graded, if stated.' }),
-    estimatedHours: Schema.number({ description: 'Realistic total hours of work.' }),
-    dueDate: Schema.string({ description: 'ISO YYYY-MM-DD, or empty if not stated.' }),
+    markingNotes: Schema.string({
+      description: 'How it is graded, if stated.',
+    }),
+    estimatedHours: Schema.number({
+      description: 'Realistic total hours of work.',
+    }),
+    dueDate: Schema.string({
+      description: 'ISO YYYY-MM-DD, or empty if not stated.',
+    }),
     dueTime: Schema.string({ description: '24-hour HH:MM, or empty.' }),
   },
   optionalProperties: ['kind', 'markingNotes', 'estimatedHours', 'dueDate', 'dueTime'],
@@ -1136,7 +1578,10 @@ ${input.text.slice(0, MAX_CONTEXT_CHARS)}`,
     summary: parsed.summary?.trim() || '',
     steps: (parsed.steps ?? [])
       .filter((step) => step && typeof step.title === 'string' && step.title.trim())
-      .map((step) => ({ title: step.title.trim(), detail: step.detail?.trim() || null })),
+      .map((step) => ({
+        title: step.title.trim(),
+        detail: step.detail?.trim() || null,
+      })),
     deliverables: (parsed.deliverables ?? []).map((line) => String(line).trim()).filter(Boolean),
     markingNotes: parsed.markingNotes?.trim() || null,
     estimatedHours:
@@ -1160,8 +1605,14 @@ ${input.text.slice(0, MAX_CONTEXT_CHARS)}`,
  * question from how the app does it — and only one of those two should change
  * when Firestore does.
  */
-/** How long any single round may take before the assistant gives up. */
-const COPILOT_TIMEOUT_MS = 25_000;
+/**
+ * How long any single round may take before the assistant gives up.
+ *
+ * Tool use has two model rounds (choose a tool, then answer from its result).
+ * Cold regional calls can exceed 25 seconds even while Vision is healthy, so
+ * keep this under the SDK transport timeout but long enough for a real turn.
+ */
+const COPILOT_TIMEOUT_MS = 90_000;
 
 export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
   {
@@ -1173,7 +1624,9 @@ export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
           'before any tool that needs a subjectId. Returns the closest matches.',
         parameters: Schema.object({
           properties: {
-            query: Schema.string({ description: 'Name, partial name or course code.' }),
+            query: Schema.string({
+              description: 'Name, partial name or course code.',
+            }),
           },
         }),
       },
@@ -1184,10 +1637,18 @@ export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
           'have to do, hand in, revise or prepare.',
         parameters: Schema.object({
           properties: {
-            title: Schema.string({ description: 'What has to be done, in their words.' }),
-            subjectId: Schema.string({ description: 'From find_subject. Empty if none fits.' }),
-            dueDate: Schema.string({ description: 'ISO YYYY-MM-DD. Empty if not stated.' }),
-            dueTime: Schema.string({ description: '24-hour HH:MM. Empty if not stated.' }),
+            title: Schema.string({
+              description: 'What has to be done, in their words.',
+            }),
+            subjectId: Schema.string({
+              description: 'From find_subject. Empty if none fits.',
+            }),
+            dueDate: Schema.string({
+              description: 'ISO YYYY-MM-DD. Empty if not stated.',
+            }),
+            dueTime: Schema.string({
+              description: '24-hour HH:MM. Empty if not stated.',
+            }),
             priority: Schema.string({ description: 'low, medium or high.' }),
           },
           optionalProperties: ['subjectId', 'dueDate', 'dueTime', 'priority'],
@@ -1212,7 +1673,9 @@ export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
         description: 'Read open to-dos and their deadlines, soonest first.',
         parameters: Schema.object({
           properties: {
-            subjectId: Schema.string({ description: 'Limit to one subject. Empty for all.' }),
+            subjectId: Schema.string({
+              description: 'Limit to one subject. Empty for all.',
+            }),
           },
           optionalProperties: ['subjectId'],
         }),
@@ -1225,7 +1688,9 @@ export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
         parameters: Schema.object({
           properties: {
             subjectId: Schema.string({ description: 'From find_subject.' }),
-            question: Schema.string({ description: 'What to answer or summarise.' }),
+            question: Schema.string({
+              description: 'What to answer or summarise.',
+            }),
           },
         }),
       },
@@ -1237,7 +1702,9 @@ export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
         parameters: Schema.object({
           properties: {
             subjectId: Schema.string({ description: 'From find_subject.' }),
-            entry: Schema.string({ description: 'What they said the class covered.' }),
+            entry: Schema.string({
+              description: 'What they said the class covered.',
+            }),
           },
         }),
       },
@@ -1262,9 +1729,12 @@ export async function copilotTurn(input: {
   history: CopilotTurn[];
   /** A short brief of who the student is and what today looks like. */
   brief: string;
-  run: (name: string, args: Record<string, unknown>) => Promise<{ result: unknown; summary?: string }>;
+  run: (
+    name: string,
+    args: Record<string, unknown>
+  ) => Promise<{ result: unknown; summary?: string }>;
 }): Promise<{ reply: string; actions: CopilotAction[] }> {
-  const chat = model({
+  const copilotParams: Omit<ModelParams, 'model'> = {
     tools: COPILOT_TOOLS,
     systemInstruction: `You are Notomi, a study assistant inside a student's own app.
 
@@ -1284,12 +1754,15 @@ class is, call get_schedule; if they mention something due, call create_task.
 TODAY
 ${input.brief}`,
     generationConfig: { temperature: 0.3 },
-  }).startChat({
-    history: input.history.map((turn) => ({
+  };
+
+  const contents: Content[] = [
+    ...input.history.map((turn) => ({
       role: turn.role,
       parts: [{ text: turn.text }],
     })),
-  });
+    { role: 'user', parts: [{ text: input.message }] },
+  ];
 
   const actions: CopilotAction[] = [];
 
@@ -1302,24 +1775,39 @@ ${input.brief}`,
    * the assistant admits defeat at a length a person will actually wait.
    */
   const deadline = <T>(work: Promise<T>): Promise<T> =>
-    Promise.race([
-      work,
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error('That took too long. Check your connection and try again.')),
-          COPILOT_TIMEOUT_MS
-        )
-      ),
-    ]);
+    new Promise<T>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error('That took too long. Check your connection and try again.')),
+        COPILOT_TIMEOUT_MS
+      );
+      void work.then(
+        (value) => {
+          clearTimeout(timeout);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        }
+      );
+    });
 
   try {
-    let response = (await deadline(chat.sendMessage(input.message))).response;
+    const send = () =>
+      runWithModelFallback('copilot chat', copilotParams, (candidate) =>
+        candidate.generateContent({ contents })
+      );
+    let response = (await deadline(send())).response;
 
     for (let round = 0; round < 4; round += 1) {
       const calls = response.functionCalls();
       if (!calls || calls.length === 0) break;
 
-      const replies = [];
+      const modelContent = response.candidates?.[0]?.content;
+      if (!modelContent) throw new Error('The AI requested a tool without returning its message.');
+      contents.push(modelContent);
+
+      const replies: Part[] = [];
       for (const call of calls) {
         const args = (call.args ?? {}) as Record<string, unknown>;
         let outcome: { result: unknown; summary?: string };
@@ -1330,17 +1818,28 @@ ${input.brief}`,
           // Handed back to the model rather than thrown: it can tell the
           // student what failed far better than a stack trace can.
           outcome = {
-            result: { error: error instanceof Error ? error.message : String(error) },
+            result: {
+              error: error instanceof Error ? error.message : String(error),
+            },
           };
         }
 
         if (outcome.summary) actions.push({ tool: call.name, summary: outcome.summary });
         replies.push({
-          functionResponse: { name: call.name, response: { result: outcome.result } },
+          functionResponse: {
+            name: call.name,
+            response: { result: outcome.result },
+          },
         });
       }
 
-      response = (await deadline(chat.sendMessage(replies))).response;
+      // Firebase's ChatSession currently labels an all-function-response turn
+      // as role "function". Gemini 3.6 accepts SYSTEM, USER and MODEL roles and
+      // rejects that second round with HTTP 400. A function result is input
+      // from the client, so send it explicitly as USER while retaining the
+      // model's function-call content immediately before it.
+      contents.push({ role: 'user', parts: replies });
+      response = (await deadline(send())).response;
     }
 
     return { reply: response.text().trim(), actions };

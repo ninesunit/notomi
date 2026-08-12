@@ -20,8 +20,7 @@
     "public": "dist",
     "ignore": [
       "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
+      "**/.*"
     ],
     "rewrites": [
       {
@@ -40,7 +39,7 @@
         ]
       },
       {
-        "source": "/pdf.worker.min.mjs",
+        "source": "/pdf*.mjs",
         "headers": [
           {
             "key": "Content-Type",
@@ -48,7 +47,25 @@
           },
           {
             "key": "Cache-Control",
-            "value": "public, max-age=604800"
+            "value": "no-cache, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/@(login|calendar|capture|focus|friends|library|program|reader|settings|study|timetable|todos){,/**}",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
           }
         ]
       },

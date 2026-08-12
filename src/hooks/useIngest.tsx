@@ -1,5 +1,11 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { pickAndIngest, type IngestProgress, type IngestResult } from '@/services/ingestion';
+import {
+  ingestFiles,
+  pickMaterials,
+  type IngestProgress,
+  type IngestResult,
+  type MaterialFile,
+} from '@/services/ingestion';
 import { useAuth } from './useAuth';
 
 export type IngestSummary = {
@@ -13,6 +19,7 @@ type IngestValue = {
   busy: boolean;
   summary: IngestSummary | null;
   start: (subjectId?: string) => Promise<IngestResult[]>;
+  startFiles: (files: MaterialFile[], subjectId?: string) => Promise<IngestResult[]>;
   dismiss: () => void;
 };
 
@@ -30,13 +37,14 @@ export function IngestProvider({ children }: { children: ReactNode }) {
   const [progress, setProgress] = useState<IngestProgress | null>(null);
   const [summary, setSummary] = useState<IngestSummary | null>(null);
 
-  const start = useCallback(
-    async (subjectId?: string) => {
+  const run = useCallback(
+    async (files: MaterialFile[], subjectId?: string) => {
       if (!user) return [];
       setSummary(null);
 
       try {
-        const { results, errors } = await pickAndIngest({
+        if (files.length === 0) return [];
+        const { results, errors } = await ingestFiles(files, {
           uid: user.uid,
           subjectId,
           onProgress: setProgress,
@@ -62,7 +70,11 @@ export function IngestProvider({ children }: { children: ReactNode }) {
             body: detail || undefined,
           });
         } else {
-          setSummary({ tone: 'rose', title: 'Nothing could be imported', body: detail });
+          setSummary({
+            tone: 'rose',
+            title: 'Nothing could be imported',
+            body: detail,
+          });
         }
 
         return results;
@@ -80,15 +92,32 @@ export function IngestProvider({ children }: { children: ReactNode }) {
     [user]
   );
 
+  const start = useCallback(
+    async (subjectId?: string) => {
+      try {
+        return await run(await pickMaterials(), subjectId);
+      } catch (error) {
+        setSummary({
+          tone: 'rose',
+          title: 'Upload failed',
+          body: error instanceof Error ? error.message : String(error),
+        });
+        return [];
+      }
+    },
+    [run]
+  );
+
   const value = useMemo<IngestValue>(
     () => ({
       progress,
       busy: progress !== null && progress.stage !== 'done',
       summary,
       start,
+      startFiles: run,
       dismiss: () => setSummary(null),
     }),
-    [progress, summary, start]
+    [progress, summary, start, run]
   );
 
   return <IngestContext.Provider value={value}>{children}</IngestContext.Provider>;

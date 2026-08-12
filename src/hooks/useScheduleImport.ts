@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
-import type { Subject } from '@/lib/schema';
+import type { ClassBlock, RoutineBlock, Subject } from '@/lib/schema';
 import { pickMaterials, type MaterialFile } from '@/services/ingestion';
-import { scanTimetableImage, type ImportOutcome, type StagedImport } from '@/services/timetable';
+import { scanTimetableFiles, type ImportOutcome, type StagedImport } from '@/services/timetable';
 
 /**
  * The schedule importer, as state.
@@ -16,39 +16,41 @@ import { scanTimetableImage, type ImportOutcome, type StagedImport } from '@/ser
  * `staged` until ImportReview commits it, which is what makes the verification
  * step real rather than decorative.
  */
-export function useScheduleImport(subjects: Subject[]) {
+export function useScheduleImport(
+  subjects: Subject[],
+  classes: ClassBlock[] = [],
+  routines: RoutineBlock[] = []
+) {
   const [scanning, setScanning] = useState(false);
   const [staged, setStaged] = useState<StagedImport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const scanFiles = useCallback(
+    async (picked: MaterialFile[]) => {
+      setError(null);
+      setNotice(null);
+      if (picked.length === 0) return;
+
+      setScanning(true);
+      try {
+        setStaged(await scanTimetableFiles(picked, subjects, classes, routines));
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        setScanning(false);
+      }
+    },
+    [subjects, classes, routines]
+  );
+
   const scan = useCallback(async () => {
-    setError(null);
-    setNotice(null);
-
-    let picked: MaterialFile[] = [];
     try {
-      picked = await pickMaterials();
+      await scanFiles(await pickMaterials());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
-      return;
     }
-    if (picked.length === 0) return;
-
-    setScanning(true);
-    try {
-      const file = picked[0];
-      const bytes = file.file
-        ? await file.file.arrayBuffer()
-        : await (await fetch(file.uri)).arrayBuffer();
-
-      setStaged(await scanTimetableImage(bytes, file.name, file.mimeType ?? '', subjects));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setScanning(false);
-    }
-  }, [subjects]);
+  }, [scanFiles]);
 
   /** The line shown after a commit, naming what the single upload created. */
   const describe = useCallback((outcome: ImportOutcome) => {
@@ -67,6 +69,7 @@ export function useScheduleImport(subjects: Subject[]) {
 
   return {
     scan,
+    scanFiles,
     scanning,
     staged,
     setStaged,

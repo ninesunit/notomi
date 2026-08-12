@@ -1,27 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Platform,
-  Pressable,
-  Text,
-  useWindowDimensions,
-  View,
-  type ViewStyle,
-} from 'react-native';
+import { Platform, Pressable, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query } from 'firebase/firestore';
 import { ImportReview } from '@/components/ImportReview';
+import { FileDropZone } from '@/components/FileDropZone';
 import { FadeIn } from '@/components/motion';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import { WeekOverview } from '@/components/WeekOverview';
 import { TimeField } from '@/components/TimeField';
+import { defaultScope, filterByTerm, TermFilter, type TermScope } from '@/components/TermFilter';
 import {
-  defaultScope,
-  filterByTerm,
-  TermFilter,
-  type TermScope,
-} from '@/components/TermFilter';
-import { Button, EmptyState, Field, IconButton, Loading, Notice, PageHeader } from '@/components/ui';
+  Button,
+  EmptyState,
+  Field,
+  IconButton,
+  Loading,
+  Notice,
+  PageHeader,
+} from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { useScheduleImport } from '@/hooks/useScheduleImport';
@@ -143,10 +140,7 @@ export default function Timetable() {
    * ocean of empty night.
    */
   const [firstHour, lastHour] = useMemo(() => {
-    const blocks = [
-      ...classes.data,
-      ...(showRoutines ? routines.data : []),
-    ];
+    const blocks = [...classes.data, ...(showRoutines ? routines.data : [])];
     if (blocks.length === 0) return [8, 18];
     const start = Math.min(...blocks.map((block) => block.startMinute));
     const end = Math.max(...blocks.map((block) => block.endMinute));
@@ -196,7 +190,7 @@ export default function Timetable() {
     [uid]
   );
 
-  const importer = useScheduleImport(subjects.data);
+  const importer = useScheduleImport(subjects.data, allClasses.data, routines.data);
   const loading = classes.loading || subjects.loading;
 
   return (
@@ -210,13 +204,13 @@ export default function Timetable() {
             ? undefined
             : classes.data.length
               ? `${classes.data.length} class${classes.data.length === 1 ? '' : 'es'} a week`
-              : 'Upload a screenshot of your schedule and Notomi will read it into a grid.'
+              : 'Upload up to 10 schedule PDFs, images or slide decks and review the merged week.'
         }
         actions={
           <>
             <Button
-              label={importer.scanning ? 'Reading…' : 'Scan screenshot'}
-              icon="camera"
+              label={importer.scanning ? 'Reading…' : 'Scan schedule'}
+              icon="upload-cloud"
               size="sm"
               loading={importer.scanning}
               disabled={importer.scanning}
@@ -248,6 +242,17 @@ export default function Timetable() {
         </View>
       ) : null}
 
+      <View className="mb-6">
+        <FileDropZone
+          busy={importer.scanning}
+          title="Add schedule files"
+          body="Drop or choose up to 10 PDFs, images or PPTX slide decks. Maximum 25 MB per batch."
+          onFiles={async (files) => {
+            await importer.scanFiles(files);
+          }}
+        />
+      </View>
+
       {subjects.data.length > 0 ? (
         <TermFilter
           semesters={semesters.data}
@@ -266,12 +271,12 @@ export default function Timetable() {
           body={
             allClasses.data.length > 0
               ? 'You have classes on other terms. Switch the filter above, or scan this term’s schedule.'
-              : 'Take a screenshot of your university schedule and upload it — Notomi reads the grid and fills this in. You can also add classes by hand.'
+              : 'Upload PDFs, screenshots, photos or slide decks. Notomi merges sessions, checks conflicts and lets you review everything before import.'
           }
           action={
             <Button
-              label="Scan a screenshot"
-              icon="camera"
+              label="Scan schedule files"
+              icon="upload-cloud"
               loading={importer.scanning}
               onPress={() => void importer.scan()}
             />
@@ -298,7 +303,8 @@ export default function Timetable() {
               <Text
                 className={`text-xs font-semibold ${showRoutines ? 'text-ink' : 'text-subtle'}`}
               >
-                Routines{routines.data.length > 0 ? ` (${routines.data.length})` : ''}
+                Routines
+                {routines.data.length > 0 ? ` (${routines.data.length})` : ''}
               </Text>
             </Pressable>
 
@@ -398,7 +404,11 @@ export default function Timetable() {
               <Text className="text-xs text-subtle">
                 {DAY_LABELS[block.day]} {minutesToLabel(block.startMinute)}
               </Text>
-              <IconButton icon="edit-2" label={`Link ${block.title}`} onPress={() => setEditing(block)} />
+              <IconButton
+                icon="edit-2"
+                label={`Link ${block.title}`}
+                onPress={() => setEditing(block)}
+              />
               <IconButton
                 icon="trash-2"
                 tone="rose"
@@ -417,9 +427,7 @@ export default function Timetable() {
               <Notice
                 tone="rose"
                 title={
-                  scopeName
-                    ? `Clear the timetable for ${scopeName}?`
-                    : 'Clear the whole timetable?'
+                  scopeName ? `Clear the timetable for ${scopeName}?` : 'Clear the whole timetable?'
                 }
                 body={`This removes ${classes.data.length} class block${
                   classes.data.length === 1 ? '' : 's'
@@ -728,8 +736,7 @@ function DayTimeline({
           {blocks.map((block) => {
             const box = place(block.startMinute, block.endMinute, 56);
             const code = block.code;
-            const live =
-              isToday && block.startMinute <= now && block.endMinute > now;
+            const live = isToday && block.startMinute <= now && block.endMinute > now;
 
             return (
               <Pressable
@@ -1038,9 +1045,7 @@ function DayPicker({
 }) {
   return (
     <View className="gap-2">
-      <Text className="text-sm font-medium text-muted">
-        {multiple ? 'Which days?' : 'Day'}
-      </Text>
+      <Text className="text-sm font-medium text-muted">{multiple ? 'Which days?' : 'Day'}</Text>
 
       <View className="flex-row flex-wrap gap-1.5">
         {DAY_LABELS.map((label, index) => {
@@ -1063,9 +1068,7 @@ function DayPicker({
                 selected ? 'bg-ink' : 'bg-sand'
               }`}
             >
-              <Text
-                className={`text-xs font-semibold ${selected ? 'text-paper' : 'text-ink'}`}
-              >
+              <Text className={`text-xs font-semibold ${selected ? 'text-paper' : 'text-ink'}`}>
                 {label}
               </Text>
             </Pressable>
@@ -1219,97 +1222,95 @@ function ClassForm({
         </>
       }
     >
-        {subjects.length > 0 ? (
-          <View className="gap-2">
-            <Text className="text-sm font-medium text-muted">Subject</Text>
-            <Text className="text-xs leading-4 text-subtle">
-              Name, code and colour come from the library.
-            </Text>
-            <View className="flex-row flex-wrap gap-1.5">
-              {subjects.map((subject) => (
-                <Pressable
-                  key={subject.id}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: subjectId === subject.id }}
-                  onPress={() => setSubjectId(subjectId === subject.id ? null : subject.id)}
-                  className={`rounded-lg border px-3 py-1.5 ${
-                    subjectId === subject.id
-                      ? 'border-accent bg-accent-soft'
-                      : 'border-line bg-paper'
+      {subjects.length > 0 ? (
+        <View className="gap-2">
+          <Text className="text-sm font-medium text-muted">Subject</Text>
+          <Text className="text-xs leading-4 text-subtle">
+            Name, code and colour come from the library.
+          </Text>
+          <View className="flex-row flex-wrap gap-1.5">
+            {subjects.map((subject) => (
+              <Pressable
+                key={subject.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: subjectId === subject.id }}
+                onPress={() => setSubjectId(subjectId === subject.id ? null : subject.id)}
+                className={`rounded-lg border px-3 py-1.5 ${
+                  subjectId === subject.id ? 'border-accent bg-accent-soft' : 'border-line bg-paper'
+                }`}
+              >
+                <Text
+                  className={`text-xs font-medium ${
+                    subjectId === subject.id ? 'text-accent' : 'text-muted'
                   }`}
                 >
-                  <Text
-                    className={`text-xs font-medium ${
-                      subjectId === subject.id ? 'text-accent' : 'text-muted'
-                    }`}
-                  >
-                    {subject.emoji ? `${subject.emoji} ` : ''}
-                    {subject.moduleCode || subject.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+                  {subject.emoji ? `${subject.emoji} ` : ''}
+                  {subject.moduleCode || subject.name}
+                </Text>
+              </Pressable>
+            ))}
           </View>
-        ) : null}
+        </View>
+      ) : null}
 
-        {linked ? (
-          <View className="flex-row items-center gap-3 rounded-xl border border-line bg-paper p-3">
-            <View className="h-2 w-2 rounded-full" style={{ backgroundColor: linked.color }} />
-            <View className="flex-1">
-              <Text className="text-sm font-semibold text-ink">{linked.name}</Text>
-              <Text className="text-xs text-subtle">
-                {linked.moduleCode ? `${linked.moduleCode} · ` : ''}Named by the library
-              </Text>
-            </View>
+      {linked ? (
+        <View className="flex-row items-center gap-3 rounded-xl border border-line bg-paper p-3">
+          <View className="h-2 w-2 rounded-full" style={{ backgroundColor: linked.color }} />
+          <View className="flex-1">
+            <Text className="text-sm font-semibold text-ink">{linked.name}</Text>
+            <Text className="text-xs text-subtle">
+              {linked.moduleCode ? `${linked.moduleCode} · ` : ''}Named by the library
+            </Text>
           </View>
-        ) : (
-          <Field
-            label="Class"
-            value={title}
-            onChangeText={setTitle}
-            placeholder="CS2040 Lecture"
-            hint="Pick a subject above to have this named for you."
-          />
-        )}
-
-        <DayPicker
-          days={days}
-          multiple={!block}
-          onToggle={toggleDay}
-          hint={
-            block
-              ? 'This is one occurrence. Add another for a second day.'
-              : 'Pick every day this session runs — one block is created for each.'
-          }
+        </View>
+      ) : (
+        <Field
+          label="Class"
+          value={title}
+          onChangeText={setTitle}
+          placeholder="CS2040 Lecture"
+          hint="Pick a subject above to have this named for you."
         />
+      )}
 
-        <View className="gap-3">
-          <TimeField label="Starts" value={startMinute} onChange={setStartMinute} />
-          <TimeField
-            label="Ends"
-            value={endMinute}
-            onChange={setEndMinute}
-            invalid={!timesValid}
-            hint={!timesValid ? 'The end has to come after the start.' : undefined}
+      <DayPicker
+        days={days}
+        multiple={!block}
+        onToggle={toggleDay}
+        hint={
+          block
+            ? 'This is one occurrence. Add another for a second day.'
+            : 'Pick every day this session runs — one block is created for each.'
+        }
+      />
+
+      <View className="gap-3">
+        <TimeField label="Starts" value={startMinute} onChange={setStartMinute} />
+        <TimeField
+          label="Ends"
+          value={endMinute}
+          onChange={setEndMinute}
+          invalid={!timesValid}
+          hint={!timesValid ? 'The end has to come after the start.' : undefined}
+        />
+      </View>
+
+      <View className="flex-row gap-3">
+        <View className="flex-1">
+          <Field label="Session type" value={kind} onChangeText={setKind} placeholder="Lecture" />
+        </View>
+        <View className="flex-1">
+          <Field
+            label="Section"
+            value={section}
+            onChangeText={setSection}
+            placeholder="TC1L"
+            autoCapitalize="characters"
           />
         </View>
+      </View>
 
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Field label="Session type" value={kind} onChangeText={setKind} placeholder="Lecture" />
-          </View>
-          <View className="flex-1">
-            <Field
-              label="Section"
-              value={section}
-              onChangeText={setSection}
-              placeholder="TC1L"
-              autoCapitalize="characters"
-            />
-          </View>
-        </View>
-
-        <Field label="Room" value={venue} onChangeText={setVenue} placeholder="LT-15" />
+      <Field label="Room" value={venue} onChangeText={setVenue} placeholder="LT-15" />
 
       {error ? <Text className="text-xs text-rose">{error}</Text> : null}
     </Sheet>
@@ -1466,7 +1467,12 @@ function RoutineForm({
         />
       </View>
 
-      <Field label="Where (optional)" value={venue} onChangeText={setVenue} placeholder="Sports hall" />
+      <Field
+        label="Where (optional)"
+        value={venue}
+        onChangeText={setVenue}
+        placeholder="Sports hall"
+      />
 
       {error ? <Text className="text-xs text-rose">{error}</Text> : null}
     </Sheet>

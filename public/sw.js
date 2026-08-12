@@ -16,7 +16,7 @@
  * cache-first and safe to keep forever.
  */
 
-const VERSION = 'notomi-v2';
+const VERSION = 'notomi-v5';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -104,7 +104,10 @@ self.addEventListener('fetch', (event) => {
 async function networkFirst(request) {
   const cache = await caches.open(SHELL);
   try {
-    const response = await fetch(request);
+    // Navigations must bypass the browser's HTTP cache as well as this worker's
+    // cache. Firebase Hosting otherwise gives rewritten `/` and deep links a
+    // one-hour max-age, leaving a current worker paired with an old entry bundle.
+    const response = await fetch(request, request.mode === 'navigate' ? { cache: 'no-store' } : undefined);
     if (response && response.ok) {
       cache.put(request, response.clone()).catch(() => undefined);
     }

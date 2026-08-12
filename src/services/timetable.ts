@@ -1,5 +1,6 @@
 import {
   doc,
+  getDoc,
   getDocs,
   query,
   serverTimestamp,
@@ -8,7 +9,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import { extractTimetable } from '@/lib/ai';
+import { extractTimetable, extractTimetableFromText } from '@/lib/ai';
 import { paths } from '@/lib/paths';
 import {
   colorForSubject,
@@ -20,6 +21,7 @@ import {
   type ClassBlock,
   type ExtractedClass,
   type RoutineBlock,
+  type Semester,
   type Subject,
 } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
@@ -27,10 +29,12 @@ import {
   canonicalMimeType,
   classify,
   downscaleImage,
+  extractText,
   humanSize,
   ParseError,
   SIZE_LIMITS,
 } from './fileProcessor';
+import { MAX_BATCH_BYTES, type MaterialFile, validateMaterialBatch } from './ingestion';
 
 /**
  * The weekly timetable.
@@ -52,13 +56,12 @@ export type ClassInput = {
   endMinute: number;
   venue: string | null;
   color: string;
+  semesterId?: string | null;
+  startDate?: Semester['startDate'];
+  endDate?: Semester['endDate'];
 };
 
-export async function saveClass(
-  uid: string,
-  input: ClassInput,
-  classId?: string
-): Promise<string> {
+export async function saveClass(uid: string, input: ClassInput, classId?: string): Promise<string> {
   const db = getDb();
   const ref = classId ? paths.class(db, uid, classId) : doc(paths.classes(db, uid));
 
@@ -73,6 +76,9 @@ export async function saveClass(
     endMinute: input.endMinute,
     venue: input.venue?.trim() || null,
     color: input.color,
+    ...(input.semesterId !== undefined ? { semesterId: input.semesterId } : {}),
+    ...(input.startDate !== undefined ? { startDate: input.startDate } : {}),
+    ...(input.endDate !== undefined ? { endDate: input.endDate } : {}),
   };
 
   if (classId) await updateDoc(ref, fields);
@@ -126,10 +132,22 @@ DAY_FULL.forEach((name, index) => {
 // Ambiguous single letters a schedule might use. T and S are deliberately
 // absent: they could mean two different days, and guessing would be worse than
 // dropping the row.
-Object.assign(DAY_LOOKUP, { m: 0, tu: 1, w: 2, th: 3, r: 3, f: 4, sa: 5, su: 6 });
+Object.assign(DAY_LOOKUP, {
+  m: 0,
+  tu: 1,
+  w: 2,
+  th: 3,
+  r: 3,
+  f: 4,
+  sa: 5,
+  su: 6,
+});
 
 export function dayIndexFor(value: string): number | null {
-  const key = value.trim().toLowerCase().replace(/[^a-z]/g, '');
+  const key = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
   if (!key) return null;
   return DAY_LOOKUP[key] ?? DAY_LOOKUP[key.slice(0, 3)] ?? null;
 }
@@ -156,6 +174,18 @@ export type ImportRow = {
   venue: string;
   /** Set when this maps onto a subject the student already has. */
   existingSubjectId: string | null;
+  /** Which uploaded file produced this row. */
+  sourceFile: string;
+  /** Existing academic/routine blocks this session overlaps. */
+  conflicts: ImportConflict[];
+};
+
+export type ImportConflict = {
+  type: 'class' | 'routine';
+  id: string;
+  title: string;
+  startMinute: number;
+  endMinute: number;
 };
 
 /**
@@ -236,6 +266,7 @@ export type StagedImport = {
   rows: ImportRow[];
   /** Rows Gemini returned that could not be made sense of at all. */
   skipped: number;
+  sourceFiles: string[];
 };
 
 /**
@@ -245,7 +276,13 @@ export type StagedImport = {
  * end before its start — are dropped rather than guessed at, and counted so the
  * student knows the scan was partial.
  */
-export function toImportRows(entries: ExtractedClass[], subjects: Subject[]): StagedImport {
+export function toImportRows(
+  entries: ExtractedClass[],
+  subjects: Subject[],
+  existingClasses: ClassBlock[] = [],
+  routines: RoutineBlock[] = [],
+  sourceFile = ''
+): StagedImport {
   const rows: ImportRow[] = [];
   let skipped = 0;
 
@@ -273,6 +310,32 @@ export function toImportRows(entries: ExtractedClass[], subjects: Subject[]): St
     // like shouting, so the staged name is calmed before it is ever shown.
     const title = tidyName(entry.title?.trim() || '') || code || 'Untitled class';
     const existing = matchSubject(title, code, subjects);
+    const conflicts: ImportConflict[] = [
+      ...existingClasses
+        .filter(
+          (block) =>
+            block.day === day && block.startMinute < endMinute && block.endMinute > startMinute
+        )
+        .map((block) => ({
+          type: 'class' as const,
+          id: block.id,
+          title: block.subjectName || block.title,
+          startMinute: block.startMinute,
+          endMinute: block.endMinute,
+        })),
+      ...routines
+        .filter(
+          (block) =>
+            block.day === day && block.startMinute < endMinute && block.endMinute > startMinute
+        )
+        .map((block) => ({
+          type: 'routine' as const,
+          id: block.id,
+          title: block.title,
+          startMinute: block.startMinute,
+          endMinute: block.endMinute,
+        })),
+    ];
 
     rows.push({
       id: `row-${index}`,
@@ -286,10 +349,12 @@ export function toImportRows(entries: ExtractedClass[], subjects: Subject[]): St
       end: minutesToClock(endMinute),
       venue: entry.venue?.trim() ?? '',
       existingSubjectId: existing?.id ?? null,
+      sourceFile,
+      conflicts,
     });
   });
 
-  return { rows, skipped };
+  return { rows, skipped, sourceFiles: sourceFile ? [sourceFile] : [] };
 }
 
 /**
@@ -342,6 +407,10 @@ export async function commitImport(
   const included = rows.filter((row) => row.include);
   if (included.length === 0) return { subjectsCreated: 0, subjectsReused: 0, classesAdded: 0 };
 
+  const semester = options.semesterId
+    ? ((await getDoc(paths.semester(db, uid, options.semesterId))).data() as Semester | undefined)
+    : undefined;
+
   // Group by course so "CS2040 Lecture" and "CS2040 Tutorial" share one folder.
   const groups = new Map<string, ImportRow[]>();
   for (const row of included) {
@@ -379,6 +448,8 @@ export async function commitImport(
         semesterId: options.semesterId,
         creditHours: 0,
         grade: null,
+        attendanceAttended: 0,
+        attendanceMissed: 0,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -407,6 +478,9 @@ export async function commitImport(
         endMinute,
         venue: row.venue.trim() || null,
         color,
+        semesterId: options.semesterId,
+        startDate: semester?.startDate ?? null,
+        endDate: semester?.endDate ?? null,
       });
     }
   }
@@ -422,13 +496,92 @@ export async function saveClassBlocks(uid: string, blocks: ClassInput[]): Promis
   for (let index = 0; index < blocks.length; index += 400) {
     const batch = writeBatch(db);
     for (const block of blocks.slice(index, index + 400)) {
-      batch.set(doc(paths.classes(db, uid)), { ...block, createdAt: serverTimestamp() });
+      batch.set(doc(paths.classes(db, uid)), {
+        ...block,
+        createdAt: serverTimestamp(),
+      });
     }
     await batch.commit();
   }
 }
 
-/** Reads a schedule image: validate, OCR with Gemini, stage for review. */
+/** Reads a universal schedule batch and stages the merged sessions for review. */
+export async function scanTimetableFiles(
+  files: MaterialFile[],
+  subjects: Subject[],
+  existingClasses: ClassBlock[] = [],
+  routines: RoutineBlock[] = []
+): Promise<StagedImport> {
+  validateMaterialBatch(files);
+
+  const allRows: ImportRow[] = [];
+  const seen = new Set<string>();
+  let skipped = 0;
+  let actualBytes = 0;
+
+  for (const file of files) {
+    const kind = classify(file.name, file.mimeType ?? '');
+    if (kind !== 'pdf' && kind !== 'image' && kind !== 'pptx') {
+      throw new ParseError(
+        `"${file.name}" is not a supported schedule file. Use PDF, PNG, JPG, WEBP or PPTX.`
+      );
+    }
+
+    const bytes = file.file
+      ? await file.file.arrayBuffer()
+      : await (await fetch(file.uri)).arrayBuffer();
+    actualBytes += bytes.byteLength;
+    if (actualBytes > MAX_BATCH_BYTES) {
+      throw new ParseError(
+        `The selected files are ${humanSize(actualBytes)} in total. The batch limit is ${humanSize(
+          MAX_BATCH_BYTES
+        )}.`
+      );
+    }
+
+    let entries: ExtractedClass[];
+    if (kind === 'pptx') {
+      const parsed = await extractText(bytes, file.name, file.mimeType ?? '');
+      entries = await extractTimetableFromText(parsed.text);
+    } else if (kind === 'image') {
+      const shrunk = await downscaleImage(bytes, canonicalMimeType('image', file.mimeType));
+      entries = await extractTimetable(shrunk.data, shrunk.mimeType);
+    } else {
+      // PDFs go to Gemini as the original document. This works for both
+      // selectable-text calendars and image-only print-to-PDF schedules.
+      entries = await extractTimetable(bytes, 'application/pdf');
+    }
+
+    const staged = toImportRows(entries, subjects, existingClasses, routines, file.name);
+    skipped += staged.skipped;
+    for (const row of staged.rows) {
+      const key = [
+        parseCourseCode(row.code).code || row.title.toLowerCase(),
+        row.day,
+        row.start,
+        row.end,
+        row.venue.toLowerCase(),
+      ].join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      allRows.push(row);
+    }
+  }
+
+  if (allRows.length === 0) {
+    throw new ParseError(
+      'The files were read, but no complete class sessions were found. Include course labels, weekdays and start/end times.'
+    );
+  }
+
+  return {
+    rows: allRows,
+    skipped,
+    sourceFiles: files.map((file) => file.name),
+  };
+}
+
+/** Backwards-compatible single-image entry point used by older callers. */
 export async function scanTimetableImage(
   data: ArrayBuffer,
   fileName: string,
@@ -461,7 +614,7 @@ export async function scanTimetableImage(
     );
   }
 
-  const staged = toImportRows(entries, subjects);
+  const staged = toImportRows(entries, subjects, [], [], fileName);
   if (staged.rows.length === 0) {
     throw new ParseError(
       `${entries.length} class${entries.length === 1 ? '' : 'es'} were found, but their days ` +
@@ -605,9 +758,7 @@ export function unlinkedClasses(classes: ClassBlock[], subjects: Subject[]): Cla
 
 /** Blocks for one day, earliest first. Generic so a join is not lost here. */
 export function classesForDay<T extends ClassBlock>(classes: T[], day: number): T[] {
-  return classes
-    .filter((block) => block.day === day)
-    .sort((a, b) => a.startMinute - b.startMinute);
+  return classes.filter((block) => block.day === day).sort((a, b) => a.startMinute - b.startMinute);
 }
 
 export function routinesForDay(routines: RoutineBlock[], day: number): RoutineBlock[] {

@@ -1,9 +1,9 @@
-name = "notomi-r2"
+name = "notomi"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Binding used for deletes, and proof the Worker owns the bucket.
+# Binding used for authenticated uploads, downloads, and deletes.
 [[r2_buckets]]
 binding = "MATERIALS"
 bucket_name = "notomi-materials"
@@ -13,6 +13,3 @@ R2_BUCKET = "notomi-materials"
 FIREBASE_PROJECT_ID = "notomii"
 # Origins allowed to call this Worker. Add your dev origin while developing.
 ALLOWED_ORIGINS = "https://notomii.web.app,https://notomii.firebaseapp.com,http://localhost:8081"
-
-# R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are secrets, never
-# vars — see worker/README.md.

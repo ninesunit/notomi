@@ -20,6 +20,7 @@ import {
   calculateGpa,
   todayIndex,
   type ClassBlock,
+  type RoutineBlock,
   type Semester,
   type Subject,
   type Todo,
@@ -54,13 +55,14 @@ export default function Dashboard() {
    */
   const todos = useCollection<Todo>(query(paths.todos(db, uid), orderBy('dueDate', 'asc')), [uid]);
   const classes = useCollection<ClassBlock>(paths.classes(db, uid), [uid]);
+  const routines = useCollection<RoutineBlock>(paths.routines(db, uid), [uid]);
   const semesters = useCollection<Semester>(
     query(paths.semesters(db, uid), orderBy('order', 'asc')),
     [uid]
   );
 
   const { start } = useIngest();
-  const importer = useScheduleImport(subjects.data);
+  const importer = useScheduleImport(subjects.data, classes.data, routines.data);
 
   const scope = useMemo(
     () => defaultScope(subjects.data, semesters.data),
@@ -115,10 +117,7 @@ export default function Dashboard() {
 
       {subjects.error ? (
         <View className="mb-6">
-          <Notice
-            title="Could not load your library"
-            body={subjects.error.message}
-          />
+          <Notice title="Could not load your library" body={subjects.error.message} />
         </View>
       ) : null}
 
@@ -205,12 +204,12 @@ function Engines({
         <EngineCard
           index={0}
           compact={compact}
-          emoji="📸"
+          heroIcon="calendar"
           title="Scan schedule"
-          caption="Your timetable from a screenshot"
-          body="Upload a screenshot of your weekly timetable. Notomi reads it, you check it, and it builds your subjects, classes and program in one go."
-          action={scanning ? 'Reading your schedule…' : 'Start with a screenshot'}
-          icon="camera"
+          caption="Merge PDFs, images and slides"
+          body="Upload up to 10 schedule files. Notomi reads them together, checks classes and routines for conflicts, then stages the result for review."
+          action={scanning ? 'Reading your schedule…' : 'Choose schedule files'}
+          icon="upload-cloud"
           busy={scanning}
           tint="#B4552D"
           onPress={onScan}
@@ -218,7 +217,7 @@ function Engines({
         <EngineCard
           index={1}
           compact={compact}
-          emoji="📄"
+          heroIcon="file-text"
           title="Upload syllabus"
           caption="Deadlines and topics from a PDF"
           body="Drop in a course outline or lecture slides. Notomi reads them on your device, then pulls out the topics, key dates and deadlines."
@@ -238,7 +237,7 @@ function Engines({
 function EngineCard({
   index,
   compact,
-  emoji,
+  heroIcon,
   title,
   caption,
   body,
@@ -250,7 +249,7 @@ function EngineCard({
 }: {
   index: number;
   compact: boolean;
-  emoji: string;
+  heroIcon: React.ComponentProps<typeof Feather>['name'];
   title: string;
   /** The one-line form, used where there is no room for the paragraph. */
   caption: string;
@@ -285,7 +284,7 @@ function EngineCard({
               }`}
               style={{ backgroundColor: `${tint}24` }}
             >
-              <Text className={compact ? 'text-base' : 'text-xl'}>{emoji}</Text>
+              <Feather name={heroIcon} size={compact ? 17 : 20} color={tint} />
             </View>
             {compact ? (
               <Feather
@@ -520,7 +519,9 @@ function QuickLog({
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Log a class</Text>
           <Text className="text-xs text-muted" numberOfLines={1}>
-            {open ? `Writing up ${active.name}` : 'Say what you covered and Notomi writes the notes'}
+            {open
+              ? `Writing up ${active.name}`
+              : 'Say what you covered and Notomi writes the notes'}
           </Text>
         </View>
         <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import {
+  Timestamp,
   doc,
   getDoc,
   getDocs,
@@ -15,7 +16,13 @@ import {
   type DocumentReference,
   type Firestore,
 } from 'firebase/firestore';
-import { AiError, extractMetadata, summarizeDocument } from '@/lib/ai';
+import {
+  AiError,
+  extractMetadata,
+  extractMetadataFromMedia,
+  readDocument,
+  summarizeDocument,
+} from '@/lib/ai';
 import { parseDueDate } from '@/lib/dates';
 import { getDb } from '@/services/firebase';
 import { stableId } from '@/lib/ids';
@@ -25,6 +32,7 @@ import {
   type ExtractedDeadline,
   type ExtractedMetadata,
   type FileKind,
+  type Semester,
   type SourceDocument,
   type Todo,
 } from '@/lib/schema';
@@ -50,13 +58,7 @@ import { deleteR2File, isR2Configured, r2ConfigHint, R2Error, uploadFileToR2 } f
  */
 
 export type IngestStage =
-  | 'picking'
-  | 'reading'
-  | 'extracting'
-  | 'uploading'
-  | 'analyzing'
-  | 'saving'
-  | 'done';
+  'picking' | 'reading' | 'extracting' | 'uploading' | 'analyzing' | 'saving' | 'done';
 
 export const STAGE_LABELS: Record<IngestStage, string> = {
   picking: 'Choosing file…',
@@ -115,6 +117,36 @@ export type MaterialFile = {
   /** Present on web; avoids a re-fetch of a blob URI. */
   file?: File | null;
 };
+
+export const MAX_BATCH_FILES = 10;
+export const MAX_BATCH_BYTES = 25 * 1024 * 1024;
+
+/** Shared limit for Library batches and schedule/calendar scans. */
+export function validateMaterialBatch(files: MaterialFile[]): void {
+  if (files.length > MAX_BATCH_FILES) {
+    throw new ParseError(`Choose up to ${MAX_BATCH_FILES} files at a time.`);
+  }
+
+  const total = files.reduce((sum, file) => sum + (file.size ?? file.file?.size ?? 0), 0);
+  if (total > MAX_BATCH_BYTES) {
+    throw new ParseError(
+      `Those files total ${humanSize(total)}. The maximum batch is ${humanSize(MAX_BATCH_BYTES)}.`
+    );
+  }
+
+  for (const file of files) checkUploadSize(file);
+}
+
+/** Converts a browser drop into the same shape as expo-document-picker. */
+export function materialFilesFromWeb(files: FileList | File[]): MaterialFile[] {
+  return Array.from(files).map((file) => ({
+    name: file.name,
+    uri: URL.createObjectURL(file),
+    mimeType: file.type || null,
+    size: file.size,
+    file,
+  }));
+}
 
 /**
  * A parse, done once. Extraction for images and A/V costs a Gemini call, so the
@@ -229,7 +261,10 @@ export async function processUploadedMaterial(
     }
   }
 
-  const fallbackTitle = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+  const fallbackTitle = file.name
+    .replace(/\.[^.]+$/, '')
+    .replace(/[_-]+/g, ' ')
+    .trim();
 
   report('saving');
   await setDoc(documentRef, {
@@ -339,11 +374,9 @@ export async function captureImage(): Promise<MaterialFile[]> {
 
     // Cancel fires no event in most browsers; focus returning to the window is
     // the only signal, and it needs a beat for `change` to land first.
-    window.addEventListener(
-      'focus',
-      () => setTimeout(() => finish([]), 600),
-      { once: true }
-    );
+    window.addEventListener('focus', () => setTimeout(() => finish([]), 600), {
+      once: true,
+    });
 
     document.body.appendChild(input);
     input.click();
@@ -358,20 +391,29 @@ export async function pickMaterials(): Promise<MaterialFile[]> {
   });
   if (picked.canceled) return [];
 
-  return picked.assets.map((asset) => ({
+  const files = picked.assets.map((asset) => ({
     name: asset.name,
     uri: asset.uri,
     mimeType: asset.mimeType,
     size: asset.size,
     file: asset.file ?? null,
   }));
+  validateMaterialBatch(files);
+  return files;
 }
 
 /** Opens the OS picker and ingests everything selected. */
-export async function pickAndIngest(
-  options: IngestOptions
-): Promise<{ results: IngestResult[]; errors: { fileName: string; message: string }[] }> {
-  options.onProgress?.({ stage: 'picking', kind: null, fileName: '', index: 0, total: 0 });
+export async function pickAndIngest(options: IngestOptions): Promise<{
+  results: IngestResult[];
+  errors: { fileName: string; message: string }[];
+}> {
+  options.onProgress?.({
+    stage: 'picking',
+    kind: null,
+    fileName: '',
+    index: 0,
+    total: 0,
+  });
 
   const files = await pickMaterials();
   if (files.length === 0) return { results: [], errors: [] };
@@ -382,7 +424,11 @@ export async function pickAndIngest(
 export async function ingestFiles(
   files: MaterialFile[],
   options: IngestOptions
-): Promise<{ results: IngestResult[]; errors: { fileName: string; message: string }[] }> {
+): Promise<{
+  results: IngestResult[];
+  errors: { fileName: string; message: string }[];
+}> {
+  validateMaterialBatch(files);
   const results: IngestResult[] = [];
   const errors: { fileName: string; message: string }[] = [];
 
@@ -402,15 +448,19 @@ export async function ingestFiles(
       // can be filed, so the whole prepare step is done once and handed on.
       const prepared = await prepareFile(file, report);
       const subjectId = options.subjectId ?? (await subjectForFile(file, prepared, options.uid));
-      results.push(
-        await processUploadedMaterial(file, subjectId, options.uid, report, prepared)
-      );
+      results.push(await processUploadedMaterial(file, subjectId, options.uid, report, prepared));
     } catch (error) {
       errors.push({ fileName: file.name, message: describeIngestError(error) });
     }
   }
 
-  options.onProgress?.({ stage: 'done', kind: null, fileName: '', index: 0, total: 0 });
+  options.onProgress?.({
+    stage: 'done',
+    kind: null,
+    fileName: '',
+    index: 0,
+    total: 0,
+  });
   return { results, errors };
 }
 
@@ -429,12 +479,34 @@ async function prepareFile(
 
   const kind = classify(file.name, file.mimeType ?? '');
   report('extracting', kind === 'unknown' ? undefined : kind);
-  const parsed = await extractText(bytes, file.name, file.mimeType ?? '');
+  let parsed: ParsedFile;
+  try {
+    parsed = await extractText(bytes, file.name, file.mimeType ?? '');
+  } catch (error) {
+    if (kind !== 'pdf') throw error;
+    // Scanned PDFs and stale cached pdf.js workers bypass client parsing and
+    // go to Gemini as the original document. This is the reliable path for
+    // print-to-PDF schedules and photocopied syllabuses.
+    const text = await readDocument(bytes, 'application/pdf');
+    if (!text) throw error;
+    parsed = { text, pageCount: null, kind: 'pdf' };
+  }
 
   report('analyzing', parsed.kind);
   try {
-    return { bytes, parsed, metadata: await extractMetadata(parsed.text) };
+    const mediaKind = parsed.kind === 'pdf' || parsed.kind === 'image';
+    const metadata = mediaKind
+      ? await extractMetadataFromMedia(bytes, canonicalMimeType(parsed.kind, file.mimeType))
+      : await extractMetadata(parsed.text);
+    return { bytes, parsed, metadata };
   } catch (error) {
+    // Large raw media can exceed inline request limits. Its extracted text is
+    // still a complete fallback for routing and syllabus dates.
+    try {
+      return { bytes, parsed, metadata: await extractMetadata(parsed.text) };
+    } catch {
+      /* Report the original media failure below; it is usually more specific. */
+    }
     return {
       bytes,
       parsed,
@@ -456,7 +528,10 @@ async function subjectForFile(
   prepared: PreparedFile,
   uid: string
 ): Promise<string> {
-  const fallback = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+  const fallback = file.name
+    .replace(/\.[^.]+$/, '')
+    .replace(/[_-]+/g, ' ')
+    .trim();
   return findOrCreateSubject(
     uid,
     prepared.metadata?.subjectName || fallback || 'Untitled subject',
@@ -469,7 +544,8 @@ export function describeIngestError(error: unknown): string {
     return error.message;
   }
   const message = error instanceof Error ? error.message : String(error);
-  if (/permission-denied/.test(message)) return 'Firestore rejected the write. Deploy firestore.rules.';
+  if (/permission-denied/.test(message))
+    return 'Firestore rejected the write. Deploy firestore.rules.';
   return message;
 }
 
@@ -493,16 +569,33 @@ export async function findOrCreateSubject(
 
   if (moduleCode) {
     const byCode = await getDocs(query(subjects, where('moduleCode', '==', moduleCode), limit(1)));
-    if (!byCode.empty) return byCode.docs[0].id;
+    if (!byCode.empty) {
+      const existing = byCode.docs[0];
+      if (!existing.data().semesterId) {
+        const semesterId = await currentSemesterId(uid);
+        if (semesterId)
+          await updateDoc(existing.ref, {
+            semesterId,
+            updatedAt: serverTimestamp(),
+          });
+      }
+      return existing.id;
+    }
   }
 
   const byName = await getDocs(query(subjects, where('name', '==', subjectName), limit(1)));
   if (!byName.empty) {
     const existing = byName.docs[0];
-    if (moduleCode && !existing.data().moduleCode) await updateDoc(existing.ref, { moduleCode });
+    const patch: Record<string, unknown> = {};
+    if (moduleCode && !existing.data().moduleCode) patch.moduleCode = moduleCode;
+    if (!existing.data().semesterId) patch.semesterId = await currentSemesterId(uid);
+    if (Object.values(patch).some((value) => value !== null)) {
+      await updateDoc(existing.ref, { ...patch, updatedAt: serverTimestamp() });
+    }
     return existing.id;
   }
 
+  const semesterId = await currentSemesterId(uid);
   const subjectId = stableId(uid, moduleCode || subjectName);
   await setDoc(
     doc(subjects, subjectId),
@@ -513,16 +606,34 @@ export async function findOrCreateSubject(
       emoji: null,
       tag: null,
       documentCount: 0,
-      // Unfiled until the program planner assigns it a semester.
-      semesterId: null,
+      // Imported calendar anchors give new material a term immediately.
+      semesterId,
       creditHours: 0,
       grade: null,
+      attendanceAttended: 0,
+      attendanceMissed: 0,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     },
     { merge: true }
   );
   return subjectId;
+}
+
+async function currentSemesterId(uid: string): Promise<string | null> {
+  const db = getDb();
+  const snapshot = await getDocs(paths.semesters(db, uid));
+  const semesters = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as Semester);
+  const now = new Date();
+  return (
+    semesters.find((semester) => {
+      const start = semester.startDate?.toDate?.();
+      const end = semester.endDate?.toDate?.();
+      return !!start && !!end && start <= now && now <= end;
+    })?.id ??
+    semesters.find((semester) => semester.isCurrent)?.id ??
+    null
+  );
 }
 
 /**
@@ -552,6 +663,17 @@ async function saveDeadlines(
     ref: paths.todo(db, uid, stableId(subjectId, deadline.title)),
   }));
   const existing = await Promise.all(refs.map(({ ref }) => getDoc(ref)));
+  const milestones = dated.flatMap((deadline) =>
+    (deadline.milestones ?? []).map((milestone) => ({
+      parent: deadline,
+      milestone,
+      due: Timestamp.fromMillis(
+        deadline.due!.toMillis() - milestone.weeksBeforeDue * 7 * 24 * 60 * 60 * 1000
+      ),
+      ref: paths.todo(db, uid, stableId(subjectId, deadline.title, 'milestone', milestone.title)),
+    }))
+  );
+  const existingMilestones = await Promise.all(milestones.map(({ ref }) => getDoc(ref)));
 
   const batch = writeBatch(db);
   for (let i = 0; i < refs.length; i += 1) {
@@ -582,8 +704,32 @@ async function saveDeadlines(
     }
   }
 
+  for (let i = 0; i < milestones.length; i += 1) {
+    const { parent, milestone, due, ref } = milestones[i];
+    const shared = {
+      title: `${parent.title}: ${milestone.title}`,
+      dueDate: due,
+      subjectId,
+      subjectName,
+      source: 'syllabus' as const,
+      sourceDocumentId: documentId,
+      kind: 'milestone',
+    };
+    if (existingMilestones[i].exists()) batch.update(ref, shared);
+    else {
+      batch.set(ref, {
+        ...shared,
+        priority: 'medium',
+        subTasks: [],
+        isCompleted: false,
+        completedAt: null,
+        createdAt: serverTimestamp(),
+      });
+    }
+  }
+
   await batch.commit();
-  return dated.length;
+  return dated.length + milestones.length;
 }
 
 /**
@@ -609,7 +755,9 @@ export async function deleteMaterial(
   const [derivedTodos, derivedChats, flashcards] = await Promise.all([
     getDocs(query(paths.todos(db, uid), where('sourceDocumentId', '==', documentId))),
     getDocs(query(paths.chats(db, uid, subjectId), where('documentId', '==', documentId))),
-    getDocs(query(paths.flashcards(db, uid, subjectId), where('sourceDocumentId', '==', documentId))),
+    getDocs(
+      query(paths.flashcards(db, uid, subjectId), where('sourceDocumentId', '==', documentId))
+    ),
   ]);
 
   // Chat messages are a subcollection, so they have to be listed before their

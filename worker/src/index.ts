@@ -1,28 +1,21 @@
 /**
  * Notomi R2 broker.
  *
- * Exists so the Cloudflare R2 signing key never reaches the browser. The web
- * app is a static bundle, so anything it holds is public; this Worker holds
- * the credential instead and hands out short-lived presigned URLs.
+ * The web app is a static bundle, so credentials cannot safely live there.
+ * This Worker uses an R2 binding for authenticated uploads and downloads.
  *
  * It also enforces ownership: a caller may only touch keys under
  * users/{their-firebase-uid}/, which the client alone could not guarantee.
  *
- *   POST   /presign-upload    { fileKey, contentType } -> { uploadUrl }
- *   GET    /presign-download  ?key=&expires=           -> { downloadUrl }
- *   DELETE /object            ?key=
+ *   PUT    /object?key=       upload an original file
+ *   GET    /object?key=       download an original file
+ *   DELETE /object?key=       delete an original file
  *
  * Every route requires a Firebase ID token in `Authorization: Bearer <token>`.
  */
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-
 export interface Env {
   MATERIALS: R2Bucket;
-  R2_ACCOUNT_ID: string;
   R2_BUCKET: string;
-  R2_ACCESS_KEY_ID: string;
-  R2_SECRET_ACCESS_KEY: string;
   FIREBASE_PROJECT_ID: string;
   /** Comma-separated origins allowed to call this Worker. */
   ALLOWED_ORIGINS: string;
@@ -37,7 +30,7 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
 
   return {
     'Access-Control-Allow-Origin': ok ? origin || '*' : allowed[0] ?? '',
-    'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization,Content-Type',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
@@ -153,54 +146,44 @@ export default {
     const assertOwned = (key: string | null): key is string =>
       !!key && key.startsWith(prefix) && !key.includes('..');
 
-    const s3 = new S3Client({
-      region: 'auto',
-      endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: env.R2_ACCESS_KEY_ID,
-        secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-      },
-    });
-
     try {
-      if (url.pathname === '/presign-upload' && request.method === 'POST') {
-        const body = (await request.json()) as { fileKey?: string; contentType?: string };
-        if (!assertOwned(body.fileKey ?? null)) {
-          return json({ error: 'fileKey must live under your own user prefix' }, 403, cors);
+      if (url.pathname === '/object') {
+        const key = url.searchParams.get('key');
+        if (!assertOwned(key)) return json({ error: 'not your object' }, 403, cors);
+
+        if (request.method === 'PUT') {
+          if (!request.body) return json({ error: 'empty upload' }, 400, cors);
+
+          const uploaded = await env.MATERIALS.put(key, request.body, {
+            httpMetadata: {
+              contentType: request.headers.get('Content-Type') || 'application/octet-stream',
+            },
+          });
+          if (!uploaded) return json({ error: 'upload failed' }, 500, cors);
+
+          return json(
+            { fileKey: uploaded.key, size: uploaded.size, etag: uploaded.httpEtag },
+            200,
+            cors
+          );
         }
 
-        const uploadUrl = await getSignedUrl(
-          s3,
-          new PutObjectCommand({
-            Bucket: env.R2_BUCKET,
-            Key: body.fileKey,
-            ContentType: body.contentType || 'application/octet-stream',
-          }),
-          { expiresIn: 900 }
-        );
-        return json({ uploadUrl, fileKey: body.fileKey }, 200, cors);
-      }
+        if (request.method === 'GET') {
+          const object = await env.MATERIALS.get(key);
+          if (!object) return json({ error: 'not found' }, 404, cors);
 
-      if (url.pathname === '/presign-download' && request.method === 'GET') {
-        const key = url.searchParams.get('key');
-        if (!assertOwned(key)) return json({ error: 'not your object' }, 403, cors);
+          const headers = new Headers(cors);
+          object.writeHttpMetadata(headers);
+          headers.set('ETag', object.httpEtag);
+          headers.set('Cache-Control', 'private, no-store');
+          headers.set('Content-Disposition', 'inline');
+          return new Response(object.body, { status: 200, headers });
+        }
 
-        const expires = Math.min(Number(url.searchParams.get('expires') ?? 3600) || 3600, 86400);
-        const downloadUrl = await getSignedUrl(
-          s3,
-          new GetObjectCommand({ Bucket: env.R2_BUCKET, Key: key }),
-          { expiresIn: expires }
-        );
-        return json({ downloadUrl }, 200, cors);
-      }
-
-      if (url.pathname === '/object' && request.method === 'DELETE') {
-        const key = url.searchParams.get('key');
-        if (!assertOwned(key)) return json({ error: 'not your object' }, 403, cors);
-
-        // Deletes go through the binding — no signing round-trip needed.
-        await env.MATERIALS.delete(key);
-        return json({ deleted: key }, 200, cors);
+        if (request.method === 'DELETE') {
+          await env.MATERIALS.delete(key);
+          return json({ deleted: key }, 200, cors);
+        }
       }
 
       return json({ error: 'not found' }, 404, cors);

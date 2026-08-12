@@ -4,6 +4,8 @@ import { Link } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { CountdownBlock, CountdownChip } from '@/components/Countdown';
+import { AcademicCalendarImport } from '@/components/AcademicCalendarImport';
+import { BurnoutHeatmap } from '@/components/AcademicInsights';
 import { MonthCalendar, type DayMarker } from '@/components/MonthCalendar';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
@@ -12,7 +14,12 @@ import { useCollection } from '@/hooks/useFirestore';
 import { countdown, dayKey, isSameDay, toDate } from '@/lib/dates';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
-import type { Subject, Todo } from '@/lib/schema';
+import type { Semester, Subject, Todo } from '@/lib/schema';
+import {
+  createExamRevisionPlan,
+  findActiveSemester,
+  type CalendarImportOutcome,
+} from '@/services/academicPlanner';
 
 type Dated = { todo: Todo; due: Date };
 
@@ -22,11 +29,24 @@ export default function Calendar() {
 
   const todos = useCollection<Todo>(query(paths.todos(db, uid), orderBy('dueDate', 'asc')), [uid]);
   const subjects = useCollection<Subject>(paths.subjects(db, uid), [uid]);
+  const semesters = useCollection<Semester>(
+    query(paths.semesters(db, uid), orderBy('order', 'asc')),
+    [uid]
+  );
 
   const [month, setMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
   const [selected, setSelected] = useState<Date | null>(new Date());
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [planning, setPlanning] = useState(false);
+  const [message, setMessage] = useState<{
+    tone: 'rose' | 'pine';
+    title: string;
+    body: string;
+  } | null>(null);
+
+  const activeSemester = useMemo(() => findActiveSemester(semesters.data), [semesters.data]);
 
   const colorFor = useMemo(() => {
     const map = new Map(subjects.data.map((s) => [s.id, s.color || '#B4552D']));
@@ -79,9 +99,7 @@ export default function Calendar() {
     const now = new Date();
     const horizon = new Date(now);
     horizon.setDate(horizon.getDate() + 7);
-    return open
-      .filter((entry) => entry.due >= now && entry.due <= horizon)
-      .slice(0, 8);
+    return open.filter((entry) => entry.due >= now && entry.due <= horizon).slice(0, 8);
   }, [open]);
 
   function toggle(todo: Todo) {
@@ -89,6 +107,38 @@ export default function Calendar() {
       isCompleted: !todo.isCompleted,
       completedAt: todo.isCompleted ? null : serverTimestamp(),
     }).catch(() => undefined);
+  }
+
+  function calendarImported(outcome: CalendarImportOutcome) {
+    setMessage({
+      tone: 'pine',
+      title: 'Academic calendar anchored',
+      body: `${outcome.created} term${outcome.created === 1 ? '' : 's'} added and ${outcome.updated} updated.${
+        outcome.currentTerm ? ` ${outcome.currentTerm} is active now.` : ''
+      }`,
+    });
+  }
+
+  async function planStudyLeave() {
+    if (!activeSemester) return;
+    setPlanning(true);
+    setMessage(null);
+    try {
+      const plan = await createExamRevisionPlan(uid, activeSemester, subjects.data, todos.data);
+      setMessage({
+        tone: 'pine',
+        title: 'Revision plan added',
+        body: `${plan.length} focused study block${plan.length === 1 ? '' : 's'} now appear in your calendar and tasks.`,
+      });
+    } catch (caught) {
+      setMessage({
+        tone: 'rose',
+        title: 'Could not build the revision plan',
+        body: caught instanceof Error ? caught.message : String(caught),
+      });
+    } finally {
+      setPlanning(false);
+    }
   }
 
   if (todos.loading) {
@@ -111,11 +161,54 @@ export default function Calendar() {
             : 'Deadlines from your syllabuses and your own tasks, in one place.'
         }
         actions={
-          <Link href="/todos" asChild>
-            <Button label="Add a task" icon="plus" size="sm" variant="secondary" />
-          </Link>
+          <>
+            <Button
+              label="Import academic calendar"
+              icon="calendar"
+              size="sm"
+              variant="secondary"
+              onPress={() => setCalendarOpen(true)}
+            />
+            <Link href="/todos" asChild>
+              <Button label="Add a task" icon="plus" size="sm" variant="secondary" />
+            </Link>
+          </>
         }
       />
+
+      {message ? (
+        <View className="mb-6">
+          <Notice tone={message.tone} title={message.title} body={message.body} />
+        </View>
+      ) : null}
+
+      {semesters.error ? (
+        <View className="mb-6">
+          <Notice title="Could not load term anchors" body={semesters.error.message} />
+        </View>
+      ) : null}
+
+      <BurnoutHeatmap semester={activeSemester} todos={todos.data} />
+
+      {activeSemester?.studyLeaveStart && activeSemester.studyLeaveEnd ? (
+        <Card className="mb-6 gap-4 border-pine/20 bg-pine-soft">
+          <View className="flex-row flex-wrap items-start justify-between gap-4">
+            <View className="flex-1 gap-1" style={{ minWidth: 220 }}>
+              <Text className="text-[15px] font-semibold text-ink">Smart exam gap strategist</Text>
+              <Text className="text-xs leading-5 text-muted">
+                Build a Study Leave plan from exam spacing and each subject's credit weighting.
+              </Text>
+            </View>
+            <Button
+              label="Build revision plan"
+              icon="map"
+              size="sm"
+              loading={planning}
+              onPress={() => void planStudyLeave()}
+            />
+          </View>
+        </Card>
+      ) : null}
 
       {/* Next-up panel: the countdown is the point of this page. */}
       {next ? (
@@ -136,7 +229,10 @@ export default function Calendar() {
                   month: 'long',
                 })}
                 {', '}
-                {next.due.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                {next.due.toLocaleTimeString(undefined, {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
               </Text>
             </View>
             <CountdownBlock due={next.due} />
@@ -238,6 +334,14 @@ export default function Calendar() {
           />
         </View>
       ) : null}
+
+      <AcademicCalendarImport
+        visible={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        uid={uid}
+        semesters={semesters.data}
+        onImported={calendarImported}
+      />
     </ScreenScroll>
   );
 }
@@ -289,9 +393,16 @@ function DeadlineRow({
           {[
             todo.subjectName,
             showDate
-              ? due.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+              ? due.toLocaleDateString(undefined, {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                })
               : null,
-            due.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
+            due.toLocaleTimeString(undefined, {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
           ]
             .filter(Boolean)
             .join(' · ')}
