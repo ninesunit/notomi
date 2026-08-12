@@ -384,6 +384,12 @@ export async function captureImage(): Promise<MaterialFile[]> {
 }
 
 export async function pickMaterials(): Promise<MaterialFile[]> {
+  if (Platform.OS === 'web') {
+    const files = await pickMaterialsFromWeb();
+    validateMaterialBatch(files);
+    return files;
+  }
+
   const picked = await DocumentPicker.getDocumentAsync({
     type: ACCEPTED_MIME_TYPES,
     multiple: true,
@@ -400,6 +406,57 @@ export async function pickMaterials(): Promise<MaterialFile[]> {
   }));
   validateMaterialBatch(files);
   return files;
+}
+
+/**
+ * Expo's native picker remains the right implementation on iOS and Android.
+ * On web, own the input so the batch contract is explicit and consistent:
+ * `multiple` is set as a DOM property and extension fallbacks keep files whose
+ * operating system reports an empty MIME type selectable.
+ */
+function pickMaterialsFromWeb(): Promise<MaterialFile[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = [
+      ...ACCEPTED_MIME_TYPES,
+      '.pdf',
+      '.docx',
+      '.pptx',
+      '.txt',
+      '.md',
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.webp',
+      '.mp4',
+      '.mp3',
+      '.m4a',
+    ].join(',');
+    input.style.display = 'none';
+
+    let settled = false;
+    const selectedFiles = () =>
+      input.files?.length ? materialFilesFromWeb(input.files) : [];
+    const finish = (files: MaterialFile[]) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('focus', handleFocus);
+      input.remove();
+      resolve(files);
+    };
+    const handleFocus = () => {
+      // Some browsers do not emit `cancel`; give `change` time to run first.
+      window.setTimeout(() => finish(selectedFiles()), 500);
+    };
+
+    input.addEventListener('change', () => finish(selectedFiles()), { once: true });
+    input.addEventListener('cancel', () => finish([]), { once: true });
+    window.addEventListener('focus', handleFocus, { once: true });
+    document.body.appendChild(input);
+    input.click();
+  });
 }
 
 /** Opens the OS picker and ingests everything selected. */

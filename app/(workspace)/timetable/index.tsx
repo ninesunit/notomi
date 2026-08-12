@@ -208,14 +208,16 @@ export default function Timetable() {
         }
         actions={
           <>
-            <Button
-              label={importer.scanning ? 'Reading…' : 'Scan schedule'}
-              icon="upload-cloud"
-              size="sm"
-              loading={importer.scanning}
-              disabled={importer.scanning}
-              onPress={() => void importer.scan()}
-            />
+            {allClasses.data.length > 0 ? (
+              <Button
+                label={importer.scanning ? 'Reading…' : 'Scan schedule'}
+                icon="upload-cloud"
+                size="sm"
+                loading={importer.scanning}
+                disabled={importer.scanning}
+                onPress={() => void importer.scan()}
+              />
+            ) : null}
             <Button
               label="Add class"
               icon="plus"
@@ -242,17 +244,6 @@ export default function Timetable() {
         </View>
       ) : null}
 
-      <View className="mb-6">
-        <FileDropZone
-          busy={importer.scanning}
-          title="Add schedule files"
-          body="Drop or choose up to 10 PDFs, images or PPTX slide decks. Maximum 25 MB per batch."
-          onFiles={async (files) => {
-            await importer.scanFiles(files);
-          }}
-        />
-      </View>
-
       {subjects.data.length > 0 ? (
         <TermFilter
           semesters={semesters.data}
@@ -265,23 +256,22 @@ export default function Timetable() {
       {loading ? (
         <Loading label="Loading your week…" />
       ) : classes.data.length === 0 ? (
-        <EmptyState
-          icon="calendar"
-          title={allClasses.data.length > 0 ? 'No classes in this term' : 'No classes yet'}
-          body={
-            allClasses.data.length > 0
-              ? 'You have classes on other terms. Switch the filter above, or scan this term’s schedule.'
-              : 'Upload PDFs, screenshots, photos or slide decks. Notomi merges sessions, checks conflicts and lets you review everything before import.'
-          }
-          action={
-            <Button
-              label="Scan schedule files"
-              icon="upload-cloud"
-              loading={importer.scanning}
-              onPress={() => void importer.scan()}
-            />
-          }
-        />
+        allClasses.data.length > 0 ? (
+          <EmptyState
+            icon="calendar"
+            title="No classes in this term"
+            body="You have classes in other terms. Switch the filter above, or use Scan schedule to add this term."
+          />
+        ) : (
+          <FileDropZone
+            busy={importer.scanning}
+            title="Add schedule files"
+            body="Drop or choose up to 10 PDFs, images or PPTX slide decks. Select several together with Ctrl, Command or Shift on desktop. Maximum 25 MB per batch."
+            onFiles={async (files) => {
+              await importer.scanFiles(files);
+            }}
+          />
+        )
       ) : (
         <View className="gap-4">
           {/* The overlay is a layer, not a filter on one list: routines have

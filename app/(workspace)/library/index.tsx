@@ -91,21 +91,10 @@ export default function Library() {
               size="sm"
               onPress={() => setEditing('new')}
             />
-            <UploadButton />
+            {data.length > 0 ? <UploadButton /> : null}
           </>
         }
       />
-
-      <View className="mb-6">
-        <FileDropZone
-          busy={ingest.busy}
-          title="Add course materials"
-          body="Drop or choose up to 10 PDFs, images or slide decks. Notomi routes each file to the matching subject folder. Maximum 25 MB per batch."
-          onFiles={async (files) => {
-            await ingest.startFiles(files);
-          }}
-        />
-      </View>
 
       {error ? (
         <View className="mb-6">
@@ -137,11 +126,13 @@ export default function Library() {
       {loading ? (
         <Loading label="Opening your library…" />
       ) : data.length === 0 ? (
-        <EmptyState
-          icon="folder-plus"
-          title="Your library is empty"
-          body="Upload a syllabus, lecture slides or notes. Notomi extracts the text on your device, then files it under the right subject automatically."
-          action={<UploadButton label="Upload material" />}
+        <FileDropZone
+          busy={ingest.busy}
+          title="Add course materials"
+          body="Drop or choose up to 10 PDFs, images or slide decks. Select several together with Ctrl, Command or Shift on desktop. Maximum 25 MB per batch."
+          onFiles={async (files) => {
+            await ingest.startFiles(files);
+          }}
         />
       ) : filtered.length === 0 ? (
         <EmptyState
