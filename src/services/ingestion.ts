@@ -19,9 +19,7 @@ import {
 import {
   AiError,
   extractMetadata,
-  extractMetadataFromMedia,
   readDocument,
-  summarizeDocument,
 } from '@/lib/ai';
 import { parseDueDate } from '@/lib/dates';
 import { getDb } from '@/services/firebase';
@@ -105,6 +103,9 @@ export type IngestResult = {
   subjectName: string;
   fileName: string;
   deadlinesCreated: number;
+  route?: ExtractedMetadata['documentType'];
+  /** Schedule rows stay temporary until the student approves them. */
+  stagedSchedule?: import('./timetable').StagedImport;
   /** Set when the document was saved but part of the pipeline degraded. */
   warning?: string;
 };
@@ -210,7 +211,7 @@ export async function processUploadedMaterial(
   const db = getDb();
   const report = (stage: IngestStage, kind?: FileKind) => onProgress?.(stage, kind);
 
-  const ready = prepared ?? (await prepareFile(file, report));
+  const ready = prepared ?? (await prepareFile(file, report, false));
   const { bytes, parsed } = ready;
   const { text, kind } = parsed;
   const contentType = canonicalMimeType(kind, file.mimeType);
@@ -246,19 +247,10 @@ export async function processUploadedMaterial(
 
   report('analyzing');
   let metadata = ready.metadata;
-  let fallbackSummary: string | null = null;
+  const fallbackSummary = localSummary(text);
 
   if (!metadata) {
     if (ready.metadataError) warnings.push(ready.metadataError);
-
-    // Structured extraction is the harder ask. If the schema defeated it, a
-    // plain summary usually still works, so the student is not left with a
-    // blank card.
-    try {
-      fallbackSummary = await summarizeDocument(text);
-    } catch {
-      /* Both AI paths are down; the text itself is still saved. */
-    }
   }
 
   const fallbackTitle = file.name
@@ -307,12 +299,31 @@ export async function processUploadedMaterial(
     metadata?.deadlines ?? []
   );
 
+  // Reel cards are an enhancement, not part of the upload transaction. Let
+  // the student finish immediately while generation continues in the
+  // background; failures remain retryable from the Reel surface.
+  void import('./reel')
+    .then(({ preGenerateDocumentReel }) =>
+      preGenerateDocumentReel({
+        uid: userId,
+        subjectId,
+        subjectName,
+        subjectCode:
+          metadata?.moduleCode ?? (subjectSnap.data()?.moduleCode as string | null) ?? null,
+        documentId: documentRef.id,
+        documentTitle: file.name,
+        text,
+      })
+    )
+    .catch((error) => console.warn('[ingestion] Reel pre-generation was deferred.', error));
+
   return {
     documentId: documentRef.id,
     subjectId,
     subjectName,
     fileName: file.name,
     deadlinesCreated,
+    route: metadata?.documentType ?? 'SubjectMaterial',
     warning: warnings.join(' ') || undefined,
   };
 }
@@ -501,10 +512,104 @@ export async function ingestFiles(
       });
 
     try {
+      // Obvious schedule/calendar filenames can skip the generic classifier.
+      // The dedicated extractor already validates the document, so this saves
+      // a full Gemini request in the dashboard's universal dropzone.
+      const hintedRoute = options.subjectId ? null : routeHintFromName(file.name);
+      if (hintedRoute === 'TimetableSchedule') {
+        const [{ scanTimetableFiles }, subjectSnap, classSnap, routineSnap] =
+          await Promise.all([
+            import('./timetable'),
+            getDocs(paths.subjects(getDb(), options.uid)),
+            getDocs(paths.classes(getDb(), options.uid)),
+            getDocs(paths.routines(getDb(), options.uid)),
+          ]);
+        const subjects = subjectSnap.docs.map((entry) => ({ id: entry.id, ...entry.data() })) as import('@/lib/schema').Subject[];
+        const classes = classSnap.docs.map((entry) => ({ id: entry.id, ...entry.data() })) as import('@/lib/schema').ClassBlock[];
+        const routines = routineSnap.docs.map((entry) => ({ id: entry.id, ...entry.data() })) as import('@/lib/schema').RoutineBlock[];
+        const staged = await scanTimetableFiles([file], subjects, classes, routines);
+        results.push({
+          documentId: '',
+          subjectId: '',
+          subjectName: 'Weekly schedule',
+          fileName: file.name,
+          deadlinesCreated: 0,
+          route: 'TimetableSchedule',
+          stagedSchedule: staged,
+        });
+        continue;
+      }
+
+      if (hintedRoute === 'AcademicCalendar') {
+        const { analyseAcademicCalendar, commitAcademicCalendar } = await import('./academicPlanner');
+        const [terms, semesterSnap] = await Promise.all([
+          analyseAcademicCalendar(file),
+          getDocs(paths.semesters(getDb(), options.uid)),
+        ]);
+        const existing = semesterSnap.docs.map((entry) => ({ id: entry.id, ...entry.data() })) as Semester[];
+        await commitAcademicCalendar(options.uid, terms, existing, file.name);
+        results.push({
+          documentId: '',
+          subjectId: '',
+          subjectName: 'Academic calendar',
+          fileName: file.name,
+          deadlinesCreated: 0,
+          route: 'AcademicCalendar',
+        });
+        continue;
+      }
+
       // Without a fixed subject the file has to be read and analysed before it
       // can be filed, so the whole prepare step is done once and handed on.
-      const prepared = await prepareFile(file, report);
-      const subjectId = options.subjectId ?? (await subjectForFile(file, prepared, options.uid));
+      const prepared = await prepareFile(file, report, !options.subjectId);
+      if (!options.subjectId && prepared.metadata?.documentType === 'TimetableSchedule') {
+        const [{ scanTimetableFiles }, subjectSnap, classSnap, routineSnap] =
+          await Promise.all([
+            import('./timetable'),
+            getDocs(paths.subjects(getDb(), options.uid)),
+            getDocs(paths.classes(getDb(), options.uid)),
+            getDocs(paths.routines(getDb(), options.uid)),
+          ]);
+        const subjects = subjectSnap.docs.map((entry) => ({ id: entry.id, ...entry.data() })) as import('@/lib/schema').Subject[];
+        const classes = classSnap.docs.map((entry) => ({ id: entry.id, ...entry.data() })) as import('@/lib/schema').ClassBlock[];
+        const routines = routineSnap.docs.map((entry) => ({ id: entry.id, ...entry.data() })) as import('@/lib/schema').RoutineBlock[];
+        const staged = await scanTimetableFiles([file], subjects, classes, routines);
+        results.push({
+          documentId: '',
+          subjectId: '',
+          subjectName: 'Weekly schedule',
+          fileName: file.name,
+          deadlinesCreated: 0,
+          route: 'TimetableSchedule',
+          stagedSchedule: staged,
+        });
+        continue;
+      }
+
+      if (!options.subjectId && prepared.metadata?.documentType === 'AcademicCalendar') {
+        const { analyseAcademicCalendar, commitAcademicCalendar } = await import('./academicPlanner');
+        const [terms, semesterSnap] = await Promise.all([
+          analyseAcademicCalendar(file),
+          getDocs(paths.semesters(getDb(), options.uid)),
+        ]);
+        const existing = semesterSnap.docs.map((entry) => ({ id: entry.id, ...entry.data() })) as Semester[];
+        await commitAcademicCalendar(options.uid, terms, existing, file.name);
+        results.push({
+          documentId: '',
+          subjectId: '',
+          subjectName: 'Academic calendar',
+          fileName: file.name,
+          deadlinesCreated: 0,
+          route: 'AcademicCalendar',
+        });
+        continue;
+      }
+
+      const subjectId =
+        options.subjectId ??
+        (prepared.metadata?.documentType === 'GeneralNote'
+          ? await generalVaultSubject(options.uid)
+          : await subjectForFile(file, prepared, options.uid));
       results.push(await processUploadedMaterial(file, subjectId, options.uid, report, prepared));
     } catch (error) {
       errors.push({ fileName: file.name, message: describeIngestError(error) });
@@ -521,13 +626,52 @@ export async function ingestFiles(
   return { results, errors };
 }
 
+function routeHintFromName(fileName: string): ExtractedMetadata['documentType'] | null {
+  const name = fileName.toLowerCase();
+  if (/academic[-_ ]?calendar|term[-_ ]?dates|semester[-_ ]?dates/.test(name)) {
+    return 'AcademicCalendar';
+  }
+  if (/timetable|class[-_ ]?schedule|weekly[-_ ]?schedule/.test(name)) {
+    return 'TimetableSchedule';
+  }
+  return null;
+}
+
+async function generalVaultSubject(uid: string): Promise<string> {
+  const db = getDb();
+  const id = stableId(uid, 'general-document-vault');
+  const ref = paths.subject(db, uid, id);
+  if ((await getDoc(ref)).exists()) return id;
+  await setDoc(
+    ref,
+    {
+      name: 'Document Vault',
+      moduleCode: null,
+      color: '#6F6A5F',
+      emoji: null,
+      tag: 'General notes',
+      documentCount: 0,
+      semesterId: null,
+      isVault: true,
+      creditHours: 0,
+      grade: null,
+      attendanceAttended: 0,
+      attendanceMissed: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }
+  );
+  return id;
+}
+
 /**
  * Reads and parses a file, then asks Gemini what it is. Runs at most once per
  * upload — for an image or a lecture recording, extraction *is* a Gemini call.
  */
 async function prepareFile(
   file: MaterialFile,
-  report: (stage: IngestStage, kind?: FileKind) => void
+  report: (stage: IngestStage, kind?: FileKind) => void,
+  needsRouting: boolean
 ): Promise<PreparedFile> {
   checkUploadSize(file);
 
@@ -550,20 +694,27 @@ async function prepareFile(
   }
 
   report('analyzing', parsed.kind);
+  // A lecture uploaded from inside a subject is already relationally routed.
+  // Keep routine notes free and instant; only assessment-like documents need
+  // Gemini to discover deadlines and deliverables automatically.
+  if (!needsRouting && !needsDeepMaterialAnalysis(file.name, parsed.text)) {
+    return {
+      bytes,
+      parsed,
+      metadata: localMaterialMetadata(file.name, parsed.text),
+    };
+  }
+
   try {
-    const mediaKind = parsed.kind === 'pdf' || parsed.kind === 'image';
-    const metadata = mediaKind
-      ? await extractMetadataFromMedia(bytes, canonicalMimeType(parsed.kind, file.mimeType))
-      : await extractMetadata(parsed.text);
+    // OCR/document reading already produced a complete text corpus. Analysing
+    // that corpus avoids sending the same PDF/image to Gemini twice and makes
+    // a small lecture upload complete in one AI round trip instead of two.
+    const metadata = await extractMetadata(parsed.text);
     return { bytes, parsed, metadata };
   } catch (error) {
-    // Large raw media can exceed inline request limits. Its extracted text is
-    // still a complete fallback for routing and syllabus dates.
-    try {
-      return { bytes, parsed, metadata: await extractMetadata(parsed.text) };
-    } catch {
-      /* Report the original media failure below; it is usually more specific. */
-    }
+    // Do not fire a second paid/quota-counted fallback after an analysis
+    // failure. The original and locally extracted text are still useful, and
+    // the student can explicitly ask Open Reader when the allowance recovers.
     return {
       bytes,
       parsed,
@@ -574,6 +725,43 @@ async function prepareFile(
           : 'Automatic analysis failed.',
     };
   }
+}
+
+function needsDeepMaterialAnalysis(fileName: string, text: string): boolean {
+  const sample = `${fileName}\n${text.slice(0, 80_000)}`;
+  return /\b(?:assignment|assessment|course\s+outline|deadline|deliverable|due\s+(?:date|on|by)|examination|final\s+exam|grading|project\s+brief|submission|syllabus)\b/i.test(
+    sample
+  );
+}
+
+function localMaterialMetadata(fileName: string, text: string): ExtractedMetadata {
+  const code = `${fileName} ${text.slice(0, 20_000)}`
+    .toUpperCase()
+    .match(/\b([A-Z]{2,8})\s*-?\s*(\d{3,5}[A-Z]?)\b/);
+  return {
+    documentType: 'SubjectMaterial',
+    moduleCode: code ? `${code[1]}${code[2]}` : null,
+    subjectName: null,
+    summary: localSummary(text),
+    deadlines: [],
+  };
+}
+
+function localSummary(text: string): string | null {
+  const clean = text
+    .replace(/\[Page\s+\d+\]/gi, ' ')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!clean) return null;
+  const sentences = clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [clean];
+  const useful = sentences
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 35)
+    .slice(0, 3)
+    .join(' ');
+  const summary = useful || clean;
+  return summary.length > 520 ? `${summary.slice(0, 517).trimEnd()}...` : summary;
 }
 
 /**

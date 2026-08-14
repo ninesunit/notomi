@@ -547,9 +547,27 @@ export async function scanTimetableFiles(
       const shrunk = await downscaleImage(bytes, canonicalMimeType('image', file.mimeType));
       entries = await extractTimetable(shrunk.data, shrunk.mimeType);
     } else {
-      // PDFs go to Gemini as the original document. This works for both
-      // selectable-text calendars and image-only print-to-PDF schedules.
-      entries = await extractTimetable(bytes, 'application/pdf');
+      // Most exported schedules contain selectable text. Parsing that locally
+      // turns a base64 PDF request into a small text request and avoids the
+      // long multimodal timeout. Image-only print-to-PDF schedules retain the
+      // original Gemini Vision fallback.
+      try {
+        const parsed = await extractText(bytes, file.name, file.mimeType ?? 'application/pdf');
+        try {
+          entries = await extractTimetableFromText(parsed.text);
+          // A PDF can advertise a text layer that contains only page chrome,
+          // broken font mappings or invisible glyphs. An empty structured
+          // result is not success: retry against the rendered document.
+          if (entries.length === 0) {
+            entries = await extractTimetable(bytes, 'application/pdf');
+          }
+        } catch {
+          entries = await extractTimetable(bytes, 'application/pdf');
+        }
+      } catch (error) {
+        if (!(error instanceof ParseError)) throw error;
+        entries = await extractTimetable(bytes, 'application/pdf');
+      }
     }
 
     const staged = toImportRows(entries, subjects, existingClasses, routines, file.name);

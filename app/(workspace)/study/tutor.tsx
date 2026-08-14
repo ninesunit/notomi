@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Link, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { getDocs, orderBy, query } from 'firebase/firestore';
 import { Markdown } from '@/components/Markdown';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -217,7 +217,7 @@ export default function Tutor() {
             onPress={() => (attempts.length > 0 ? finish(attempts) : setPhase('choosing'))}
             className="h-9 w-9 items-center justify-center rounded-lg bg-sand"
           >
-            <Feather name="x" size={15} color="#6F6A5F" />
+            <Icon name="x" size={15} color="#6F6A5F" />
           </Pressable>
 
           <View className="flex-1 gap-1.5">
@@ -464,11 +464,7 @@ export default function Tutor() {
                   className="h-10 w-10 items-center justify-center rounded-xl"
                   style={{ backgroundColor: `${candidate.color}1A` }}
                 >
-                  {candidate.emoji ? (
-                    <Text className="text-lg">{candidate.emoji}</Text>
-                  ) : (
-                    <Feather name="book-open" size={16} color={candidate.color} />
-                  )}
+                  <Icon name="book-open" size={16} color={candidate.color} />
                 </View>
                 <View className="flex-1 gap-1">
                   <Text className="text-[15px] font-semibold text-ink">{candidate.name}</Text>
@@ -477,7 +473,7 @@ export default function Tutor() {
                     {(candidate.documentCount ?? 0) === 1 ? 'source' : 'sources'}
                   </Text>
                 </View>
-                <Feather name="chevron-right" size={16} color="#9A9488" />
+                <Icon name="chevron-right" size={16} color="#9A9488" />
               </Pressable>
             );
           })}
@@ -550,10 +546,10 @@ function GradeCard({ grade, compact = false }: { grade: AnswerGrade; compact?: b
 
 function BackLink() {
   return (
-    <Link href="/study" asChild>
+    <Link href="/knowledge" asChild>
       <Pressable className="mb-5 flex-row items-center gap-1.5 self-start py-1">
-        <Feather name="chevron-left" size={15} color="#6F6A5F" />
-        <Text className="text-sm font-medium text-muted">Study Center</Text>
+        <Icon name="arrow-left" size={15} color="#6F6A5F" />
+        <Text className="text-sm font-medium text-muted">Back to Knowledge</Text>
       </Pressable>
     </Link>
   );

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { ImportReview } from '@/components/ImportReview';
 import { FileDropZone } from '@/components/FileDropZone';
@@ -70,6 +71,8 @@ const GRID_BREAKPOINT = 900;
 export default function Timetable() {
   const uid = useUid();
   const db = getDb();
+  const router = useRouter();
+  const params = useLocalSearchParams<{ editClassId?: string }>();
   const { width } = useWindowDimensions();
 
   const [editing, setEditing] = useState<ClassBlock | 'new' | null>(null);
@@ -125,6 +128,15 @@ export default function Timetable() {
   );
 
   const grid = width >= GRID_BREAKPOINT;
+
+  useEffect(() => {
+    const editClassId = params.editClassId;
+    if (!editClassId || allClasses.loading || editing !== null) return;
+    const match = allClasses.data.find((block) => block.id === editClassId);
+    if (!match) return;
+    setEditing(match);
+    router.setParams({ editClassId: undefined });
+  }, [params.editClassId, allClasses.loading, allClasses.data, editing, router]);
 
   /** The term being looked at, so destructive copy can name it. */
   const scopeName =
@@ -285,7 +297,7 @@ export default function Timetable() {
                 showRoutines ? 'border-line bg-sand' : 'border-line bg-surface'
               }`}
             >
-              <Feather
+              <Icon
                 name={showRoutines ? 'eye' : 'eye-off'}
                 size={13}
                 color={showRoutines ? '#1B1A17' : '#9A9488'}
@@ -387,7 +399,7 @@ export default function Timetable() {
               key={block.id}
               className="flex-row items-center gap-3 rounded-xl border border-dashed border-line p-3"
             >
-              <Feather name="link-2" size={14} color="#9A9488" />
+              <Icon name="link-2" size={14} color="#9A9488" />
               <Text className="flex-1 text-sm text-ink" numberOfLines={1}>
                 {block.title}
               </Text>
@@ -650,7 +662,7 @@ function DayTimeline({
   if (blocks.length === 0 && overlays.length === 0) {
     return (
       <View className="items-center gap-2 rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-12">
-        <Text className="text-2xl">🌤️</Text>
+        <Icon name="calendar-days" size={24} color="#9A9488" />
         <Text className="text-[15px] font-semibold text-ink">Nothing on {DAY_FULL[day]}</Text>
         <Text className="text-center text-sm text-muted">
           {isToday ? 'Your day is clear.' : 'No classes or routines scheduled.'}
@@ -712,9 +724,12 @@ function DayTimeline({
                   borderColor: `${block.color}59`,
                 }}
               >
-                <Text className="text-[13px] font-medium text-muted" numberOfLines={1}>
-                  {meta?.emoji ?? '📌'} {block.title}
-                </Text>
+                <View className="flex-row items-center gap-1.5">
+                  <Icon name={meta?.icon ?? 'circle'} size={12} color={block.color} />
+                  <Text className="flex-1 text-[13px] font-medium text-muted" numberOfLines={1}>
+                    {block.title}
+                  </Text>
+                </View>
                 <Text className="text-[11px] text-subtle" numberOfLines={1}>
                   {minutesToLabel(block.startMinute)}–{minutesToLabel(block.endMinute)}
                   {block.venue ? ` · ${block.venue}` : ''}
@@ -933,9 +948,12 @@ function WeekGrid({
                           borderColor: `${block.color}59`,
                         }}
                       >
-                        <Text className="text-[10px] leading-tight text-muted" numberOfLines={1}>
-                          {meta?.emoji ?? '📌'} {block.title}
-                        </Text>
+                        <View className="flex-row items-center gap-1">
+                          <Icon name={meta?.icon ?? 'circle'} size={9} color={block.color} />
+                          <Text className="flex-1 text-[10px] leading-tight text-muted" numberOfLines={1}>
+                            {block.title}
+                          </Text>
+                        </View>
                       </Pressable>
                     );
                   })}
@@ -1234,7 +1252,6 @@ function ClassForm({
                     subjectId === subject.id ? 'text-accent' : 'text-muted'
                   }`}
                 >
-                  {subject.emoji ? `${subject.emoji} ` : ''}
                   {subject.moduleCode || subject.name}
                 </Text>
               </Pressable>
@@ -1422,7 +1439,11 @@ function RoutineForm({
                 category === option.id ? 'bg-ink' : 'bg-sand'
               }`}
             >
-              <Text className="text-xs">{option.emoji}</Text>
+              <Icon
+                name={option.icon}
+                size={13}
+                color={category === option.id ? '#FFFFFF' : option.color}
+              />
               <Text
                 className={`text-xs font-semibold ${
                   category === option.id ? 'text-paper' : 'text-ink'

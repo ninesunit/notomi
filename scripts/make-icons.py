@@ -1,17 +1,10 @@
-"""
-Generates the Notomi icon set.
+"""Generate every Notomi launcher, PWA, splash and favicon asset.
 
-The mark is a constellation: five nodes joined by edges tracing an "N", with
-the diagonal in terracotta. It is the same shape as the program structure map
-inside the app — a degree drawn as connected nodes — so the icon says what
-Notomi is rather than just which letter it starts with.
+The mark is an open academic workspace with one terracotta intelligence signal.
+The book makes the product category immediate, its short page strokes suggest
+schedules and structured notes, and the signal identifies Notomi's AI co-pilot.
 
-Drawn from primitives rather than a typeface so it stays legible at 16px in a
-browser tab, which is where an app icon is judged most often. The node radius
-and edge weight are tuned so the letterform still reads when the dots merge at
-small sizes.
-
-Run: python3 scripts/make-icons.py
+Run: python scripts/make-icons.py
 """
 
 from pathlib import Path
@@ -26,88 +19,126 @@ INK = (27, 26, 23, 255)  # #1B1A17
 PAPER = (247, 245, 238, 255)  # #F7F5EE
 ACCENT = (180, 85, 45, 255)  # #B4552D
 
-# Draw oversized and downsample: PIL has no antialiased polygon fill.
+# Oversampling keeps the custom curves crisp at favicon size.
 SS = 4
 
 
-def _line(draw: ImageDraw.ImageDraw, a, b, width: float, color) -> None:
-    """A stroke with round caps, so joints at the nodes are seamless."""
-    draw.line([a, b], fill=color, width=int(round(width)), joint="curve")
-    for point in (a, b):
-        r = width / 2
-        draw.ellipse([point[0] - r, point[1] - r, point[0] + r, point[1] + r], fill=color)
+def _cubic(start, control_a, control_b, end, steps: int = 24):
+    points = []
+    for index in range(1, steps + 1):
+        t = index / steps
+        inverse = 1 - t
+        points.append(
+            (
+                inverse**3 * start[0]
+                + 3 * inverse**2 * t * control_a[0]
+                + 3 * inverse * t**2 * control_b[0]
+                + t**3 * end[0],
+                inverse**3 * start[1]
+                + 3 * inverse**2 * t * control_a[1]
+                + 3 * inverse * t**2 * control_b[1]
+                + t**3 * end[1],
+            )
+        )
+    return points
 
 
-def _node(draw: ImageDraw.ImageDraw, point, radius: float, color) -> None:
-    x, y = point
-    draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=color)
+def _scaled(point, unit: float):
+    return (point[0] * unit, point[1] * unit)
 
 
-def draw_monogram(draw: ImageDraw.ImageDraw, size: int, inset: float) -> None:
-    """Draws the constellation N centred in a `size` box, `inset` of its width."""
-    span = size * inset
-    left = (size - span) / 2
-    top = (size - span) / 2
-    right = left + span
-    bottom = top + span
-
-    # Five nodes: the two stems' ends plus the diagonal's midpoint. That is the
-    # minimum that still reads as an N — more dots turn it into noise at 16px.
-    top_left = (left, top)
-    bottom_left = (left, bottom)
-    top_right = (right, top)
-    bottom_right = (right, bottom)
-    middle = ((left + right) / 2, (top + bottom) / 2)
-
-    # Weighted for the 32px favicon, not the 512px tile: at the thinner weight
-    # that looked right large, the stems disappeared in a browser tab. Nodes
-    # stay a little over the edge weight so they read as joints rather than as
-    # a thick stroke, and they share the edge colour — a contrasting halo cut
-    # visible gaps in the stems and made the mark look broken.
-    edge = span * 0.135
-    radius = span * 0.16
-
-    # Stems first, then the diagonal on top so the accent crosses cleanly.
-    _line(draw, top_left, bottom_left, edge, PAPER)
-    _line(draw, top_right, bottom_right, edge, PAPER)
-    _line(draw, top_left, middle, edge, ACCENT)
-    _line(draw, middle, bottom_right, edge, ACCENT)
-
-    for point in (top_left, bottom_left, top_right, bottom_right):
-        _node(draw, point, radius, PAPER)
-    # The centre node carries the accent, which is what fixes the reading order:
-    # the eye follows the diagonal rather than seeing two separate bars.
-    _node(draw, middle, radius * 1.05, ACCENT)
+def _book_page(side: str):
+    if side == "left":
+        points = [(6.5, 11.6)]
+        points += _cubic((6.5, 11.6), (9.6, 11.1), (12.8, 12), (16, 14.4))
+        points.append((16, 24.8))
+        points += _cubic((16, 24.8), (13.2, 22.7), (10.2, 22.3), (6.5, 22.7))
+    else:
+        points = [(25.5, 11.6)]
+        points += _cubic((25.5, 11.6), (22.4, 11.1), (19.2, 12), (16, 14.4))
+        points.append((16, 24.8))
+        points += _cubic((16, 24.8), (18.8, 22.7), (21.8, 22.3), (25.5, 22.7))
+    return points
 
 
-def tile(size: int, radius_ratio: float = 0.22, inset: float = 0.54) -> Image.Image:
-    """Ink tile with a rounded corner and the monogram on top."""
+def _signal():
+    points = [(16, 4.6)]
+    points += _cubic((16, 4.6), (16.3, 6.8), (17.4, 7.9), (19.6, 8.2), 16)
+    points += _cubic((19.6, 8.2), (17.4, 8.5), (16.3, 9.6), (16, 11.8), 16)
+    points += _cubic((16, 11.8), (15.7, 9.6), (14.6, 8.5), (12.4, 8.2), 16)
+    points += _cubic((12.4, 8.2), (14.6, 7.9), (15.7, 6.8), (16, 4.6), 16)
+    return points
+
+
+def draw_mark(
+    draw: ImageDraw.ImageDraw,
+    size: int,
+    page_color,
+    detail_color,
+    accent_color=ACCENT,
+    show_details: bool = True,
+) -> None:
+    """Draw the same 32-unit mark used by the React Native SVG component."""
+    unit = size / 32
+    draw.polygon([_scaled(point, unit) for point in _book_page("left")], fill=page_color)
+    draw.polygon([_scaled(point, unit) for point in _book_page("right")], fill=page_color)
+
+    if show_details:
+        detail_width = max(1, round(1.05 * unit))
+        seam = [_scaled((16, 14.4), unit), _scaled((16, 24.8), unit)]
+        draw.line(seam, fill=detail_color, width=detail_width)
+        for start, end in (
+            ((9.3, 15.6), (13.2, 15.9)),
+            ((9.3, 18.6), (12.3, 18.8)),
+            ((22.7, 15.6), (18.8, 15.9)),
+            ((22.7, 18.6), (19.7, 18.8)),
+        ):
+            draw.line(
+                [_scaled(start, unit), _scaled(end, unit)],
+                fill=detail_color,
+                width=detail_width,
+            )
+
+    draw.polygon([_scaled(point, unit) for point in _signal()], fill=accent_color)
+
+
+def tile(size: int, radius_ratio: float = 0.265) -> Image.Image:
+    """Ink tile with the complete full-colour mark."""
     big = size * SS
     image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle(
         [0, 0, big - 1, big - 1], radius=int(big * radius_ratio), fill=INK
     )
-    draw_monogram(draw, big, inset)
-    return image.resize((size, size), Image.LANCZOS)
+    draw_mark(draw, big, PAPER, INK)
+    return image.resize((size, size), Image.Resampling.LANCZOS)
 
 
-def square(size: int, inset: float = 0.54) -> Image.Image:
-    """Full-bleed ink square — iOS masks its own corners."""
+def square(size: int) -> Image.Image:
+    """Full-bleed launcher tile; iOS applies its own corner mask."""
     big = size * SS
     image = Image.new("RGBA", (big, big), INK)
-    draw_monogram(ImageDraw.Draw(image), big, inset)
-    return image.resize((size, size), Image.LANCZOS)
+    draw_mark(ImageDraw.Draw(image), big, PAPER, INK)
+    return image.resize((size, size), Image.Resampling.LANCZOS)
 
 
-def transparent_mark(size: int, inset: float) -> Image.Image:
-    """Mark alone — for the Android adaptive foreground and the splash."""
+def transparent_splash(size: int) -> Image.Image:
+    """Dark mark for the paper splash background configured in app.json."""
     big = size * SS
     image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    # No halo on a transparent ground: a ring of ink would show as a dark disc
-    # against whatever the launcher or splash paints behind it.
-    draw_monogram(ImageDraw.Draw(image), big, inset)
-    return image.resize((size, size), Image.LANCZOS)
+    draw_mark(ImageDraw.Draw(image), big, INK, PAPER)
+    return image.resize((size, size), Image.Resampling.LANCZOS)
+
+
+def transparent_foreground(size: int, monochrome: bool = False) -> Image.Image:
+    """Launcher-safe mark that sits on the adaptive icon's ink background."""
+    big = size * SS
+    image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    if monochrome:
+        draw_mark(ImageDraw.Draw(image), big, PAPER, PAPER, PAPER, show_details=False)
+    else:
+        draw_mark(ImageDraw.Draw(image), big, PAPER, INK)
+    return image.resize((size, size), Image.Resampling.LANCZOS)
 
 
 def solid(size: int, color) -> Image.Image:
@@ -124,27 +155,18 @@ def main() -> None:
         image.save(path, "PNG")
         written.append(f"{path.relative_to(ROOT)} ({image.size[0]}x{image.size[1]})")
 
-    # iOS/app icon: full bleed, no rounding of our own.
     save(square(1024), ASSETS / "icon.png")
-
-    # Browser tab + PWA. Rounded so it reads as an icon on a light tab strip.
     save(tile(512), ASSETS / "favicon.png")
-    for px in (16, 32, 48, 180, 192, 512):
-        save(tile(px), PUBLIC / f"icon-{px}.png")
 
-    # Apple touch icon must be full-bleed: iOS applies its own mask and a
-    # pre-rounded source leaves pale corners on the home screen.
+    for pixels in (16, 32, 48, 180, 192, 512):
+        save(tile(pixels), PUBLIC / f"icon-{pixels}.png")
+
     save(square(180), PUBLIC / "apple-touch-icon.png")
-
-    # Splash: the mark alone on the paper background set in app.json.
-    save(transparent_mark(1024, 0.5), ASSETS / "splash-icon.png")
-
-    # Android adaptive icon: foreground must sit inside the 66% safe zone.
-    save(transparent_mark(1024, 0.34), ASSETS / "android-icon-foreground.png")
+    save(transparent_splash(1024), ASSETS / "splash-icon.png")
+    save(transparent_foreground(1024), ASSETS / "android-icon-foreground.png")
     save(solid(1024, INK), ASSETS / "android-icon-background.png")
-    save(transparent_mark(1024, 0.34), ASSETS / "android-icon-monochrome.png")
+    save(transparent_foreground(1024, monochrome=True), ASSETS / "android-icon-monochrome.png")
 
-    # Multi-resolution .ico so the tab icon is sharp on every DPI.
     tile(256).save(
         PUBLIC / "favicon.ico",
         format="ICO",

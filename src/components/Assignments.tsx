@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { orderBy, query, Timestamp } from 'firebase/firestore';
 import { useCollection } from '@/hooks/useFirestore';
 import { formatDue, toDate } from '@/lib/dates';
@@ -182,7 +182,7 @@ function AssignmentCard({
           className="mt-0.5 h-9 w-9 items-center justify-center rounded-lg"
           style={{ backgroundColor: `${meta.color}1F` }}
         >
-          <Text className="text-base">{meta.emoji}</Text>
+          <Icon name={meta.icon} size={17} color={meta.color} />
         </View>
 
         <View className="flex-1 gap-1.5">
@@ -220,7 +220,7 @@ function AssignmentCard({
           ) : null}
         </View>
 
-        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
       </Pressable>
 
       <Reveal open={open}>
@@ -254,7 +254,7 @@ function AssignmentCard({
                       step.isCompleted ? 'border-pine bg-pine' : 'border-line bg-surface'
                     }`}
                   >
-                    {step.isCompleted ? <Feather name="check" size={11} color="#FFFFFF" /> : null}
+                    {step.isCompleted ? <Icon name="check" size={11} color="#FFFFFF" /> : null}
                   </View>
                   <View className="flex-1 gap-0.5">
                     <Text
@@ -280,7 +280,7 @@ function AssignmentCard({
               </Text>
               {assignment.deliverables.map((item) => (
                 <View key={item} className="flex-row gap-2">
-                  <Feather name="package" size={13} color="#6F6A5F" style={{ marginTop: 3 }} />
+                  <Icon name="package" size={13} color="#6F6A5F" style={{ marginTop: 3 }} />
                   <Text className="flex-1 text-sm leading-5 text-ink">{item}</Text>
                 </View>
               ))}
@@ -489,7 +489,7 @@ function AddAssignment({
             className="flex-row items-center gap-3 rounded-xl border border-dashed border-line bg-paper p-4"
           >
             <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-              <Feather name={file ? 'file-text' : 'upload-cloud'} size={16} color="#6F6A5F" />
+              <Icon name={file ? 'file-text' : 'upload-cloud'} size={16} color="#6F6A5F" />
             </View>
             <View className="flex-1">
               <Text className="text-sm font-semibold text-ink" numberOfLines={1}>
@@ -556,7 +556,11 @@ function DraftReview({ draft, onChange }: { draft: Draft; onChange: (next: Draft
                 draft.kind === option.id ? 'bg-ink' : 'bg-sand'
               }`}
             >
-              <Text className="text-xs">{option.emoji}</Text>
+              <Icon
+                name={option.icon}
+                size={13}
+                color={draft.kind === option.id ? '#FFFFFF' : option.color}
+              />
               <Text
                 className={`text-xs font-semibold ${
                   draft.kind === option.id ? 'text-paper' : 'text-ink'

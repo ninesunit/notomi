@@ -1,6 +1,6 @@
-name = "notomi"
+name = "notomi-r2"
 main = "src/index.ts"
-compatibility_date = "2026-08-01"
+compatibility_date = "2026-08-14"
 compatibility_flags = ["nodejs_compat"]
 
 # Binding used for authenticated uploads, downloads, and deletes.
@@ -13,3 +13,7 @@ R2_BUCKET = "notomi-materials"
 FIREBASE_PROJECT_ID = "notomii"
 # Origins allowed to call this Worker. Add your dev origin while developing.
 ALLOWED_ORIGINS = "https://notomii.web.app,https://notomii.firebaseapp.com,http://localhost:8081"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1

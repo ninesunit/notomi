@@ -10,17 +10,10 @@
  *   PUT    /object?key=       upload an original file
  *   GET    /object?key=       download an original file
  *   DELETE /object?key=       delete an original file
+ *   DELETE /user-data         delete every original owned by the caller
  *
  * Every route requires a Firebase ID token in `Authorization: Bearer <token>`.
  */
-export interface Env {
-  MATERIALS: R2Bucket;
-  R2_BUCKET: string;
-  FIREBASE_PROJECT_ID: string;
-  /** Comma-separated origins allowed to call this Worker. */
-  ALLOWED_ORIGINS: string;
-}
-
 const GOOGLE_JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 
 function corsHeaders(request: Request, env: Env): Record<string, string> {
@@ -129,6 +122,30 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/health') return json({ ok: true, bucket: env.R2_BUCKET }, 200, cors);
 
+    // Profile images are deliberately public, but only objects in the narrow
+    // users/{uid}/profile/ namespace can pass this route. Course materials,
+    // notes and schedule uploads remain behind Firebase authentication.
+    if (url.pathname === '/avatar' && request.method === 'GET') {
+      const key = url.searchParams.get('key') ?? '';
+      const isProfileImage = /^users\/[A-Za-z0-9_-]{1,128}\/profile\/[A-Za-z0-9._-]{1,120}$/.test(key);
+      if (!isProfileImage) return json({ error: 'not found' }, 404, cors);
+
+      const object = await env.MATERIALS.get(key);
+      if (!object) return json({ error: 'not found' }, 404, cors);
+      const contentType = object.httpMetadata?.contentType ?? '';
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+        return json({ error: 'not found' }, 404, cors);
+      }
+
+      const headers = new Headers(cors);
+      object.writeHttpMetadata(headers);
+      headers.set('Access-Control-Allow-Origin', '*');
+      headers.set('Cache-Control', 'public, max-age=86400, immutable');
+      headers.set('Content-Disposition', 'inline');
+      headers.set('X-Content-Type-Options', 'nosniff');
+      return new Response(object.body, { status: 200, headers });
+    }
+
     // ---- authenticate -----------------------------------------------------
     const authHeader = request.headers.get('Authorization') ?? '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
@@ -147,12 +164,38 @@ export default {
       !!key && key.startsWith(prefix) && !key.includes('..');
 
     try {
+      if (url.pathname === '/user-data' && request.method === 'DELETE') {
+        let cursor: string | undefined;
+        let deleted = 0;
+        do {
+          const page = await env.MATERIALS.list({ prefix, cursor, limit: 1000 });
+          const keys = page.objects.map((object) => object.key);
+          if (keys.length) {
+            await env.MATERIALS.delete(keys);
+            deleted += keys.length;
+          }
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor);
+
+        return json({ deleted }, 200, cors);
+      }
+
       if (url.pathname === '/object') {
         const key = url.searchParams.get('key');
         if (!assertOwned(key)) return json({ error: 'not your object' }, 403, cors);
 
         if (request.method === 'PUT') {
           if (!request.body) return json({ error: 'empty upload' }, 400, cors);
+          if (key.includes('/profile/')) {
+            const contentType = request.headers.get('Content-Type') ?? '';
+            const contentLength = Number(request.headers.get('Content-Length') ?? '0');
+            if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+              return json({ error: 'profile images must be JPEG, PNG or WebP' }, 415, cors);
+            }
+            if (!Number.isFinite(contentLength) || contentLength <= 0 || contentLength > 2 * 1024 * 1024) {
+              return json({ error: 'profile images must be 2 MB or smaller' }, 413, cors);
+            }
+          }
 
           const uploaded = await env.MATERIALS.put(key, request.body, {
             httpMetadata: {

@@ -1,0 +1,7 @@
+University names and domains are derived from the University Domains and Names
+Data List maintained by Hipo: https://github.com/Hipo/university-domains-list
+
+The upstream dataset is distributed under the MIT License. The compact Notomi
+copy retains only the university name, country, country code, primary domain
+and locally derived search aliases. It is bundled with the application so
+profile search never calls a paid third-party service.

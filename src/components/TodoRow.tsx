@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { CountdownChip } from './Countdown';
 import { DatePicker } from './DatePicker';
 import { Badge, IconButton } from './ui';
@@ -86,7 +86,7 @@ export function TodoRow({
             todo.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
           }`}
         >
-          {todo.isCompleted ? <Feather name="check" size={12} color="#FFFFFF" /> : null}
+          {todo.isCompleted ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
         </Pressable>
 
         <Pressable className="flex-1 gap-1.5" onPress={() => setExpanded((value) => !value)}>
@@ -205,7 +205,7 @@ export function TodoRow({
                   subTask.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
                 }`}
               >
-                {subTask.isCompleted ? <Feather name="check" size={9} color="#FFFFFF" /> : null}
+                {subTask.isCompleted ? <Icon name="check" size={9} color="#FFFFFF" /> : null}
               </Pressable>
 
               <Text
@@ -230,7 +230,7 @@ export function TodoRow({
           ))}
 
           <View className="flex-row items-center gap-2">
-            <Feather name="plus" size={13} color="#9A9488" />
+            <Icon name="plus" size={13} color="#9A9488" />
             <TextInput
               value={draft}
               onChangeText={setDraft}

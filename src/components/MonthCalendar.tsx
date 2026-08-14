@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import {
   addMonths,
   dayKey,
@@ -77,7 +77,7 @@ export function MonthCalendar({
             onPress={() => setMonth(addMonths(month, -1))}
             className="h-8 w-8 items-center justify-center rounded-lg bg-sand"
           >
-            <Feather name="chevron-left" size={15} color="#6F6A5F" />
+            <Icon name="chevron-left" size={15} color="#6F6A5F" />
           </Pressable>
 
           <Pressable
@@ -95,7 +95,7 @@ export function MonthCalendar({
             onPress={() => setMonth(addMonths(month, 1))}
             className="h-8 w-8 items-center justify-center rounded-lg bg-sand"
           >
-            <Feather name="chevron-right" size={15} color="#6F6A5F" />
+            <Icon name="chevron-right" size={15} color="#6F6A5F" />
           </Pressable>
         </View>
       </View>

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { useCollection } from '@/hooks/useFirestore';
 import { formatDateTime } from '@/lib/dates';
@@ -177,7 +177,7 @@ export function LogComposer({
               mode === option.id ? 'bg-ink' : 'bg-sand'
             }`}
           >
-            <Feather
+            <Icon
               name={option.icon}
               size={12}
               color={mode === option.id ? '#F7F5EE' : '#6F6A5F'}
@@ -231,7 +231,7 @@ export function LogComposer({
         {answer ? (
           <View className="gap-2 rounded-xl border border-line bg-paper p-4">
             <View className="flex-row items-center gap-2">
-              <Feather name="zap" size={12} color="#B4552D" />
+              <Icon name="zap" size={12} color="#B4552D" />
               <Text className="text-xs font-bold uppercase tracking-wider text-accent">Answer</Text>
             </View>
             <Markdown source={answer} />
@@ -292,7 +292,7 @@ function LogEntry({
         className="flex-row items-start gap-3"
       >
         <View className="mt-0.5 h-9 w-9 items-center justify-center rounded-lg bg-sand">
-          <Feather name="book-open" size={15} color="#6F6A5F" />
+          <Icon name="book-open" size={15} color="#6F6A5F" />
         </View>
 
         <View className="flex-1 gap-1">
@@ -304,7 +304,7 @@ function LogEntry({
           </Text>
         </View>
 
-        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
       </Pressable>
 
       {pending ? (
@@ -357,7 +357,7 @@ function LogEntry({
               </Text>
               {log.followUps.map((item) => (
                 <View key={item} className="flex-row gap-2">
-                  <Feather name="arrow-right" size={13} color="#B4832A" style={{ marginTop: 3 }} />
+                  <Icon name="arrow-right" size={13} color="#B4832A" style={{ marginTop: 3 }} />
                   <Text className="flex-1 text-sm leading-5 text-ink">{item}</Text>
                 </View>
               ))}

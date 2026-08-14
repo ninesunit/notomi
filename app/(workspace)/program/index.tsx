@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { ProgramMap } from '@/components/ProgramMap';
+import { AcademicCalendarImport } from '@/components/AcademicCalendarImport';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import {
@@ -32,6 +33,7 @@ import {
   type Subject,
 } from '@/lib/schema';
 import { studyBySubject } from '@/services/sessions';
+import type { CalendarImportOutcome } from '@/services/academicPlanner';
 import {
   assignSubject,
   createSemester,
@@ -57,6 +59,8 @@ export default function Program() {
   const db = getDb();
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Semester | 'new' | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMessage, setCalendarMessage] = useState<string | null>(null);
   /** The map is the default: structure first, editing second. */
   const [view, setView] = useState<'map' | 'planner'>('map');
 
@@ -103,22 +107,37 @@ export default function Program() {
 
   const loading = semesters.loading || subjects.loading;
 
+  const calendarImported = useCallback((outcome: CalendarImportOutcome) => {
+    setCalendarMessage(
+      `${outcome.created} term${outcome.created === 1 ? '' : 's'} added and ${outcome.updated} updated.${
+        outcome.currentTerm ? ` ${outcome.currentTerm} is active now.` : ''
+      }`
+    );
+  }, []);
+
   return (
     <ScreenScroll>
       <PageHeader
-        title="Program"
+        title="Term Management"
         subtitle={
           ordered.length
             ? `${ordered.length} ${ordered.length === 1 ? 'term' : 'terms'} · ${
                 overall.credits
               } credit hours planned`
-            : 'Map your degree term by term and track where your GPA is heading.'
+            : 'Create term boundaries, set dates and assign each subject to its active teaching period.'
         }
         actions={
           <>
             <Link href="/program/gpa" asChild>
               <Button label="GPA calculator" icon="trending-up" variant="secondary" size="sm" />
             </Link>
+            <Button
+              label="Import academic calendar"
+              icon="calendar"
+              variant="secondary"
+              size="sm"
+              onPress={() => setCalendarOpen(true)}
+            />
             <Button label="New term" icon="plus" size="sm" onPress={() => setEditing('new')} />
           </>
         }
@@ -127,6 +146,12 @@ export default function Program() {
       {error ? (
         <View className="mb-6">
           <Notice title="Could not save that change" body={error} />
+        </View>
+      ) : null}
+
+      {calendarMessage ? (
+        <View className="mb-6">
+          <Notice tone="pine" title="Academic calendar anchored" body={calendarMessage} />
         </View>
       ) : null}
 
@@ -184,7 +209,10 @@ export default function Program() {
                 onMove={(direction) => void run(moveSemester(uid, ordered, semester.id, direction))}
                 onCredits={(subjectId, credits) => void run(setSubjectCredits(uid, subjectId, credits))}
                 onGrade={(subjectId, grade) => void run(setSubjectGrade(uid, subjectId, grade))}
-                onUnassign={(subjectId) => void run(assignSubject(uid, subjectId, null))}
+                allSemesters={ordered}
+                onMoveSubject={(subjectId, target) =>
+                  void run(assignSubject(uid, subjectId, target))
+                }
               />
             ))
           )}
@@ -193,8 +221,8 @@ export default function Program() {
             <UnassignedShelf
               subjects={unassigned}
               semesters={ordered}
-              onAssign={(subjectId, semesterId) =>
-                void run(assignSubject(uid, subjectId, semesterId))
+              onAssign={(subjectId, semester) =>
+                void run(assignSubject(uid, subjectId, semester))
               }
             />
           ) : null}
@@ -207,6 +235,13 @@ export default function Program() {
         usedTerms={knownTerms(semesters.data)}
         onSave={(input) => void run(save(input))}
         onClose={() => setEditing(null)}
+      />
+      <AcademicCalendarImport
+        visible={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        uid={uid}
+        semesters={semesters.data}
+        onImported={calendarImported}
       />
     </ScreenScroll>
   );
@@ -313,7 +348,8 @@ function SemesterCard({
   onMove,
   onCredits,
   onGrade,
-  onUnassign,
+  allSemesters,
+  onMoveSubject,
 }: {
   semester: Semester;
   subjects: Subject[];
@@ -325,7 +361,8 @@ function SemesterCard({
   onMove: (direction: -1 | 1) => void;
   onCredits: (subjectId: string, credits: number) => void;
   onGrade: (subjectId: string, grade: string | null) => void;
-  onUnassign: (subjectId: string) => void;
+  allSemesters: Semester[];
+  onMoveSubject: (subjectId: string, semester: Semester | null) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const { gpa, credits, graded } = calculateGpa(subjects);
@@ -341,6 +378,10 @@ function SemesterCard({
           <Text className="text-xs text-muted">
             {[
               `${semester.term} ${semester.year}`,
+              semester.startDate && semester.endDate
+                ? `${dateFieldValue(semester.startDate)} to ${dateFieldValue(semester.endDate)}`
+                : null,
+              semester.teachingWeeks ? `${semester.teachingWeeks} weeks` : null,
               `${subjects.length} ${subjects.length === 1 ? 'subject' : 'subjects'}`,
               `${credits} credits`,
               gpa === null ? null : `GPA ${gpa.toFixed(2)}`,
@@ -402,7 +443,9 @@ function SemesterCard({
               subject={subject}
               onCredits={(credits) => onCredits(subject.id, credits)}
               onGrade={(grade) => onGrade(subject.id, grade)}
-              onUnassign={() => onUnassign(subject.id)}
+              semesters={allSemesters}
+              currentSemesterId={semester.id}
+              onMove={(target) => onMoveSubject(subject.id, target)}
             />
           ))}
         </View>
@@ -421,14 +464,19 @@ function SubjectRow({
   subject,
   onCredits,
   onGrade,
-  onUnassign,
+  semesters,
+  currentSemesterId,
+  onMove,
 }: {
   subject: Subject;
   onCredits: (credits: number) => void;
   onGrade: (grade: string | null) => void;
-  onUnassign: () => void;
+  semesters: Semester[];
+  currentSemesterId: string;
+  onMove: (semester: Semester | null) => void;
 }) {
   const [gradeOpen, setGradeOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const credits = subject.creditHours ?? 0;
 
   return (
@@ -438,10 +486,10 @@ function SubjectRow({
           className="h-7 w-7 items-center justify-center rounded-lg"
           style={{ backgroundColor: `${subject.color}1F` }}
         >
-          <Feather name="book" size={13} color={subject.color} />
+          <Icon name="book" size={13} color={subject.color} />
         </View>
 
-        <Link href={`/library/${subject.id}`} asChild>
+        <Link href={`/knowledge/subject/${subject.id}`} asChild>
           <Pressable className="flex-1" style={{ minWidth: 120 }}>
             <Text className="text-sm font-semibold text-ink" numberOfLines={1}>
               {subject.name}
@@ -460,7 +508,7 @@ function SubjectRow({
             onPress={() => onCredits(credits - 1)}
             className="h-6 w-6 items-center justify-center"
           >
-            <Feather name="minus" size={12} color="#6F6A5F" />
+            <Icon name="minus" size={12} color="#6F6A5F" />
           </Pressable>
           <Text className="min-w-[46px] text-center text-xs font-semibold text-ink">
             {credits} cr
@@ -471,7 +519,7 @@ function SubjectRow({
             onPress={() => onCredits(credits + 1)}
             className="h-6 w-6 items-center justify-center"
           >
-            <Feather name="plus" size={12} color="#6F6A5F" />
+            <Icon name="plus" size={12} color="#6F6A5F" />
           </Pressable>
         </View>
 
@@ -488,14 +536,27 @@ function SubjectRow({
           >
             {subject.grade ?? 'Grade'}
           </Text>
-          <Feather name="chevron-down" size={11} color={subject.grade ? '#2E6F5E' : '#6F6A5F'} />
+          <Icon name="chevron-down" size={11} color={subject.grade ? '#2E6F5E' : '#6F6A5F'} />
         </Pressable>
 
-        <IconButton
-          icon="x"
-          label={`Remove ${subject.name} from this semester`}
-          onPress={onUnassign}
-        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Move ${subject.name} to another term`}
+          accessibilityState={{ expanded: moveOpen }}
+          onPress={() => {
+            setGradeOpen(false);
+            setMoveOpen((open) => !open);
+          }}
+          className={`flex-row items-center gap-1.5 rounded-lg px-2.5 py-1.5 ${
+            moveOpen ? 'bg-ink' : 'bg-sand'
+          }`}
+        >
+          <Icon name="layers" size={12} color={moveOpen ? '#F7F5EE' : '#6F6A5F'} />
+          <Text className={`text-xs font-semibold ${moveOpen ? 'text-paper' : 'text-muted'}`}>
+            Move
+          </Text>
+          <Icon name="chevron-down" size={11} color={moveOpen ? '#F7F5EE' : '#6F6A5F'} />
+        </Pressable>
       </View>
 
       {gradeOpen ? (
@@ -533,6 +594,41 @@ function SubjectRow({
           </Pressable>
         </View>
       ) : null}
+
+      {moveOpen ? (
+        <View className="gap-2 border-t border-line pt-2.5">
+          <Text className="text-xs font-medium text-muted">
+            Move the subject and all of its timetable sessions to:
+          </Text>
+          <View className="flex-row flex-wrap gap-1.5">
+            {semesters
+              .filter((semester) => semester.id !== currentSemesterId)
+              .map((semester) => (
+                <Pressable
+                  key={semester.id}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    onMove(semester);
+                    setMoveOpen(false);
+                  }}
+                  className="rounded-lg bg-sand px-3 py-2"
+                >
+                  <Text className="text-xs font-semibold text-ink">{semester.name}</Text>
+                </Pressable>
+              ))}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                onMove(null);
+                setMoveOpen(false);
+              }}
+              className="rounded-lg border border-line bg-surface px-3 py-2"
+            >
+              <Text className="text-xs font-semibold text-muted">Leave unassigned</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -548,7 +644,7 @@ function UnassignedShelf({
 }: {
   subjects: Subject[];
   semesters: Semester[];
-  onAssign: (subjectId: string, semesterId: string) => void;
+  onAssign: (subjectId: string, semester: Semester) => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
 
@@ -569,7 +665,7 @@ function UnassignedShelf({
                 className="h-7 w-7 items-center justify-center rounded-lg"
                 style={{ backgroundColor: `${subject.color}1F` }}
               >
-                <Feather name="book" size={13} color={subject.color} />
+                <Icon name="book" size={13} color={subject.color} />
               </View>
               <Text className="flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
                 {subject.name}
@@ -589,7 +685,7 @@ function UnassignedShelf({
                     key={semester.id}
                     accessibilityRole="button"
                     onPress={() => {
-                      onAssign(subject.id, semester.id);
+                      onAssign(subject.id, semester);
                       setOpen(null);
                     }}
                     className="rounded-lg bg-sand px-3 py-1.5"
@@ -659,6 +755,9 @@ function SemesterForm({
   const [year, setYear] = useState(String(record?.year ?? thisYear));
   const [term, setTerm] = useState<string>(record?.term ?? usedTerms[0] ?? '');
   const [target, setTarget] = useState(record?.gpaTarget ? String(record.gpaTarget) : '');
+  const [startDate, setStartDate] = useState(() => dateFieldValue(record?.startDate));
+  const [endDate, setEndDate] = useState(() => dateFieldValue(record?.endDate));
+  const [weeks, setWeeks] = useState(String(record?.teachingWeeks ?? 14));
 
   const termOptions = useMemo(() => {
     const seen = new Set(usedTerms.map((value) => value.toLowerCase()));
@@ -669,8 +768,13 @@ function SemesterForm({
   const parsedTarget = target.trim() ? Number.parseFloat(target) : null;
   const targetInvalid =
     parsedTarget !== null && (Number.isNaN(parsedTarget) || parsedTarget <= 0 || parsedTarget > 4);
+  const parsedStart = parseDateField(startDate);
+  const parsedEnd = parseDateField(endDate, true);
+  const parsedWeeks = Number.parseInt(weeks, 10);
+  const datesInvalid = (!!startDate && !parsedStart) || (!!endDate && !parsedEnd) || (!!parsedStart && !!parsedEnd && parsedEnd <= parsedStart);
+  const weeksInvalid = !Number.isFinite(parsedWeeks) || parsedWeeks < 1 || parsedWeeks > 60;
   const valid =
-    name.trim().length > 0 && term.trim().length > 0 && Number.isFinite(parsedYear) && !targetInvalid;
+    name.trim().length > 0 && term.trim().length > 0 && Number.isFinite(parsedYear) && !targetInvalid && !datesInvalid && !weeksInvalid;
 
   return (
     <Sheet
@@ -692,6 +796,9 @@ function SemesterForm({
                 year: parsedYear,
                 term: term.trim(),
                 gpaTarget: parsedTarget,
+                startDate: parsedStart,
+                endDate: parsedEnd,
+                teachingWeeks: parsedWeeks,
               })
             }
           />
@@ -735,6 +842,37 @@ function SemesterForm({
           placeholder={String(thisYear)}
         />
 
+        <View className="flex-row flex-wrap gap-3">
+          <View className="min-w-[180px] flex-1">
+            <Field
+              label="Start date"
+              value={startDate}
+              onChangeText={setStartDate}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+            />
+          </View>
+          <View className="min-w-[180px] flex-1">
+            <Field
+              label="End date"
+              value={endDate}
+              onChangeText={setEndDate}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+              hint={datesInvalid ? 'Use valid dates, with the end after the start.' : undefined}
+            />
+          </View>
+        </View>
+
+        <Field
+          label="Total teaching weeks"
+          value={weeks}
+          onChangeText={setWeeks}
+          keyboardType="number-pad"
+          placeholder="14"
+          hint={weeksInvalid ? 'Enter between 1 and 60 weeks.' : 'Used for workload and attendance planning.'}
+        />
+
         <Field
           label="GPA target (optional)"
           value={target}
@@ -758,7 +896,7 @@ function ViewChip({
   onPress,
 }: {
   label: string;
-  icon: React.ComponentProps<typeof Feather>['name'];
+  icon: React.ComponentProps<typeof Icon>['name'];
   active: boolean;
   onPress: () => void;
 }) {
@@ -769,10 +907,32 @@ function ViewChip({
       onPress={onPress}
       className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${active ? 'bg-ink' : 'bg-sand'}`}
     >
-      <Feather name={icon} size={13} color={active ? '#F7F5EE' : '#6F6A5F'} />
+      <Icon name={icon} size={13} color={active ? '#F7F5EE' : '#6F6A5F'} />
       <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}>
         {label}
       </Text>
     </Pressable>
   );
+}
+
+function dateFieldValue(value: Semester['startDate'] | Semester['endDate']): string {
+  const date = value?.toDate?.();
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateField(value: string, endOfDay = false): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return value.trim() ? null : null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (
+    date.getFullYear() !== Number(match[1]) ||
+    date.getMonth() !== Number(match[2]) - 1 ||
+    date.getDate() !== Number(match[3])
+  ) return null;
+  date.setHours(endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, 0);
+  return date;
 }

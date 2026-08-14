@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { useUid } from '@/hooks/useAuth';
 import type { CopilotTurn } from '@/lib/ai';
 import { feedback } from '@/lib/sound';
@@ -136,7 +136,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
                 onPress={() => void send(opener)}
                 className="flex-row items-center gap-2 rounded-xl border border-line bg-paper px-3.5 py-2.5"
               >
-                <Feather name="corner-down-right" size={13} color="#9A9488" />
+                <Icon name="corner-down-right" size={13} color="#9A9488" />
                 <Text className="flex-1 text-sm text-ink">{opener}</Text>
               </Pressable>
             ))}
@@ -167,7 +167,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
                       key={action.summary}
                       className="flex-row items-center gap-2 self-start rounded-lg bg-pine-soft px-2.5 py-1.5"
                     >
-                      <Feather name="check" size={12} color="#2E6F5E" />
+                      <Icon name="check" size={12} color="#2E6F5E" />
                       <Text className="text-xs font-medium text-pine">{action.summary}</Text>
                     </View>
                   ))}
@@ -213,7 +213,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
             draft.trim() && !busy ? 'bg-ink' : 'bg-line'
           }`}
         >
-          <Feather name="arrow-up" size={18} color={draft.trim() && !busy ? '#F7F5EE' : '#9A9488'} />
+          <Icon name="arrow-up" size={18} color={draft.trim() && !busy ? '#F7F5EE' : '#9A9488'} />
         </Pressable>
       </View>
     </Sheet>
@@ -262,7 +262,7 @@ function MicButton({ hearing, onPress }: { hearing: boolean; onPress: () => void
             hearing ? 'bg-accent' : 'border border-line bg-surface'
           }`}
         >
-          <Feather name="mic" size={18} color={hearing ? '#F7F5EE' : '#6F6A5F'} />
+          <Icon name="mic" size={18} color={hearing ? '#F7F5EE' : '#6F6A5F'} />
         </View>
       </Animated.View>
     </Pressable>

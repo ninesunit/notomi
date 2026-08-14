@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Alert, Pressable, Text, View } from 'react-native';
+import { Icon } from '@/components/Icon';
 import { RemindersCard } from '@/components/Reminders';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Button, Card, PageHeader } from '@/components/ui';
@@ -29,7 +29,7 @@ export default function Settings() {
       <Card className="mb-8 gap-4">
         <View className="flex-row items-center gap-3">
           <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-            <Feather name={sound ? 'volume-2' : 'volume-x'} size={16} color="#6F6A5F" />
+            <Icon name={sound ? 'volume-2' : 'volume-x'} size={16} color="#6F6A5F" />
           </View>
           <View className="flex-1">
             <Text className="text-[15px] font-semibold text-ink">Sound and haptics</Text>
@@ -72,7 +72,7 @@ export default function Settings() {
             </Text>
             <Text className="text-xs text-muted" numberOfLines={1}>
               {user?.isAnonymous
-                ? 'Guest account — your work lives on this device’s session'
+                ? 'Temporary guest account'
                 : (user?.email ?? '')}
             </Text>
           </View>
@@ -80,13 +80,26 @@ export default function Settings() {
 
         {user?.isAnonymous ? (
           <Text className="text-xs leading-5 text-subtle">
-            Sign out and create an account to keep your library if you clear this browser or move
-            to another device.
+            Signing out permanently deletes this guest account and everything stored in it. Create
+            a regular account before adding work you need to keep.
           </Text>
         ) : null}
 
         <View className="flex-row">
-          <Button label="Sign out" icon="log-out" variant="secondary" size="sm" onPress={() => void logOut()} />
+          <Button
+            label="Sign out"
+            icon="log-out"
+            variant="secondary"
+            size="sm"
+            onPress={() => {
+              void logOut().catch((error) =>
+                Alert.alert(
+                  'Could not sign out',
+                  error instanceof Error ? error.message : 'Try again.'
+                )
+              );
+            }}
+          />
         </View>
       </Card>
 

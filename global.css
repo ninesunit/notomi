@@ -20,14 +20,13 @@
      * drawer and it rubber-bands straight back, hiding Sign out again. The
      * dynamic viewport unit tracks the height actually on screen right now.
      *
-     * The vh line is the fallback for browsers without dvh; anything that
-     * understands the second declaration ignores the first.
+     * Notomi targets browsers with dynamic viewport units so this wrapper never
+     * falls back to the larger, bounce-prone layout viewport.
      */
-    height: 100vh;
     height: 100dvh;
     max-height: 100dvh;
     margin: 0;
-    background-color: #f7f5ee;
+    background-color: #faf9f5;
     /*
      * Only the panes inside the shell scroll. Without this the document keeps
      * its own scrollport and iOS rubber-banding fights every inner scroller.
@@ -40,10 +39,44 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    box-sizing: border-box;
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   body {
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
   }
+
+  h1,
+  h2,
+  h3 {
+    font-family: 'Plus Jakarta Sans', Inter, ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+/*
+ * React Native Web filters a few browser-only style keys from View/ScrollView.
+ * These named classes keep Reel's gesture boundary explicit at the actual
+ * scrolling surface, in addition to the document-level guard above.
+ */
+.reel-viewport {
+  overscroll-behavior-y: none;
+  touch-action: pan-y;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.reel-snap {
+  scroll-snap-type: y mandatory;
+  overscroll-behavior-y: none;
+  touch-action: pan-y;
+}
+
+.notes-canvas {
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }

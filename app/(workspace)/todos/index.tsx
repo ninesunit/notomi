@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import {
   addDoc,
   deleteDoc,
@@ -210,7 +210,7 @@ export default function Todos() {
   return (
     <ScreenScroll maxWidth={860}>
       <PageHeader
-        title="To-dos"
+        title="Task Board"
         subtitle={
           syllabusCount > 0
             ? `${open.length} open · ${syllabusCount} pulled from your syllabuses automatically`
@@ -378,7 +378,7 @@ export default function Todos() {
                 onPress={() => setShowCompleted((value) => !value)}
                 className="flex-row items-center gap-2 self-start py-1"
               >
-                <Feather
+                <Icon
                   name={showCompleted ? 'chevron-down' : 'chevron-right'}
                   size={15}
                   color="#6F6A5F"

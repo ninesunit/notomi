@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { ResponsiveTermPicker } from '@/components/ResponsiveTermPicker';
 import { Badge, Button, Card, EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
@@ -93,10 +94,10 @@ export default function GpaCalculator() {
 
   return (
     <ScreenScroll>
-      <Link href="/program" asChild>
+      <Link href="/schedule?tab=terms" asChild>
         <Pressable className="mb-5 flex-row items-center gap-1.5 self-start py-1">
-          <Feather name="chevron-left" size={15} color="#6F6A5F" />
-          <Text className="text-sm font-medium text-muted">Program</Text>
+          <Icon name="arrow-left" size={15} color="#6F6A5F" />
+          <Text className="text-sm font-medium text-muted">Back to Term Management</Text>
         </Pressable>
       </Link>
 
@@ -169,17 +170,19 @@ export default function GpaCalculator() {
           </Card>
 
           {ordered.length > 0 ? (
-            <View className="flex-row flex-wrap gap-1.5">
-              <ScopeChip label="All semesters" active={scope === 'all'} onPress={() => setScope('all')} />
-              {ordered.map((semester) => (
-                <ScopeChip
-                  key={semester.id}
-                  label={semester.name}
-                  active={scope === semester.id}
-                  onPress={() => setScope(semester.id)}
-                />
-              ))}
-            </View>
+            <ResponsiveTermPicker
+              options={[
+                { id: 'all', label: 'All semesters' },
+                ...ordered.map((semester) => ({
+                  id: semester.id,
+                  label: semester.name,
+                  current: semester.isCurrent,
+                })),
+              ]}
+              value={scope}
+              onChange={setScope}
+              title="Filter GPA by term"
+            />
           ) : null}
 
           {rows.length === 0 ? (
@@ -260,27 +263,6 @@ function closestGrade(points: number): string {
   return `about ${best}`;
 }
 
-function ScopeChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      className={`rounded-lg px-3 py-2 ${active ? 'bg-ink' : 'bg-sand'}`}
-    >
-      <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-ink'}`}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function GpaRow({
   row,
   onCredits,
@@ -316,7 +298,7 @@ function GpaRow({
             onPress={() => onCredits(Math.max(0, row.credits - 1))}
             className="h-6 w-6 items-center justify-center"
           >
-            <Feather name="minus" size={12} color="#6F6A5F" />
+            <Icon name="minus" size={12} color="#6F6A5F" />
           </Pressable>
           <Text className="min-w-[46px] text-center text-xs font-semibold text-ink">
             {row.credits} cr
@@ -327,7 +309,7 @@ function GpaRow({
             onPress={() => onCredits(Math.min(30, row.credits + 1))}
             className="h-6 w-6 items-center justify-center"
           >
-            <Feather name="plus" size={12} color="#6F6A5F" />
+            <Icon name="plus" size={12} color="#6F6A5F" />
           </Pressable>
         </View>
 
@@ -342,7 +324,7 @@ function GpaRow({
           <Text className={`text-xs font-bold ${row.grade ? 'text-pine' : 'text-muted'}`}>
             {row.grade ?? 'Grade'}
           </Text>
-          <Feather name="chevron-down" size={11} color={row.grade ? '#2E6F5E' : '#6F6A5F'} />
+          <Icon name="chevron-down" size={11} color={row.grade ? '#2E6F5E' : '#6F6A5F'} />
         </Pressable>
 
         {onRemove ? (
@@ -352,7 +334,7 @@ function GpaRow({
             onPress={onRemove}
             className="h-8 w-8 items-center justify-center rounded-lg"
           >
-            <Feather name="x" size={14} color="#B0443E" />
+            <Icon name="x" size={14} color="#B0443E" />
           </Pressable>
         ) : (
           <Badge label={row.grade ? 'Recorded' : 'Ungraded'} tone={row.grade ? 'pine' : 'neutral'} />

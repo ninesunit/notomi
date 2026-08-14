@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, Text, View } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { AddMaterialModal } from '@/components/AddMaterialModal';
 import { AttendanceGuard } from '@/components/AcademicInsights';
@@ -42,7 +42,15 @@ import { findActiveSemester } from '@/services/academicPlanner';
 
 type TabId = 'sources' | 'tasks' | 'log';
 
-export default function SubjectFolder() {
+export default function SubjectFolder({
+  basePath = '/library',
+  parentHref = '/library',
+  readerPath,
+}: {
+  basePath?: string;
+  parentHref?: string;
+  readerPath?: string;
+} = {}) {
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>();
   const uid = useUid();
   const router = useRouter();
@@ -122,11 +130,18 @@ export default function SubjectFolder() {
    */
   async function openOriginal(document: SourceDocument) {
     setError(null);
+    const pendingWindow =
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? window.open('about:blank', '_blank')
+        : null;
+    if (pendingWindow) pendingWindow.opener = null;
     try {
       const url = document.r2FileKey ? await getR2FileUrl(document.r2FileKey) : document.r2FileUrl;
       if (!url) throw new Error('This document has no stored original.');
-      await Linking.openURL(url);
+      if (pendingWindow) pendingWindow.location.href = url;
+      else await Linking.openURL(url);
     } catch (caught) {
+      pendingWindow?.close();
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   }
@@ -136,7 +151,7 @@ export default function SubjectFolder() {
     setDeleting(true);
     try {
       await deleteSubject(uid, subjectId);
-      router.replace('/library');
+      router.replace(parentHref as never);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       setDeleting(false);
@@ -159,7 +174,7 @@ export default function SubjectFolder() {
           title="Subject not found"
           body="This folder may have been deleted."
           action={
-            <Link href="/library" asChild>
+            <Link href={parentHref} asChild>
               <Button label="Back to library" variant="secondary" />
             </Link>
           }
@@ -195,22 +210,21 @@ export default function SubjectFolder() {
 
   return (
     <ScreenScroll>
-      <Link href="/library" asChild>
+      <Link href={parentHref} asChild>
         <Pressable className="mb-5 flex-row items-center gap-1.5 self-start py-1">
-          <Feather name="chevron-left" size={15} color="#6F6A5F" />
-          <Text className="text-sm font-medium text-muted">Library</Text>
+          <Icon name="arrow-left" size={15} color="#6F6A5F" />
+          <Text className="text-sm font-medium text-muted">Back to Knowledge</Text>
         </Pressable>
       </Link>
 
-      {/* Folder banner: the subject's colour and emoji are how a student picks
-          this page out at a glance, so they lead rather than sit in a chip. */}
+      {/* The subject colour and vector icon identify the folder at a glance. */}
       <View
         className="mb-5 h-20 w-full overflow-hidden rounded-2xl"
         style={{ backgroundColor: `${subject.data.color}1F` }}
       >
         <View className="h-1.5 w-full" style={{ backgroundColor: subject.data.color }} />
         <View className="flex-1 flex-row items-center gap-3 px-5">
-          <Text className="text-[30px] leading-9">{subject.data.emoji ?? '📘'}</Text>
+          <Icon name="book-open" size={28} color={subject.data.color} />
           {subject.data.tag ? (
             <View
               className="rounded-full px-2.5 py-1"
@@ -235,7 +249,7 @@ export default function SubjectFolder() {
           .join(' · ')}
         actions={
           <>
-            <Link href={`/reader/${subjectId}`} asChild>
+            <Link href={readerPath ?? `/reader/${subjectId}`} asChild>
               <Button label="Open Reader" icon="message-circle" size="sm" disabled={!hasText} />
             </Link>
             <Link href={`/study?subjectId=${subjectId}`} asChild>
@@ -269,14 +283,14 @@ export default function SubjectFolder() {
           and the study centre; this is where a student sees it back. */}
       <View className="mb-6 flex-row flex-wrap items-center gap-2">
         <View className="flex-row items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2">
-          <Feather name="clock" size={13} color="#9A9488" />
+          <Icon name="clock" size={13} color="#9A9488" />
           <Text className="text-sm font-bold text-ink">{formatMinutes(study?.minutes ?? 0)}</Text>
           <Text className="text-[13px] text-muted">studied</Text>
         </View>
 
         {study?.minutesThisWeek ? (
           <View className="flex-row items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2">
-            <Feather name="trending-up" size={13} color="#2E6F5E" />
+            <Icon name="trending-up" size={13} color="#2E6F5E" />
             <Text className="text-sm font-bold text-pine">
               {formatMinutes(study.minutesThisWeek)}
             </Text>
@@ -297,8 +311,11 @@ export default function SubjectFolder() {
           size="sm"
           onPress={() => setAddOpen(true)}
         />
-        <Link href={`/focus?subjectId=${subjectId}`} asChild>
+        <Link href={`/tasks?tab=focus&subjectId=${subjectId}`} asChild>
           <Button label="Study this" icon="target" variant="secondary" size="sm" />
+        </Link>
+        <Link href={`/knowledge/notes?subjectId=${subjectId}`} asChild>
+          <Button label="New notebook" icon="notebook-pen" variant="secondary" size="sm" />
         </Link>
         <Link href={`/capture?subjectId=${subjectId}`} asChild>
           <Button label="Capture a photo" icon="camera" variant="secondary" size="sm" />
@@ -334,7 +351,7 @@ export default function SubjectFolder() {
                       <Card key={document.id} className="gap-3">
                         <View className="flex-row items-start gap-3">
                           <View className="mt-0.5 h-9 w-9 items-center justify-center rounded-lg bg-sand">
-                            <Feather
+                            <Icon
                               name={document.mimeType?.includes('pdf') ? 'file-text' : 'file'}
                               size={15}
                               color="#6F6A5F"
@@ -343,7 +360,7 @@ export default function SubjectFolder() {
 
                           {/* The whole row opens the note reader — the icons beside
                               it stay reserved for the destructive actions. */}
-                          <Link href={`/library/${subjectId}/${document.id}`} asChild>
+                          <Link href={`${basePath}/${subjectId}/${document.id}`} asChild>
                             <Pressable className="flex-1 gap-1">
                               <Text className="text-[15px] font-semibold leading-5 text-ink">
                                 {document.fileName}

@@ -1,5 +1,10 @@
-import { Timestamp, increment, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
-import { extractAcademicCalendar, generateExamRevisionPlan } from '@/lib/ai';
+import { Timestamp, runTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
+import {
+  AiError,
+  extractAcademicCalendar,
+  extractAcademicCalendarFromText,
+  generateExamRevisionPlan,
+} from '@/lib/ai';
 import { parseDueDate, toDate } from '@/lib/dates';
 import { stableId } from '@/lib/ids';
 import { paths } from '@/lib/paths';
@@ -9,9 +14,16 @@ import type {
   Semester,
   Subject,
   Todo,
+  AttendanceStatus,
 } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
-import { canonicalMimeType, classify, ParseError } from './fileProcessor';
+import {
+  canonicalMimeType,
+  classify,
+  downscaleImage,
+  extractText,
+  ParseError,
+} from './fileProcessor';
 import type { MaterialFile } from './ingestion';
 
 const DAY_MS = 86_400_000;
@@ -42,7 +54,28 @@ export async function analyseAcademicCalendar(
   const bytes = file.file
     ? await file.file.arrayBuffer()
     : await (await fetch(file.uri)).arrayBuffer();
-  return extractAcademicCalendar(bytes, canonicalMimeType(kind, file.mimeType));
+
+  if (kind === 'pdf') {
+    try {
+      const parsed = await extractText(bytes, file.name, file.mimeType ?? 'application/pdf');
+      const terms = await extractAcademicCalendarFromText(parsed.text);
+      // Some university exports expose a nominal text layer whose custom font
+      // maps to no useful characters. Let Vision inspect the original pages
+      // instead of reporting a successful import with zero terms.
+      if (terms.length > 0) return terms;
+    } catch (error) {
+      // Image-only PDFs have no useful local text. Preserve the universal
+      // Vision fallback so scanned calendars still work.
+      if (!(error instanceof ParseError) && !(error instanceof AiError)) throw error;
+    }
+  }
+
+  if (kind === 'image') {
+    const reduced = await downscaleImage(bytes, canonicalMimeType(kind, file.mimeType));
+    return extractAcademicCalendar(reduced.data, reduced.mimeType);
+  }
+
+  return extractAcademicCalendar(bytes, 'application/pdf');
 }
 
 function normalise(value: string | null | undefined): string {
@@ -227,15 +260,36 @@ export function attendanceSummary(
   };
 }
 
-export async function recordAttendance(
+export async function saveAttendanceStatus(
   uid: string,
-  subjectId: string,
-  outcome: 'attended' | 'missed'
+  input: { subjectId: string; classId: string; date: string; status: AttendanceStatus }
 ): Promise<void> {
   const db = getDb();
-  await updateDoc(paths.subject(db, uid, subjectId), {
-    [outcome === 'attended' ? 'attendanceAttended' : 'attendanceMissed']: increment(1),
-    updatedAt: serverTimestamp(),
+  const logId = stableId(input.subjectId, input.classId, input.date);
+  const logRef = paths.attendanceLog(db, uid, logId);
+  const subjectRef = paths.subject(db, uid, input.subjectId);
+  await runTransaction(db, async (transaction) => {
+    const [previous, subject] = await Promise.all([
+      transaction.get(logRef),
+      transaction.get(subjectRef),
+    ]);
+    const old = previous.data()?.status as AttendanceStatus | undefined;
+    const attended = Math.max(0, Number(subject.data()?.attendanceAttended ?? 0));
+    const missed = Math.max(0, Number(subject.data()?.attendanceMissed ?? 0));
+    const subtractPresent = old === 'present' ? 1 : 0;
+    const subtractAbsent = old === 'absent' ? 1 : 0;
+    transaction.set(logRef, {
+      subjectId: input.subjectId,
+      classId: input.classId,
+      date: input.date,
+      status: input.status,
+      updatedAt: serverTimestamp(),
+    });
+    transaction.update(subjectRef, {
+      attendanceAttended: Math.max(0, attended - subtractPresent + (input.status === 'present' ? 1 : 0)),
+      attendanceMissed: Math.max(0, missed - subtractAbsent + (input.status === 'absent' ? 1 : 0)),
+      updatedAt: serverTimestamp(),
+    });
   });
 }
 

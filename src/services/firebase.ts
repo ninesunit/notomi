@@ -3,7 +3,7 @@ import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 import {
   getToken as getAppCheckToken,
   initializeAppCheck,
-  ReCaptchaV3Provider,
+  ReCaptchaEnterpriseProvider,
   type AppCheck,
 } from 'firebase/app-check';
 import {
@@ -53,7 +53,7 @@ export const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-3.6-
 const USE_EMULATORS = process.env.EXPO_PUBLIC_USE_FIREBASE_EMULATORS === '1';
 const EMULATOR_HOST = process.env.EXPO_PUBLIC_EMULATOR_HOST || '127.0.0.1';
 
-/** reCAPTCHA v3 site key from Firebase console > App Check > Apps > Web. */
+/** reCAPTCHA Enterprise site key from Firebase console > App Check > Apps > Web. */
 const APP_CHECK_SITE_KEY = process.env.EXPO_PUBLIC_APP_CHECK_SITE_KEY ?? '';
 
 /**
@@ -66,6 +66,19 @@ let dbRef: Firestore | null = null;
 let aiRef: AI | null = null;
 let appCheckRef: AppCheck | null = null;
 let modelRef: GenerativeModel | null = null;
+
+/**
+ * WebKit can invalidate an open IndexedDB connection when an installed PWA is
+ * backgrounded. Firebase Auth then surfaces Safari's native "Database is
+ * closing/hidden" error on the next sign-in attempt. localStorage persistence
+ * is durable on iPadOS and does not keep an IndexedDB connection alive.
+ */
+function isIPadOrIPhoneWebKit(): boolean {
+  if (Platform.OS !== 'web' || typeof navigator === 'undefined') return false;
+  const classicIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent);
+  const desktopModeIPad = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  return classicIOS || desktopModeIPad;
+}
 
 function assertConfigured(): void {
   if (!isFirebaseConfigured) {
@@ -102,7 +115,10 @@ function setUpAppCheck(app: FirebaseApp): void {
 
   try {
     appCheckRef = initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY),
+      // This project is registered with a reCAPTCHA Enterprise SCORE key.
+      // Using ReCaptchaV3Provider appeared to obtain a token, but AI Logic
+      // rejected it and the browser surfaced only "Failed to fetch".
+      provider: new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),
       isTokenAutoRefreshEnabled: true,
     });
     // Logged deliberately: "did App Check start?" is the first question when
@@ -159,8 +175,12 @@ export function getFirebaseAuth(): Auth {
     const app = getFirebaseApp();
     if (Platform.OS === 'web') {
       authRef = initializeAuth(app, {
-        // Keep the session across reloads and iOS Safari tab restores.
-        persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+        // iPadOS Safari may close IndexedDB while the PWA is hidden. Prefer
+        // localStorage there; other browsers retain IndexedDB as the primary
+        // store with localStorage as a fallback.
+        persistence: isIPadOrIPhoneWebKit()
+          ? [browserLocalPersistence]
+          : [indexedDBLocalPersistence, browserLocalPersistence],
         // Required. getAuth() wires this up for you, but initializeAuth does
         // not — and without it signInWithPopup, signInWithRedirect and
         // getRedirectResult all fail with auth/argument-error, which is

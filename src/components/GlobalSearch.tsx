@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { getDocs, orderBy, query } from 'firebase/firestore';
 import { useUid } from '@/hooks/useAuth';
 import { paths } from '@/lib/paths';
@@ -103,7 +103,7 @@ export function GlobalSearch() {
           kind: 'subject',
           title: subject.name,
           subtitle: subject.moduleCode ?? `${subject.documentCount ?? 0} sources`,
-          href: `/library/${subject.id}`,
+          href: `/knowledge/subject/${subject.id}`,
           haystack: `${subject.name} ${subject.moduleCode ?? ''}`.toLowerCase(),
           body: '',
         });
@@ -123,7 +123,7 @@ export function GlobalSearch() {
         const subjectName = (subjectDoc.data().name as string) ?? 'Subject';
         for (const documentDoc of snapshot.docs) {
           const record = { id: documentDoc.id, ...documentDoc.data() } as SourceDocument;
-          const href = `/library/${subjectDoc.id}/${record.id}`;
+          const href = `/knowledge/subject/${subjectDoc.id}/${record.id}`;
           const text = record.rawText ?? '';
 
           built.push({
@@ -154,7 +154,7 @@ export function GlobalSearch() {
           kind: 'todo',
           title: todo.title,
           subtitle: todo.subjectName ?? (todo.isCompleted ? 'Completed' : 'To-do'),
-          href: '/todos',
+          href: '/tasks',
           haystack: todo.title.toLowerCase(),
           body: '',
         });
@@ -224,7 +224,7 @@ export function GlobalSearch() {
         onPress={() => setOpen(true)}
         className="flex-row items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2"
       >
-        <Feather name="search" size={14} color="#9A9488" />
+        <Icon name="search" size={14} color="#9A9488" />
         <Text className="flex-1 text-xs text-subtle">Search everything</Text>
         {/* Only advertise the shortcut where a keyboard is likely. */}
         {Platform.OS === 'web' && width >= 900 ? (
@@ -250,7 +250,7 @@ export function GlobalSearch() {
 
           <View className="w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-surface">
             <View className="flex-row items-center gap-3 border-b border-line px-4 py-3">
-              <Feather name="search" size={16} color="#6F6A5F" />
+              <Icon name="search" size={16} color="#6F6A5F" />
               <TextInput
                 ref={inputRef}
                 value={term}
@@ -269,7 +269,7 @@ export function GlobalSearch() {
                 onPress={() => setOpen(false)}
                 className="h-7 w-7 items-center justify-center rounded-lg"
               >
-                <Feather name="x" size={14} color="#6F6A5F" />
+                <Icon name="x" size={14} color="#6F6A5F" />
               </Pressable>
             </View>
 
@@ -298,7 +298,7 @@ export function GlobalSearch() {
                     }`}
                   >
                     <View className="mt-0.5 h-7 w-7 items-center justify-center rounded-lg bg-sand">
-                      <Feather name={KIND_META[hit.kind].icon} size={13} color="#6F6A5F" />
+                      <Icon name={KIND_META[hit.kind].icon} size={13} color="#6F6A5F" />
                     </View>
 
                     <View className="flex-1 gap-0.5">
@@ -315,7 +315,7 @@ export function GlobalSearch() {
                       ) : null}
                     </View>
 
-                    <Feather name="corner-down-left" size={13} color="#9A9488" />
+                    <Icon name="corner-down-left" size={13} color="#9A9488" />
                   </Pressable>
                 ))
               )}

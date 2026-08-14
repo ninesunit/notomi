@@ -1,6 +1,6 @@
 import { useState, type DragEvent } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import {
   materialFilesFromWeb,
   pickMaterials,
@@ -13,11 +13,13 @@ export function FileDropZone({
   busy = false,
   title = 'Drop files here',
   body = 'PDF, PNG, JPG or PPTX. Up to 10 files and 25 MB total.',
+  compact = false,
 }: {
   onFiles: (files: MaterialFile[]) => void | Promise<void>;
   busy?: boolean;
   title?: string;
   body?: string;
+  compact?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,11 +60,11 @@ export function FileDropZone({
     <View className="gap-2">
       <View
         {...webDropProps}
-        className={`items-center gap-3 rounded-xl border border-dashed px-6 py-8 ${
+        className={`items-center rounded-2xl border border-dashed px-6 ${compact ? 'gap-2 py-4' : 'gap-3 py-8'} ${
           dragging ? 'border-accent bg-accent-soft' : 'border-line bg-paper'
         }`}
       >
-        <Feather name="upload-cloud" size={22} color={dragging ? '#B4552D' : '#9A9488'} />
+        <Icon name="upload-cloud" size={compact ? 18 : 22} color={dragging ? '#B4552D' : '#9A9488'} />
         <View className="items-center gap-1">
           <Text className="text-sm font-semibold text-ink">{title}</Text>
           <Text className="text-center text-xs leading-5 text-muted">{body}</Text>

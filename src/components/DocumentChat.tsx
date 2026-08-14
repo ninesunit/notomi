@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { limit, orderBy, query } from 'firebase/firestore';
 import { Markdown } from './Markdown';
 import { IconButton, Notice } from './ui';
@@ -117,10 +117,12 @@ export function DocumentChat({
         const id = chatId ?? (await createChat(uid, subjectId, { documentId }));
         if (!chatId) setChatId(id);
 
-        const history: ChatTurn[] = messages.data.map((message) => ({
-          role: message.sender === 'ai' ? 'model' : 'user',
-          text: message.text,
-        }));
+        const history: ChatTurn[] = messages.data
+          .map((message): ChatTurn => ({
+            role: message.sender === 'ai' ? 'model' : 'user',
+            text: message.text,
+          }))
+          .slice(-20);
 
         await appendMessage(uid, subjectId, id, 'user', trimmed);
         if (history.length === 0) await titleFromFirstMessage(uid, subjectId, id, trimmed);
@@ -174,7 +176,7 @@ export function DocumentChat({
     <View className="min-h-0 flex-1">
       <View className="flex-row items-center gap-2 border-b border-line px-3 py-2.5">
         <View className="h-7 w-7 items-center justify-center rounded-lg bg-accent-soft">
-          <Feather name="message-circle" size={13} color="#B4552D" />
+          <Icon name="message-circle" size={13} color="#B4552D" />
         </View>
         <View className="flex-1">
           <Text className="text-[13px] font-semibold text-ink" numberOfLines={1}>
@@ -297,7 +299,7 @@ export function DocumentChat({
             thinking || !draft.trim() ? 'opacity-40' : ''
           }`}
         >
-          <Feather name="arrow-up" size={16} color="#F7F5EE" />
+          <Icon name="arrow-up" size={16} color="#F7F5EE" />
         </Pressable>
       </View>
     </View>

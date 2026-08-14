@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { FileDropZone } from '@/components/FileDropZone';
 import { Sheet } from '@/components/Sheet';
 import { Button, Notice } from '@/components/ui';
@@ -146,7 +146,7 @@ export function AcademicCalendarImport({
                   term.include ? 'border-pine bg-pine' : 'border-subtle bg-surface'
                 }`}
               >
-                {term.include ? <Feather name="check" size={12} color="#FFFFFF" /> : null}
+                {term.include ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
               </View>
               <View className="flex-1 gap-1">
                 <Text className="text-sm font-semibold text-ink">{term.name}</Text>

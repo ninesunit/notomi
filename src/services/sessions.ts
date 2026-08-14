@@ -19,6 +19,8 @@ export async function logSession(
     mode: StudySession['mode'];
     subjectId?: string | null;
     subjectName?: string | null;
+    taskId?: string | null;
+    taskTitle?: string | null;
   }
 ): Promise<void> {
   // Firestore rules cap this too; clamping here keeps a UI bug from becoming a
@@ -30,6 +32,8 @@ export async function logSession(
     mode: input.mode,
     subjectId: input.subjectId ?? null,
     subjectName: input.subjectName ?? null,
+    taskId: input.taskId ?? null,
+    taskTitle: input.taskTitle ?? null,
     dayKey: dayKey(new Date()),
     createdAt: serverTimestamp(),
   });

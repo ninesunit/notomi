@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { Animated, Easing, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeArea } from '@/hooks/useSafeArea';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 
 /**
  * Deferred destructive actions with an undo window.
@@ -157,7 +157,7 @@ function UndoToast({ label, onUndo }: { label: string; onUndo: () => void }) {
       {/* Inline styles above, utilities below: NativeWind does not apply
           className to Animated components. */}
       <View className="w-full max-w-sm flex-row items-center gap-3 rounded-xl bg-ink px-4 py-3">
-        <Feather name="trash-2" size={14} color="#F7F5EE" />
+        <Icon name="trash-2" size={14} color="#F7F5EE" />
         <Text className="flex-1 text-[13px] text-paper" numberOfLines={1}>
           {label}
         </Text>

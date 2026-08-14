@@ -8,6 +8,7 @@ import { SubjectModal } from '@/components/SubjectModal';
 import { defaultScope, filterByTerm, TermFilter, type TermScope } from '@/components/TermFilter';
 import { UploadButton } from '@/components/UploadButton';
 import { FileDropZone } from '@/components/FileDropZone';
+import { SharedWithMe } from '@/components/social/SharedWithMe';
 import { Button, EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
@@ -17,7 +18,7 @@ import { paths } from '@/lib/paths';
 import type { Semester, Subject } from '@/lib/schema';
 
 /** Root of the library: one folder per subject, live from Firestore. */
-export default function Library() {
+export default function Library({ basePath = '/library' }: { basePath?: string } = {}) {
   const uid = useUid();
   const router = useRouter();
   const ingest = useIngest();
@@ -34,17 +35,18 @@ export default function Library() {
     query(paths.semesters(db, uid), orderBy('order', 'asc')),
     [uid]
   );
+  const courseSubjects = useMemo(() => data.filter((subject) => !subject.isVault), [data]);
 
   /**
    * Null until the data lands, then the current term. Choosing eagerly would
    * pin the scope to 'all' before we know which term is live.
    */
   const [scope, setScope] = useState<TermScope | null>(null);
-  const activeScope = scope ?? defaultScope(data, semesters.data);
+  const activeScope = scope ?? defaultScope(courseSubjects, semesters.data);
 
   const inTerm = useMemo(
-    () => filterByTerm(data, activeScope, semesters.data),
-    [data, activeScope, semesters.data]
+    () => filterByTerm(courseSubjects, activeScope, semesters.data),
+    [courseSubjects, activeScope, semesters.data]
   );
 
   const filtered = useMemo(() => {
@@ -72,7 +74,7 @@ export default function Library() {
       <PageHeader
         title="Library"
         subtitle={
-          data.length
+          courseSubjects.length
             ? [
                 scopeName,
                 `${inTerm.length} ${inTerm.length === 1 ? 'subject' : 'subjects'}`,
@@ -91,7 +93,7 @@ export default function Library() {
               size="sm"
               onPress={() => setEditing('new')}
             />
-            {data.length > 0 ? <UploadButton /> : null}
+            {courseSubjects.length > 0 ? <UploadButton /> : null}
           </>
         }
       />
@@ -102,16 +104,18 @@ export default function Library() {
         </View>
       ) : null}
 
-      {data.length > 0 ? (
+      <SharedWithMe />
+
+      {courseSubjects.length > 0 ? (
         <TermFilter
           semesters={semesters.data}
-          subjects={data}
+          subjects={courseSubjects}
           scope={activeScope}
           onScope={setScope}
         />
       ) : null}
 
-      {data.length > 3 ? (
+      {courseSubjects.length > 3 ? (
         <View className="mb-6">
           <Field
             value={search}
@@ -125,7 +129,7 @@ export default function Library() {
 
       {loading ? (
         <Loading label="Opening your library…" />
-      ) : data.length === 0 ? (
+      ) : courseSubjects.length === 0 ? (
         <FileDropZone
           busy={ingest.busy}
           title="Add course materials"
@@ -157,13 +161,17 @@ export default function Library() {
         <CardGrid>
           {filtered.map((subject, index) => (
             <GridItem key={subject.id} index={index}>
-              <SubjectCard subject={subject} onEdit={() => setEditing(subject)} />
+              <SubjectCard
+                subject={subject}
+                href={`${basePath}/${subject.id}`}
+                onEdit={() => setEditing(subject)}
+              />
             </GridItem>
           ))}
         </CardGrid>
       )}
 
-      {data.length > 0 ? (
+      {courseSubjects.length > 0 ? (
         <Text className="mt-8 text-xs leading-5 text-subtle">
           Documents are grouped by the module code Notomi finds in them. Uploading another file from
           the same course adds it to the existing folder.
@@ -175,7 +183,7 @@ export default function Library() {
         subject={editing === 'new' ? null : editing}
         visible={editing !== null}
         onClose={() => setEditing(null)}
-        onCreated={(subjectId) => router.push(`/library/${subjectId}`)}
+        onCreated={(subjectId) => router.push(`${basePath}/${subjectId}` as never)}
       />
     </ScreenScroll>
   );

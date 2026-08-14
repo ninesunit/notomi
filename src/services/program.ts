@@ -1,4 +1,14 @@
-import { deleteDoc, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import {
+  doc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+  updateDoc,
+  where,
+  writeBatch,
+} from 'firebase/firestore';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { Semester, Subject } from '@/lib/schema';
@@ -15,6 +25,9 @@ export type SemesterInput = {
   year: number;
   term: string;
   gpaTarget?: number | null;
+  startDate?: Date | null;
+  endDate?: Date | null;
+  teachingWeeks?: number | null;
 };
 
 export async function createSemester(
@@ -30,6 +43,9 @@ export async function createSemester(
     year: input.year,
     term: input.term,
     gpaTarget: input.gpaTarget ?? null,
+    startDate: input.startDate ? Timestamp.fromDate(input.startDate) : null,
+    endDate: input.endDate ? Timestamp.fromDate(input.endDate) : null,
+    teachingWeeks: input.teachingWeeks ?? null,
     // The first semester a student creates is the one they are in.
     isCurrent: existing.length === 0,
     order: existing.reduce((highest, semester) => Math.max(highest, semester.order ?? 0), -1) + 1,
@@ -45,12 +61,41 @@ export async function updateSemester(
   patch: Partial<SemesterInput>
 ): Promise<void> {
   const db = getDb();
-  await updateDoc(paths.semester(db, uid, semesterId), {
+  const fields = {
     ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
     ...(patch.year !== undefined ? { year: patch.year } : {}),
     ...(patch.term !== undefined ? { term: patch.term } : {}),
     ...(patch.gpaTarget !== undefined ? { gpaTarget: patch.gpaTarget } : {}),
-  });
+    ...(patch.startDate !== undefined
+      ? { startDate: patch.startDate ? Timestamp.fromDate(patch.startDate) : null }
+      : {}),
+    ...(patch.endDate !== undefined
+      ? { endDate: patch.endDate ? Timestamp.fromDate(patch.endDate) : null }
+      : {}),
+    ...(patch.teachingWeeks !== undefined ? { teachingWeeks: patch.teachingWeeks } : {}),
+  };
+
+  if (patch.startDate === undefined && patch.endDate === undefined) {
+    await updateDoc(paths.semester(db, uid, semesterId), fields);
+    return;
+  }
+
+  const classes = await getDocs(
+    query(paths.classes(db, uid), where('semesterId', '==', semesterId))
+  );
+  const batch = writeBatch(db);
+  batch.update(paths.semester(db, uid, semesterId), fields);
+  for (const classDocument of classes.docs) {
+    batch.update(classDocument.ref, {
+      ...(patch.startDate !== undefined
+        ? { startDate: patch.startDate ? Timestamp.fromDate(patch.startDate) : null }
+        : {}),
+      ...(patch.endDate !== undefined
+        ? { endDate: patch.endDate ? Timestamp.fromDate(patch.endDate) : null }
+        : {}),
+    });
+  }
+  await batch.commit();
 }
 
 /**
@@ -64,14 +109,26 @@ export async function deleteSemester(
 ): Promise<void> {
   const db = getDb();
   const batch = writeBatch(db);
+  const affected = subjects.filter((subject) => subject.semesterId === semesterId);
+  const classSnapshots = await Promise.all(
+    affected.map((subject) =>
+      getDocs(query(paths.classes(db, uid), where('subjectId', '==', subject.id)))
+    )
+  );
 
-  for (const subject of subjects) {
-    if (subject.semesterId === semesterId) {
-      batch.update(paths.subject(db, uid, subject.id), { semesterId: null });
+  for (const subject of affected) {
+    batch.update(paths.subject(db, uid, subject.id), {
+      semesterId: null,
+      updatedAt: serverTimestamp(),
+    });
+  }
+  for (const snapshot of classSnapshots) {
+    for (const classDocument of snapshot.docs) {
+      batch.update(classDocument.ref, { semesterId: null, startDate: null, endDate: null });
     }
   }
+  batch.delete(paths.semester(db, uid, semesterId));
   await batch.commit();
-  await deleteDoc(paths.semester(db, uid, semesterId));
 }
 
 /** Exactly one semester is current, so setting one clears the rest. */
@@ -121,13 +178,32 @@ export async function moveSemester(
 export async function assignSubject(
   uid: string,
   subjectId: string,
-  semesterId: string | null
+  semester: Pick<Semester, 'id' | 'startDate' | 'endDate'> | null
 ): Promise<void> {
   const db = getDb();
-  await updateDoc(paths.subject(db, uid, subjectId), {
-    semesterId,
+  const classes = await getDocs(
+    query(paths.classes(db, uid), where('subjectId', '==', subjectId))
+  );
+
+  // One atomic batch keeps the relational join honest: the Subject moves, and
+  // every ClassSession child receives the same term/date anchors in the same
+  // commit. The timetable also joins through Subject at render time, so both
+  // the stored cache and the visible week change together.
+  const batch = writeBatch(db);
+  batch.update(paths.subject(db, uid, subjectId), {
+    semesterId: semester?.id ?? null,
     updatedAt: serverTimestamp(),
   });
+
+  for (const classDocument of classes.docs) {
+    batch.update(classDocument.ref, {
+      semesterId: semester?.id ?? null,
+      startDate: semester?.startDate ?? null,
+      endDate: semester?.endDate ?? null,
+    });
+  }
+
+  await batch.commit();
 }
 
 export async function setSubjectCredits(

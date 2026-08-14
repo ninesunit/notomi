@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  Alert,
   Animated,
   Easing,
   PanResponder,
@@ -12,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Link } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { useAuth } from '@/hooks/useAuth';
 import { useSafeArea } from '@/hooks/useSafeArea';
 import { feedback } from '@/lib/sound';
@@ -89,11 +90,14 @@ export function EdgeSwipeArea({
 export function MobileTopBar({
   onMenu,
   onAsk,
+  onHide,
 }: {
   onMenu: () => void;
   onAsk: () => void;
+  onHide: () => void;
 }) {
   const insets = useSafeArea();
+  const { width } = useWindowDimensions();
 
   return (
     <View
@@ -115,7 +119,7 @@ export function MobileTopBar({
           hitSlop={8}
           className="h-10 w-10 items-center justify-center rounded-xl"
         >
-          <Feather name="menu" size={20} color="#1B1A17" />
+          <Icon name="menu" size={20} color="#1B1A17" />
         </Pressable>
 
         <Logo size={26} />
@@ -123,6 +127,21 @@ export function MobileTopBar({
         <View className="flex-1">
           <GlobalSearch />
         </View>
+
+        {width >= 640 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Hide navigation"
+            onPress={() => {
+              feedback('tap');
+              onHide();
+            }}
+            hitSlop={8}
+            className="h-10 w-10 items-center justify-center rounded-xl"
+          >
+            <Icon name="panel-left-close" size={18} color="#6F6A5F" />
+          </Pressable>
+        ) : null}
 
         <Pressable
           accessibilityRole="button"
@@ -134,7 +153,7 @@ export function MobileTopBar({
           hitSlop={8}
           className="h-10 w-10 items-center justify-center rounded-xl bg-ink"
         >
-          <Feather name="zap" size={17} color="#F7F5EE" />
+          <Icon name="zap" size={17} color="#F7F5EE" />
         </Pressable>
       </View>
     </View>
@@ -263,7 +282,7 @@ export function NavDrawer({
               hitSlop={8}
               className="h-9 w-9 items-center justify-center rounded-lg"
             >
-              <Feather name="x" size={18} color="#6F6A5F" />
+              <Icon name="x" size={18} color="#6F6A5F" />
             </Pressable>
           </View>
 
@@ -279,7 +298,7 @@ export function NavDrawer({
                     href={item.href}
                     label={item.label}
                     icon={item.icon}
-                    active={isActive(pathname, item.href)}
+                    active={isActive(pathname, item.href, item.legacyPaths)}
                   />
                 ))}
               </View>
@@ -287,7 +306,8 @@ export function NavDrawer({
           </ScrollView>
 
           <View className="shrink-0 gap-1 border-t border-line px-3 pt-3">
-            <View className="flex-row items-center gap-3 px-3 py-2">
+            <Link href="/profile" asChild>
+            <Pressable accessibilityRole="link" className="flex-row items-center gap-3 rounded-xl px-3 py-2">
               <View className="h-9 w-9 items-center justify-center rounded-full bg-accent-soft">
                 <Text className="text-sm font-bold text-accent">{initial}</Text>
               </View>
@@ -299,7 +319,9 @@ export function NavDrawer({
                   {user?.isAnonymous ? 'Guest account' : (user?.email ?? '')}
                 </Text>
               </View>
-            </View>
+              <Icon name="chevron-right" size={15} color="#9A9488" />
+            </Pressable>
+            </Link>
 
             <DrawerLink
               href="/settings"
@@ -310,10 +332,17 @@ export function NavDrawer({
 
             <Pressable
               accessibilityRole="button"
-              onPress={() => void logOut()}
+              onPress={() => {
+                void logOut().catch((error) =>
+                  Alert.alert(
+                    'Could not sign out',
+                    error instanceof Error ? error.message : 'Try again.'
+                  )
+                );
+              }}
               className="flex-row items-center gap-3 rounded-xl px-3 py-3"
             >
-              <Feather name="log-out" size={16} color="#6F6A5F" />
+              <Icon name="log-out" size={16} color="#6F6A5F" />
               <Text className="text-[15px] font-medium text-muted">Sign out</Text>
             </Pressable>
           </View>
@@ -331,7 +360,7 @@ function DrawerLink({
 }: {
   href: string;
   label: string;
-  icon: React.ComponentProps<typeof Feather>['name'];
+  icon: React.ComponentProps<typeof Icon>['name'];
   active: boolean;
 }) {
   return (
@@ -343,21 +372,15 @@ function DrawerLink({
         accessibilityState={{ selected: active }}
         onPressIn={() => feedback('tap', 6)}
         className={`flex-row items-center gap-3 rounded-xl px-3 py-3 ${
-          active ? 'bg-surface' : ''
+          active ? 'bg-ink' : ''
         }`}
       >
-        <Feather name={icon} size={17} color={active ? '#B4552D' : '#6F6A5F'} />
+        <Icon name={icon} size={17} color={active ? '#FFFFFF' : '#6F6A5F'} />
         <Text
-          className={`text-[15px] ${active ? 'font-semibold text-ink' : 'font-medium text-muted'}`}
+          className={`text-[15px] ${active ? 'font-semibold text-white' : 'font-medium text-muted'}`}
         >
           {label}
         </Text>
-        {active ? (
-          <>
-            <View className="flex-1" />
-            <View className="h-1.5 w-1.5 rounded-full bg-accent" />
-          </>
-        ) : null}
       </Pressable>
     </Link>
   );

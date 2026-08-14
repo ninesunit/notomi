@@ -26,7 +26,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create, update: if isOwner(userId);
-      allow delete: if false;
+      // A temporary anonymous account owns its complete workspace. It may
+      // remove the final profile anchor immediately before deleting its Auth
+      // credential. Regular accounts cannot delete this document client-side.
+      allow delete: if isOwner(userId) && resource.data.isAnonymous == true;
 
       match /semesters/{semesterId} {
         allow read, write: if isOwner(userId);
@@ -149,8 +152,8 @@ service cloud.firestore {
           && request.auth.uid == friendId
           && friendId != userId
           && request.resource.data.status == 'incoming'
-          && request.resource.data.handle is string
-          && request.resource.data.handle.size() <= 24
+          && request.resource.data.username is string
+          && request.resource.data.username.size() <= 24
           && request.resource.data.displayName is string
           && request.resource.data.displayName.size() <= 60;
 
@@ -168,23 +171,129 @@ service cloud.firestore {
         // Unfriending is symmetric: either side can break the pair.
         allow delete: if request.auth != null && request.auth.uid == friendId;
       }
+
+      match /attendance_logs/{logId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.subjectId is string
+          && request.resource.data.classId is string
+          && request.resource.data.date is string
+          && request.resource.data.status in ['present', 'absent', 'excused'];
+      }
+
+      // Read-only copies shared by accepted friends are filed directly in the
+      // recipient's account. This avoids a global inbox query and keeps reads
+      // under the same owner-scoped tree as the rest of the Library.
+      match /shared_materials/{shareId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if request.auth != null
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.recipientId == userId
+          && isAcceptedFriend(userId)
+          && request.resource.data.content is string
+          && request.resource.data.content.size() < 900000;
+        allow update: if false;
+      }
+
+      // Cached micro-learning cards and their private SRS interaction state.
+      // Discovery content never becomes public merely because Gemini wrote it.
+      match /reelCards/{cardId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /reel_cards/{cardId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // A canvas is stored as one compressed JSON string after a three-second
+      // idle window. Binary PDF/image previews stay in IndexedDB or R2, never
+      // inside Firestore's one-megabyte document envelope.
+      match /note_canvases/{canvasId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && request.resource.data.payload is string
+          && request.resource.data.payload.size() < 850000
+          && request.resource.data.nodeCount is int
+          && request.resource.data.nodeCount >= 0
+          && request.resource.data.version == 1;
+      }
+
+      // Notebook metadata is separate from compressed page payloads so adding
+      // a page never rewrites every stroke in the notebook. Every path stays
+      // below the authenticated owner's user tree.
+      match /note_notebooks/{notebookId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && (request.resource.data.subjectId == null || request.resource.data.subjectId is string)
+          && request.resource.data.color is string
+          && request.resource.data.pages is list
+          && request.resource.data.pages.size() >= 1
+          && request.resource.data.pages.size() <= 50
+          && request.resource.data.version == 1;
+
+        match /pages/{pageId} {
+          allow read, delete: if isOwner(userId);
+          allow create, update: if isOwner(userId)
+            && request.resource.data.title is string
+            && request.resource.data.title.size() > 0
+            && request.resource.data.title.size() <= 120
+            && request.resource.data.payload is string
+            && request.resource.data.payload.size() < 850000
+            && request.resource.data.nodeCount is int
+            && request.resource.data.nodeCount >= 0
+            && request.resource.data.nodeCount <= 5000
+            && request.resource.data.version == 1;
+        }
+      }
     }
 
-    // The only cross-account lookup in the app: a handle, a display name and a
-    // colour. Nothing here is derived from anyone's coursework.
+    // The only cross-account lookup in the app: a username and public profile.
     match /profiles/{userId} {
       allow get: if request.auth != null;
       // Capped so the directory can be searched but not harvested in bulk.
-      allow list: if request.auth != null && request.query.limit <= 5;
+      allow list: if request.auth != null && request.query.limit <= 12;
 
       allow create, update: if isOwner(userId)
-        && request.resource.data.handle is string
-        && request.resource.data.handle.size() >= 3
-        && request.resource.data.handle.size() <= 24
-        && request.resource.data.handle.matches('^[a-z0-9._-]+$')
+        && request.resource.data.username is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 24
+        && request.resource.data.username.matches('^[a-z0-9._-]+$')
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() > 0
-        && request.resource.data.displayName.size() <= 60;
+        && request.resource.data.displayName.size() <= 60
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 280
+        && request.resource.data.major is string
+          && request.resource.data.major.size() <= 100
+          && request.resource.data.university is string
+          && request.resource.data.university.size() <= 100
+          && (!('universityId' in request.resource.data)
+            || (request.resource.data.universityId is string
+              && request.resource.data.universityId.size() <= 160))
+          && (!('universityAbbreviation' in request.resource.data)
+            || (request.resource.data.universityAbbreviation is string
+              && request.resource.data.universityAbbreviation.size() <= 12))
+          && (!('avatarKey' in request.resource.data)
+            || (request.resource.data.avatarKey is string
+              && request.resource.data.avatarKey.size() <= 220
+              && (request.resource.data.avatarKey == ''
+                || request.resource.data.avatarKey.matches('^users/' + userId + '/profile/[A-Za-z0-9._-]+$'))))
+          && (!('courseCodes' in request.resource.data)
+            || (request.resource.data.courseCodes is list
+              && request.resource.data.courseCodes.size() <= 30))
+          && (!('searchPrefixes' in request.resource.data)
+            || (request.resource.data.searchPrefixes is list
+              && request.resource.data.searchPrefixes.size() <= 120))
+          && (!('shareCourses' in request.resource.data)
+            || request.resource.data.shareCourses is bool)
+          && (!('sharePresence' in request.resource.data)
+            || request.resource.data.sharePresence is bool);
       allow delete: if isOwner(userId);
     }
 
@@ -200,11 +309,126 @@ service cloud.firestore {
 
     // Live focus status. Expires by its own `until`, so a stale document says
     // nothing rather than lying.
-    match /presence/{userId} {
-      allow read: if isOwner(userId) || isAcceptedFriend(userId);
-      allow create, update: if isOwner(userId)
-        && request.resource.data.status in ['focus', 'idle'];
+      match /presence/{userId} {
+        allow read: if isOwner(userId) || isAcceptedFriend(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.status in ['focus', 'class', 'reel', 'idle'];
       allow delete: if isOwner(userId);
+    }
+
+    match /discoveryCards/{cardId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Arena uses Firestore listeners as its real-time room channel. A lobby is
+    // discoverable only to signed-in students; after start, only members can
+    // read the cached deck and scoreboard.
+    match /arena_rooms/{roomId} {
+      allow read: if request.auth != null
+        && (resource.data.status == 'lobby' || request.auth.uid in resource.data.memberIds);
+      allow create: if request.auth != null
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.status in ['lobby', 'playing'];
+      allow update: if request.auth != null && (
+        (
+          request.auth.uid == resource.data.hostId
+          && request.resource.data.hostId == resource.data.hostId
+          && request.resource.data.memberIds == resource.data.memberIds
+          && (request.resource.data.status != 'playing'
+            || resource.data.status == 'playing'
+            || request.resource.data.memberIds.size() >= 2)
+        )
+        || (
+          resource.data.status == 'lobby'
+          && isAcceptedFriend(resource.data.hostId)
+          && request.auth.uid in request.resource.data.memberIds
+          && request.resource.data.memberIds.size() <= 6
+          && request.resource.data.memberIds.toSet()
+               .difference(resource.data.memberIds.toSet()).hasOnly([request.auth.uid])
+          && resource.data.memberIds.toSet()
+               .difference(request.resource.data.memberIds.toSet()).size() == 0
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['memberIds', 'updatedAt'])
+        )
+      );
+      allow delete: if request.auth != null && request.auth.uid == resource.data.hostId;
+
+      match /players/{playerId} {
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/arena_rooms/$(roomId)).data.memberIds;
+        allow create: if request.auth != null
+          && request.auth.uid == playerId
+          && request.auth.uid in getAfter(/databases/$(database)/documents/arena_rooms/$(roomId)).data.memberIds
+          && (request.auth.uid == getAfter(/databases/$(database)/documents/arena_rooms/$(roomId)).data.hostId
+            || isAcceptedFriend(getAfter(/databases/$(database)/documents/arena_rooms/$(roomId)).data.hostId));
+        allow update: if request.auth != null
+          && request.auth.uid == playerId
+          && request.auth.uid in get(/databases/$(database)/documents/arena_rooms/$(roomId)).data.memberIds;
+        allow delete: if request.auth != null
+          && (request.auth.uid == playerId
+            || request.auth.uid == get(/databases/$(database)/documents/arena_rooms/$(roomId)).data.hostId);
+      }
+
+      match /decks/{playerId} {
+        allow read, update: if request.auth != null
+          && request.auth.uid == playerId
+          && request.auth.uid in get(/databases/$(database)/documents/arena_rooms/$(roomId)).data.memberIds;
+        allow create: if request.auth != null
+          && request.auth.uid == playerId
+          && request.auth.uid in getAfter(/databases/$(database)/documents/arena_rooms/$(roomId)).data.memberIds
+          && (request.auth.uid == getAfter(/databases/$(database)/documents/arena_rooms/$(roomId)).data.hostId
+            || isAcceptedFriend(getAfter(/databases/$(database)/documents/arena_rooms/$(roomId)).data.hostId));
+        allow delete: if request.auth != null
+          && (request.auth.uid == playerId
+            || request.auth.uid == get(/databases/$(database)/documents/arena_rooms/$(roomId)).data.hostId);
+      }
+    }
+
+    // Saved runs are visible only to their owner and accepted friends.
+    match /arena_ghosts/{ghostId} {
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.ownerId || isAcceptedFriend(resource.data.ownerId));
+      allow create: if request.auth != null
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if request.auth != null
+        && request.auth.uid == resource.data.ownerId;
+    }
+
+    // Project members share one live task plan. Membership is immutable after
+    // creation so a member cannot grant a third party access.
+    match /sprints/{sprintId} {
+      allow read: if request.auth != null && request.auth.uid in resource.data.memberIds;
+      allow create: if request.auth != null
+        && request.resource.data.ownerId == request.auth.uid
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.memberIds.size() >= 2
+        && request.resource.data.memberIds.size() <= 12;
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.memberIds
+        && request.resource.data.memberIds == resource.data.memberIds
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
+    }
+
+    // A share is a read-only snapshot, not access to the sender's Subject tree.
+    match /material_shares/{shareId} {
+      allow get: if request.auth != null
+        && (request.auth.uid == resource.data.senderId
+          || request.auth.uid == resource.data.recipientId);
+      // Inbox queries constrain recipientId to the signed-in account. Keeping
+      // this as a direct equality lets Firestore prove the query is safe.
+      allow list: if request.auth != null
+        && resource.data.recipientId == request.auth.uid;
+      allow create: if request.auth != null
+        && request.resource.data.senderId == request.auth.uid
+        && isAcceptedFriend(request.resource.data.recipientId)
+        && request.resource.data.content is string
+        && request.resource.data.content.size() < 900000;
+      allow update: if false;
+      allow delete: if request.auth != null
+        && request.auth.uid in [resource.data.senderId, resource.data.recipientId];
     }
 
     // Deny anything not explicitly matched above.

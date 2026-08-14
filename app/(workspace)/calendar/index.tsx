@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { CountdownBlock, CountdownChip } from '@/components/Countdown';
-import { AcademicCalendarImport } from '@/components/AcademicCalendarImport';
 import { BurnoutHeatmap } from '@/components/AcademicInsights';
 import { MonthCalendar, type DayMarker } from '@/components/MonthCalendar';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -18,7 +17,6 @@ import type { Semester, Subject, Todo } from '@/lib/schema';
 import {
   createExamRevisionPlan,
   findActiveSemester,
-  type CalendarImportOutcome,
 } from '@/services/academicPlanner';
 
 type Dated = { todo: Todo; due: Date };
@@ -38,7 +36,6 @@ export default function Calendar() {
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
   const [selected, setSelected] = useState<Date | null>(new Date());
-  const [calendarOpen, setCalendarOpen] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [message, setMessage] = useState<{
     tone: 'rose' | 'pine';
@@ -109,16 +106,6 @@ export default function Calendar() {
     }).catch(() => undefined);
   }
 
-  function calendarImported(outcome: CalendarImportOutcome) {
-    setMessage({
-      tone: 'pine',
-      title: 'Academic calendar anchored',
-      body: `${outcome.created} term${outcome.created === 1 ? '' : 's'} added and ${outcome.updated} updated.${
-        outcome.currentTerm ? ` ${outcome.currentTerm} is active now.` : ''
-      }`,
-    });
-  }
-
   async function planStudyLeave() {
     if (!activeSemester) return;
     setPlanning(true);
@@ -162,14 +149,7 @@ export default function Calendar() {
         }
         actions={
           <>
-            <Button
-              label="Import academic calendar"
-              icon="calendar"
-              size="sm"
-              variant="secondary"
-              onPress={() => setCalendarOpen(true)}
-            />
-            <Link href="/todos" asChild>
+            <Link href="/tasks" asChild>
               <Button label="Add a task" icon="plus" size="sm" variant="secondary" />
             </Link>
           </>
@@ -327,7 +307,7 @@ export default function Calendar() {
             title="No dated deadlines yet"
             body="Upload a syllabus and Notomi files every date it finds here automatically, or add a task with a due date."
             action={
-              <Link href="/library" asChild>
+              <Link href="/knowledge" asChild>
                 <Button label="Go to library" variant="secondary" />
               </Link>
             }
@@ -335,13 +315,6 @@ export default function Calendar() {
         </View>
       ) : null}
 
-      <AcademicCalendarImport
-        visible={calendarOpen}
-        onClose={() => setCalendarOpen(false)}
-        uid={uid}
-        semesters={semesters.data}
-        onImported={calendarImported}
-      />
     </ScreenScroll>
   );
 }
@@ -375,7 +348,7 @@ function DeadlineRow({
           todo.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
         }`}
       >
-        {todo.isCompleted ? <Feather name="check" size={11} color="#FFFFFF" /> : null}
+        {todo.isCompleted ? <Icon name="check" size={11} color="#FFFFFF" /> : null}
       </Pressable>
 
       <View className="h-8 w-1 rounded-full" style={{ backgroundColor: color }} />
@@ -410,7 +383,7 @@ function DeadlineRow({
       </View>
 
       {todo.isCompleted ? (
-        <Feather name="check-circle" size={15} color="#2E6F5E" />
+        <Icon name="check-circle" size={15} color="#2E6F5E" />
       ) : value ? (
         <CountdownChip due={due} compact />
       ) : null}

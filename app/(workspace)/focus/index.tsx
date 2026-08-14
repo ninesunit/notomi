@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
-import { onSnapshot, orderBy, query } from 'firebase/firestore';
+import { Icon } from '@/components/Icon';
+import { orderBy, query } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Badge, Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
-import { useCollection } from '@/hooks/useFirestore';
+import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { paths } from '@/lib/paths';
-import type { StudySession, Subject } from '@/lib/schema';
+import type { StudySession, Subject, Todo } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { formatMinutes, logSession, summarizeStreak } from '@/services/sessions';
 import {
   friendsPath,
   isFocusing,
-  presencePath,
+  presenceQuery,
+  profilePath,
   setPresence,
+  syncPublicStudyStats,
   type Friend,
   type Presence,
+  type Profile,
 } from '@/services/social';
 
 /**
@@ -37,7 +40,7 @@ const LONG_BREAK = 15 * 60;
 const CYCLES_TO_LONG_BREAK = 4;
 
 export default function Focus() {
-  const params = useLocalSearchParams<{ subjectId?: string }>();
+  const params = useLocalSearchParams<{ subjectId?: string; taskId?: string }>();
   const uid = useUid();
   const db = getDb();
 
@@ -46,6 +49,8 @@ export default function Focus() {
     query(paths.sessions(db, uid), orderBy('createdAt', 'desc')),
     [uid]
   );
+  const todos = useCollection<Todo>(query(paths.todos(db, uid), orderBy('dueDate', 'asc')), [uid]);
+  const socialProfile = useDocument<Profile>(profilePath(db, uid), [uid]);
 
   const [phase, setPhase] = useState<Phase>('focus');
   const [running, setRunning] = useState(false);
@@ -54,6 +59,7 @@ export default function Focus() {
   // Pre-selected when arriving from a subject page, so "Study this" lands on a
   // timer that is already pointed at the right thing.
   const [subjectId, setSubjectId] = useState<string | null>(params.subjectId ?? null);
+  const [taskId, setTaskId] = useState<string | null>(params.taskId ?? null);
   const [error, setError] = useState<string | null>(null);
   const [justLogged, setJustLogged] = useState<number | null>(null);
 
@@ -74,13 +80,30 @@ export default function Focus() {
     : LENGTHS[phase];
 
   const subject = subjects.data.find((candidate) => candidate.id === subjectId) ?? null;
+  const task = todos.data.find((candidate) => candidate.id === taskId && !candidate.isCompleted) ?? null;
   const streak = useMemo(() => summarizeStreak(sessions.data), [sessions.data]);
+  const publicStudyStats = useMemo(() => {
+    let focusMinutes = 0;
+    let nightFocusMinutes = 0;
+    for (const session of sessions.data) {
+      if (session.mode !== 'focus') continue;
+      focusMinutes += session.minutes ?? 0;
+      const hour = session.createdAt?.toDate?.().getHours();
+      if (typeof hour === 'number' && hour < 5) nightFocusMinutes += session.minutes ?? 0;
+    }
+    return { focusMinutes, nightFocusMinutes, currentStreak: streak.current };
+  }, [sessions.data, streak.current]);
 
   const friends = useCollection<Friend>(friendsPath(db, uid), [uid]);
   const room = useMemo(
     () => friends.data.filter((friend) => friend.status === 'accepted'),
     [friends.data]
   );
+
+  useEffect(() => {
+    if (sessions.loading || socialProfile.loading) return;
+    void syncPublicStudyStats(uid, socialProfile.data, publicStudyStats).catch(() => undefined);
+  }, [uid, sessions.loading, socialProfile.loading, socialProfile.data, publicStudyStats]);
 
   /**
    * Presence is broadcast only while a focus block is actually running, and
@@ -91,7 +114,7 @@ export default function Focus() {
   remainingRef.current = remaining;
 
   useEffect(() => {
-    if (room.length === 0) return;
+    if (room.length === 0 || socialProfile.data?.sharePresence !== true) return;
 
     if (running && phase === 'focus') {
       void setPresence(uid, {
@@ -102,15 +125,17 @@ export default function Focus() {
     } else {
       void setPresence(uid, { status: 'idle' }).catch(() => undefined);
     }
-  }, [running, phase, subject?.name, uid, room.length]);
+  }, [running, phase, subject?.name, uid, room.length, socialProfile.data?.sharePresence]);
 
   // Leaving the screen ends the broadcast. A closed tab writes nothing at all,
   // which is why the document also carries its own expiry.
   useEffect(
     () => () => {
-      void setPresence(uid, { status: 'idle' }).catch(() => undefined);
+      if (socialProfile.data?.sharePresence === true) {
+        void setPresence(uid, { status: 'idle' }).catch(() => undefined);
+      }
     },
-    [uid]
+    [uid, socialProfile.data?.sharePresence]
   );
 
   const finish = useCallback(
@@ -127,13 +152,15 @@ export default function Focus() {
           mode: 'focus',
           subjectId: subject?.id ?? null,
           subjectName: subject?.name ?? null,
+          taskId: task?.id ?? null,
+          taskTitle: task?.title ?? null,
         });
         setJustLogged(minutes);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
     },
-    [phase, subject, uid]
+    [phase, subject, task, uid]
   );
 
   /** Advances to the next phase, logging the block that just ended. */
@@ -243,7 +270,7 @@ export default function Focus() {
   return (
     <ScreenScroll maxWidth={760}>
       <PageHeader
-        title="Focus"
+        title="Focus Room"
         subtitle="Twenty-five minutes of work, five of rest. Finished blocks feed your streak."
       />
 
@@ -315,6 +342,37 @@ export default function Focus() {
 
       <FocusRoom friends={room} onJoin={join} />
 
+      <AmbientControl />
+
+      <Card className="mb-6 gap-3">
+        <Text className="text-sm font-semibold text-ink">Active task</Text>
+        {todos.loading ? (
+          <Loading label="Loading tasks…" />
+        ) : todos.data.filter((candidate) => !candidate.isCompleted).length === 0 ? (
+          <Text className="text-sm text-muted">Add a task on the Task Board to attach it to this focus block.</Text>
+        ) : (
+          <View className="flex-row flex-wrap gap-1.5">
+            {todos.data.filter((candidate) => !candidate.isCompleted).map((candidate) => (
+              <Pressable
+                key={candidate.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: taskId === candidate.id }}
+                onPress={() => {
+                  const next = taskId === candidate.id ? null : candidate.id;
+                  setTaskId(next);
+                  if (next && candidate.subjectId) setSubjectId(candidate.subjectId);
+                }}
+                className={`rounded-lg border px-3 py-2 ${taskId === candidate.id ? 'border-ink bg-ink' : 'border-stone-200 bg-paper'}`}
+              >
+                <Text className={`text-xs font-medium ${taskId === candidate.id ? 'text-white' : 'text-muted'}`} numberOfLines={1}>
+                  {candidate.title}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </Card>
+
       <Card className="mb-6 gap-3">
         <Text className="text-sm font-semibold text-ink">What are you working on?</Text>
         {subjects.loading ? (
@@ -342,7 +400,6 @@ export default function Focus() {
                     subjectId === candidate.id ? 'text-accent' : 'text-muted'
                   }`}
                 >
-                  {candidate.emoji ? `${candidate.emoji} ` : ''}
                   {candidate.name}
                 </Text>
               </Pressable>
@@ -384,28 +441,15 @@ function FocusRoom({
   friends: Friend[];
   onJoin: (seconds: number, subjectName: string | null) => void;
 }) {
-  const db = getDb();
-  const [presence, setPresenceMap] = useState<Record<string, Presence>>({});
+  const friendIds = friends.map((friend) => friend.id);
+  const livePresence = useCollection<Presence>(presenceQuery(friendIds), [friendIds.join('|')]);
+  const presence = useMemo(
+    () => Object.fromEntries(livePresence.data.map((entry) => [entry.id, entry])),
+    [livePresence.data]
+  );
+
   // Re-renders once a minute so a block that has run out stops showing as live.
   const [, setClock] = useState(0);
-
-  useEffect(() => {
-    const stops = friends.map((friend) =>
-      onSnapshot(
-        presencePath(db, friend.id),
-        (snapshot) => {
-          const data = snapshot.data();
-          if (!data) return;
-          setPresenceMap((current) => ({
-            ...current,
-            [friend.id]: { id: friend.id, ...data } as Presence,
-          }));
-        },
-        () => undefined
-      )
-    );
-    return () => stops.forEach((stop) => stop());
-  }, [db, friends]);
 
   useEffect(() => {
     const id = setInterval(() => setClock((value) => value + 1), 30_000);
@@ -473,7 +517,7 @@ function Metric({
   value,
   label,
 }: {
-  icon: React.ComponentProps<typeof Feather>['name'];
+  icon: React.ComponentProps<typeof Icon>['name'];
   value: string;
   label: string;
 }) {
@@ -482,7 +526,7 @@ function Metric({
       className="flex-1 grow gap-2 rounded-2xl border border-line bg-surface p-4"
       style={{ minWidth: 150, flexBasis: 150 }}
     >
-      <Feather name={icon} size={15} color="#9A9488" />
+      <Icon name={icon} size={15} color="#9A9488" />
       <Text className="text-2xl font-bold text-ink">{value}</Text>
       <Text className="text-[13px] text-muted">{label}</Text>
     </View>
@@ -518,4 +562,68 @@ function chime(): void {
   } catch {
     /* Audio is a nicety; a blocked AudioContext must not break the timer. */
   }
+}
+
+function AmbientControl() {
+  const [playing, setPlaying] = useState(false);
+  const audio = useRef<{ context: AudioContext; source: AudioBufferSourceNode; gain: GainNode } | null>(null);
+
+  useEffect(
+    () => () => {
+      audio.current?.source.stop();
+      void audio.current?.context.close();
+    },
+    []
+  );
+
+  function toggle() {
+    if (Platform.OS !== 'web') return;
+    if (audio.current) {
+      audio.current.source.stop();
+      void audio.current.context.close();
+      audio.current = null;
+      setPlaying(false);
+      return;
+    }
+
+    const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Context) return;
+    const context = new Context();
+    const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+    const data = buffer.getChannelData(0);
+    let last = 0;
+    for (let index = 0; index < data.length; index += 1) {
+      const white = Math.random() * 2 - 1;
+      last = (last + 0.02 * white) / 1.02;
+      data[index] = last * 2.8;
+    }
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    gain.gain.value = 0.12;
+    source.connect(gain).connect(context.destination);
+    source.start();
+    audio.current = { context, source, gain };
+    setPlaying(true);
+  }
+
+  return (
+    <Card className="mb-6 flex-row items-center gap-3">
+      <View className="h-10 w-10 items-center justify-center rounded-xl bg-sand">
+        <Icon name={playing ? 'volume-2' : 'volume-x'} size={17} color="#18181B" />
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text className="text-sm font-semibold text-ink">Ambient focus audio</Text>
+        <Text className="text-xs text-muted">Soft brown noise generated on your device.</Text>
+      </View>
+      <Button
+        label={playing ? 'Turn off' : 'Play'}
+        icon={playing ? 'volume-x' : 'volume-2'}
+        variant="secondary"
+        size="sm"
+        onPress={toggle}
+      />
+    </Card>
+  );
 }

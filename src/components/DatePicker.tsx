@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { Button } from './ui';
 import { MonthCalendar } from './MonthCalendar';
 import { formatDue } from '@/lib/dates';
@@ -103,7 +103,7 @@ export function DatePicker({
         onPress={openPicker}
         className="flex-row items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-3"
       >
-        <Feather name="calendar" size={15} color={value ? '#B4552D' : '#9A9488'} />
+        <Icon name="calendar" size={15} color={value ? '#B4552D' : '#9A9488'} />
         <Text className={`flex-1 text-[15px] ${value ? 'text-ink' : 'text-subtle'}`}>{summary}</Text>
         {value ? (
           <Pressable
@@ -112,7 +112,7 @@ export function DatePicker({
             onPress={() => onChange(null)}
             hitSlop={8}
           >
-            <Feather name="x" size={14} color="#9A9488" />
+            <Icon name="x" size={14} color="#9A9488" />
           </Pressable>
         ) : null}
       </Pressable>
@@ -128,7 +128,7 @@ export function DatePicker({
                 onPress={() => setOpen(false)}
                 className="h-8 w-8 items-center justify-center rounded-lg"
               >
-                <Feather name="x" size={16} color="#6F6A5F" />
+                <Icon name="x" size={16} color="#6F6A5F" />
               </Pressable>
             </View>
 

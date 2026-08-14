@@ -199,13 +199,15 @@ export type Subject = {
   name: string;
   moduleCode: string | null;
   color: string;
-  /** Folder icon. A single emoji, or null to fall back to the book glyph. */
+  /** Legacy field retained for existing records; the UI uses vector icons. */
   emoji: string | null;
   /** Free-text label shown on the card banner, e.g. "Core" or "Elective". */
   tag: string | null;
   documentCount: number;
   /** Which semester this subject belongs to; null until the planner assigns it. */
   semesterId: string | null;
+  /** Hidden parent used by the cross-course Document Vault. */
+  isVault?: boolean;
   creditHours: number;
   /** Recorded grade, keyed into GRADE_POINTS. */
   grade: string | null;
@@ -230,26 +232,6 @@ export const SUBJECT_PALETTE = [
   { name: 'Rose', value: '#B0443E' },
   { name: 'Slate', value: '#4A5568' },
   { name: 'Teal', value: '#2B7A78' },
-];
-
-/** Emoji offered in the folder picker — one row of academic shorthand. */
-export const SUBJECT_EMOJI = [
-  '📘',
-  '📐',
-  '🧪',
-  '🧬',
-  '💻',
-  '⚖️',
-  '🩺',
-  '🎨',
-  '🌍',
-  '🧠',
-  '📊',
-  '🏛️',
-  '🔬',
-  '🎼',
-  '🗣️',
-  '⚙️',
 ];
 
 /** users/{uid}/subjects/{subjectId}/documents/{documentId} */
@@ -363,18 +345,30 @@ export type RoutineBlock = {
   createdAt: Timestamp | null;
 };
 
+export type AttendanceStatus = 'present' | 'absent' | 'excused';
+
+/** users/{uid}/attendance_logs/{logId} — one editable status per dated class. */
+export type AttendanceLog = {
+  id: string;
+  subjectId: string;
+  classId: string;
+  date: string;
+  status: AttendanceStatus;
+  updatedAt: Timestamp | null;
+};
+
 export const ROUTINE_CATEGORIES: {
   id: string;
   label: string;
-  emoji: string;
+  icon: 'book-open' | 'activity' | 'clock' | 'map' | 'clipboard' | 'circle';
   color: string;
 }[] = [
-  { id: 'study', label: 'Study', emoji: '📖', color: '#4C5FA8' },
-  { id: 'gym', label: 'Gym', emoji: '🏋️', color: '#2E6F5E' },
-  { id: 'meal', label: 'Meal', emoji: '🍽️', color: '#B4832A' },
-  { id: 'commute', label: 'Commute', emoji: '🚌', color: '#4A5568' },
-  { id: 'work', label: 'Work', emoji: '💼', color: '#8A4B86' },
-  { id: 'other', label: 'Other', emoji: '📌', color: '#6F6A5F' },
+  { id: 'study', label: 'Study', icon: 'book-open', color: '#4C5FA8' },
+  { id: 'gym', label: 'Gym', icon: 'activity', color: '#2E6F5E' },
+  { id: 'meal', label: 'Meal', icon: 'clock', color: '#B4832A' },
+  { id: 'commute', label: 'Commute', icon: 'map', color: '#4A5568' },
+  { id: 'work', label: 'Work', icon: 'clipboard', color: '#8A4B86' },
+  { id: 'other', label: 'Other', icon: 'circle', color: '#6F6A5F' },
 ];
 
 export const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -464,6 +458,8 @@ export type StudySession = {
   id: string;
   subjectId: string | null;
   subjectName: string | null;
+  taskId?: string | null;
+  taskTitle?: string | null;
   minutes: number;
   mode: 'focus' | 'quiz' | 'flashcards' | 'tutor' | 'exam';
   /** Local YYYY-MM-DD, so a streak is a set membership test, not a scan. */
@@ -538,13 +534,13 @@ export type AssignmentKind = 'assignment' | 'tutorial' | 'lab' | 'project';
 export const ASSIGNMENT_KINDS: {
   id: AssignmentKind;
   label: string;
-  emoji: string;
+  icon: 'file-text' | 'edit-3' | 'activity' | 'users-round';
   color: string;
 }[] = [
-  { id: 'assignment', label: 'Assignment', emoji: '📝', color: '#B4552D' },
-  { id: 'tutorial', label: 'Tutorial', emoji: '✏️', color: '#4C5FA8' },
-  { id: 'lab', label: 'Lab', emoji: '🧪', color: '#2E6F5E' },
-  { id: 'project', label: 'Project', emoji: '🚀', color: '#8A4B86' },
+  { id: 'assignment', label: 'Assignment', icon: 'file-text', color: '#B4552D' },
+  { id: 'tutorial', label: 'Tutorial', icon: 'edit-3', color: '#4C5FA8' },
+  { id: 'lab', label: 'Lab', icon: 'activity', color: '#2E6F5E' },
+  { id: 'project', label: 'Project', icon: 'users-round', color: '#8A4B86' },
 ];
 
 export type AssignmentStep = {
@@ -668,6 +664,7 @@ export type ExtractedDeadline = {
 };
 
 export type ExtractedMetadata = {
+  documentType: 'TimetableSchedule' | 'AcademicCalendar' | 'SubjectMaterial' | 'GeneralNote';
   moduleCode: string | null;
   subjectName: string | null;
   summary: string | null;
@@ -737,6 +734,156 @@ export type GeneratedCard = {
   front: string;
   back: string;
   concept: string | null;
+};
+
+/* ------------------------------------------------------------------ *
+ * Notomi Reel
+ * ------------------------------------------------------------------ */
+
+export type ReelCategory = 'courses' | 'tech' | 'science' | 'business' | 'general';
+export type ReelFormat = 'fact' | 'quiz' | 'diagram' | 'audio';
+export type ReelOrigin = 'material' | 'course-discovery' | 'global-discovery';
+
+/** users/{uid}/reel_cards/{cardId} */
+export type ReelCard = {
+  id: string;
+  origin: ReelOrigin;
+  format: ReelFormat;
+  category: ReelCategory;
+  title: string;
+  body: string;
+  takeaway: string;
+  /** Diagram steps or fast-fact support points. */
+  points: string[];
+  question: string | null;
+  options: string[];
+  correctAnswerIndex: number | null;
+  explanation: string | null;
+  subjectId: string | null;
+  subjectCode: string | null;
+  documentId: string | null;
+  documentTitle: string | null;
+  pageNumber: number | null;
+  /** Exact source wording used for the reader highlight. */
+  highlight: string | null;
+  bookmarked: boolean;
+  mastered: boolean;
+  srsLevel: number;
+  dwellMs: number;
+  timesSeen: number;
+  quizAnswered: boolean;
+  quizCorrect: boolean | null;
+  xpEarned: number;
+  nextReviewAt: Timestamp | null;
+  lastSeenAt: Timestamp | null;
+  masteredAt: Timestamp | null;
+  createdAt: Timestamp | null;
+  updatedAt: Timestamp | null;
+};
+
+/* ------------------------------------------------------------------ *
+ * Notomi Notes
+ * ------------------------------------------------------------------ */
+
+export type NotePoint = [number, number, number];
+
+export type NoteBrush = 'fountain' | 'gel' | 'pencil' | 'highlighter';
+
+export type NoteStrokeNode = {
+  id: string;
+  type: 'stroke';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: {
+    path: string;
+    points: NotePoint[];
+    color: string;
+    size: number;
+    brush?: NoteBrush;
+    opacity?: number;
+  };
+};
+
+export type NoteAssetNode = {
+  id: string;
+  type: 'image' | 'pdf_page';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: {
+    assetKey: string;
+    /** Object URL exists only for the current browser session and is never cloud-synced. */
+    previewUrl?: string;
+    sourceFileKey?: string | null;
+    pageNumber?: number | null;
+    title: string;
+    /** Normalized source crop. The displayed node is always the cropped result. */
+    crop?: { x: number; y: number; width: number; height: number };
+  };
+};
+
+export type NoteNode = NoteStrokeNode | NoteAssetNode;
+
+export type NoteCamera = { x: number; y: number; scale: number };
+
+export type NoteCanvasState = {
+  id: string;
+  title: string;
+  nodes: NoteNode[];
+  camera: NoteCamera;
+  updatedAt: number;
+};
+
+export type NotePageMeta = {
+  id: string;
+  title: string;
+  order: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/** users/{uid}/note_notebooks/{notebookId} */
+export type NoteNotebook = {
+  id: string;
+  title: string;
+  subjectId: string | null;
+  subjectCode: string | null;
+  subjectName: string | null;
+  color: string;
+  pages: NotePageMeta[];
+  /** The canvas gesture primer is shown only until this notebook is first touched. */
+  canvasHintDismissed?: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/** users/{uid}/note_canvases/{canvasId}; the payload is lz-string compressed JSON. */
+export type NoteCanvasRecord = {
+  id: string;
+  title: string;
+  payload: string;
+  nodeCount: number;
+  version: number;
+  updatedAt: Timestamp | null;
+};
+
+/** Strict structured output returned by Gemini before Firestore fields are added. */
+export type GeneratedReelCard = {
+  format: ReelFormat;
+  category: ReelCategory;
+  title: string;
+  body: string;
+  takeaway: string;
+  points: string[];
+  question: string | null;
+  options: string[];
+  correctAnswerIndex: number | null;
+  explanation: string | null;
+  sourceQuote: string | null;
+  pageNumber: number | null;
 };
 
 /** A free-text question the tutor or exam asks, with its marking guide. */

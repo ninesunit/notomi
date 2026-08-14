@@ -167,7 +167,14 @@ async function extractPdf(data: ArrayBuffer): Promise<ParsedFile> {
   const pdfjs = await loadPdfJs();
   pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
 
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(data) });
+  // PDF.js transfers the supplied buffer to its worker. Passing a view over
+  // `data` therefore detaches the *original* ArrayBuffer, and the later R2
+  // upload fails with "Cannot perform Construct on a detached ArrayBuffer".
+  // Give PDF.js its own owned copy so parsing and original-file storage can
+  // safely run in the same ingestion pipeline.
+  const pdfWorkerBytes = new Uint8Array(data.byteLength);
+  pdfWorkerBytes.set(new Uint8Array(data));
+  const loadingTask = pdfjs.getDocument({ data: pdfWorkerBytes });
   let pdf;
   try {
     pdf = await loadingTask.promise;
@@ -185,7 +192,11 @@ async function extractPdf(data: ArrayBuffer): Promise<ParsedFile> {
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
-      pages.push(joinTextItems(content.items));
+      // Keep the physical page boundary in the stored corpus. Reel cards and
+      // Reader deep links can then cite an exact page without guessing from a
+      // character offset, while every existing text consumer still receives
+      // ordinary readable text.
+      pages.push(`[Page ${pageNumber}]\n${joinTextItems(content.items)}`);
       page.cleanup();
     }
 

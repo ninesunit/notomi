@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { Sheet } from './Sheet';
 import { Badge, Button, Field } from './ui';
 import {
@@ -83,7 +83,7 @@ export function ProgramMap({
       {/* Root */}
       <View className="flex-row items-center gap-3 rounded-2xl border border-line bg-ink px-4 py-3.5">
         <View className="h-9 w-9 items-center justify-center rounded-xl bg-paper/15">
-          <Feather name="award" size={16} color="#F7F5EE" />
+          <Icon name="award" size={16} color="#F7F5EE" />
         </View>
         <View className="flex-1">
           <Text className="text-[15px] font-bold text-paper" numberOfLines={1}>
@@ -121,7 +121,7 @@ export function ProgramMap({
                     : 'border-line bg-surface'
                 }`}
               >
-                <Feather
+                <Icon
                   name={expanded ? 'chevron-down' : 'chevron-right'}
                   size={15}
                   color="#6F6A5F"
@@ -163,7 +163,7 @@ export function ProgramMap({
                         className="flex-row items-center gap-2.5 rounded-xl border border-line bg-paper px-3 py-2.5"
                         style={{ borderLeftWidth: 3, borderLeftColor: subject.color }}
                       >
-                        <Text className="text-sm">{subject.emoji ?? '📘'}</Text>
+                        <Icon name="book-open" size={15} color={subject.color} />
                         <View className="flex-1">
                           <Text className="text-[13px] font-semibold text-ink" numberOfLines={1}>
                             {subject.name}
@@ -182,7 +182,7 @@ export function ProgramMap({
                             <Text className="text-[11px] font-bold text-pine">{subject.grade}</Text>
                           </View>
                         ) : (
-                          <Feather name="circle" size={12} color="#C9C4B8" />
+                          <Icon name="circle" size={12} color="#C9C4B8" />
                         )}
                       </Pressable>
                     ))
@@ -233,7 +233,7 @@ function SubjectDrawer({
       footer={
         <>
           <View className="flex-1" />
-          <Link href={`/library/${subject.id}`} asChild>
+          <Link href={`/knowledge/subject/${subject.id}`} asChild>
             <Button label="Jump to library folder" icon="folder" size="sm" onPress={onClose} />
           </Link>
         </>
@@ -243,7 +243,7 @@ function SubjectDrawer({
         className="flex-row items-center gap-3 rounded-xl p-4"
         style={{ backgroundColor: `${subject.color}14` }}
       >
-        <Text className="text-2xl">{subject.emoji ?? '📘'}</Text>
+        <Icon name="book-open" size={22} color={subject.color} />
         <View className="flex-1">
           <Text className="text-[15px] font-bold text-ink">{subject.name}</Text>
           <Text className="text-xs text-muted">
@@ -366,7 +366,7 @@ function GpaSimulator({ subjects }: { subjects: Subject[] }) {
         onPress={() => setOpen((value) => !value)}
         className="flex-row items-center gap-3 px-4 py-3.5"
       >
-        <Text className="text-lg">🎯</Text>
+        <Icon name="target" size={18} color="#B4552D" />
         <View className="flex-1">
           <Text className="text-sm font-semibold text-ink">GPA target simulator</Text>
           <Text className="text-[11px] text-muted">
@@ -377,7 +377,7 @@ function GpaSimulator({ subjects }: { subjects: Subject[] }) {
                 }`}
           </Text>
         </View>
-        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={15} color="#6F6A5F" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={15} color="#6F6A5F" />
       </Pressable>
 
       {open ? (
@@ -435,7 +435,6 @@ function GpaSimulator({ subjects }: { subjects: Subject[] }) {
               {ungraded.map((subject) => (
                 <View key={subject.id} className="gap-1.5 rounded-xl border border-line p-3">
                   <Text className="text-[13px] font-semibold text-ink" numberOfLines={1}>
-                    {subject.emoji ? `${subject.emoji} ` : ''}
                     {subject.name}
                     <Text className="text-[11px] font-normal text-subtle">
                       {'  '}

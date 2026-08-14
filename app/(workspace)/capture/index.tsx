@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
@@ -136,7 +136,7 @@ export default function Capture() {
           title="No subjects yet"
           body="Create a subject first — a capture has to land somewhere."
           action={
-            <Link href="/library" asChild>
+            <Link href="/knowledge" asChild>
               <Button label="Go to library" variant="secondary" />
             </Link>
           }
@@ -162,7 +162,7 @@ export default function Capture() {
                       active ? 'border-accent bg-accent-soft' : 'border-line bg-surface'
                     }`}
                   >
-                    <Text className="text-sm">{candidate.emoji ?? '📘'}</Text>
+                    <Icon name="book-open" size={15} color={candidate.color} />
                     <Text
                       className={`text-[13px] font-semibold ${
                         active ? 'text-accent' : 'text-muted'
@@ -194,7 +194,7 @@ export default function Capture() {
                 busy ? 'bg-sand' : 'bg-ink'
               }`}
             >
-              <Feather name="camera" size={30} color={busy ? '#9A9488' : '#F7F5EE'} />
+              <Icon name="camera" size={30} color={busy ? '#9A9488' : '#F7F5EE'} />
             </View>
 
             <Text className="text-base font-semibold text-ink">
@@ -212,7 +212,7 @@ export default function Capture() {
           {saved ? (
             <Card className="gap-3 bg-pine-soft">
               <View className="flex-row items-center gap-2">
-                <Feather name="check-circle" size={16} color="#2E6F5E" />
+                <Icon name="check-circle" size={16} color="#2E6F5E" />
                 <Text className="text-[15px] font-semibold text-ink">Captured</Text>
               </View>
               <Text className="text-sm leading-5 text-ink/75">
@@ -224,7 +224,7 @@ export default function Capture() {
                   label="Open it"
                   icon="file-text"
                   size="sm"
-                  onPress={() => router.push(`/library/${subjectId}/${saved.documentId}`)}
+                  onPress={() => router.push(`/knowledge/subject/${subjectId}/${saved.documentId}`)}
                 />
                 <Button
                   label="Capture another"

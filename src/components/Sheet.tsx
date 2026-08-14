@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeArea } from '@/hooks/useSafeArea';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 
 /**
  * One container, two presentations.
@@ -46,7 +46,7 @@ export function Sheet({
   visible: boolean;
   onClose: () => void;
   title: string;
-  icon?: React.ComponentProps<typeof Feather>['name'];
+  icon?: React.ComponentProps<typeof Icon>['name'];
   children: ReactNode;
   footer?: ReactNode;
   maxHeight?: number;
@@ -128,7 +128,7 @@ export function Sheet({
             <View className="flex-row items-center gap-3 border-b border-line px-5 py-4">
               {icon ? (
                 <View className="h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
-                  <Feather name={icon} size={16} color="#B4552D" />
+                  <Icon name={icon} size={16} color="#B4552D" />
                 </View>
               ) : null}
               <Text className="flex-1 text-[15px] font-semibold text-ink">{title}</Text>
@@ -139,7 +139,7 @@ export function Sheet({
                 hitSlop={8}
                 className="h-8 w-8 items-center justify-center rounded-lg"
               >
-                <Feather name="x" size={16} color="#6F6A5F" />
+                <Icon name="x" size={16} color="#6F6A5F" />
               </Pressable>
             </View>
 

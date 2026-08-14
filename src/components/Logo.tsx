@@ -1,82 +1,43 @@
-import { View } from 'react-native';
+import Svg, { Path, Rect } from 'react-native-svg';
 
 /**
- * The Notomi mark: five nodes joined into an "N".
+ * The Notomi mark: an open academic workspace guided by one intelligent signal.
  *
- * Drawn from Views rather than loaded as an image so it stays crisp at any
- * size, needs no asset request, and can be recoloured. It is the same shape as
- * the app icon and the program structure map — the degree as a graph.
+ * The book establishes learning immediately, the short page strokes suggest
+ * structured schedules and notes, and the terracotta signal identifies the AI
+ * co-pilot. The drawing stays deliberately simple so it remains legible as a
+ * 16 px favicon as well as a full-size app icon.
  */
 export function Logo({ size = 32, tone = 'ink' }: { size?: number; tone?: 'ink' | 'paper' }) {
   const surface = tone === 'ink' ? '#1B1A17' : '#F7F5EE';
-  const stroke = tone === 'ink' ? '#F7F5EE' : '#1B1A17';
+  const page = tone === 'ink' ? '#F7F5EE' : '#1B1A17';
   const accent = '#B4552D';
 
-  // Geometry is a fraction of the tile so a 24px logo and a 40px one are the
-  // same drawing, not two approximations of it.
-  const span = size * 0.56;
-  const inset = (size - span) / 2;
-  const edge = Math.max(1.5, span * 0.135);
-  const node = Math.max(2.5, span * 0.16);
-
-  const dot = (left: number, top: number, radius: number, color: string) => (
-    <View
-      style={{
-        position: 'absolute',
-        left: left - radius,
-        top: top - radius,
-        width: radius * 2,
-        height: radius * 2,
-        borderRadius: radius,
-        backgroundColor: color,
-      }}
-    />
-  );
-
-  const stem = (left: number) => (
-    <View
-      style={{
-        position: 'absolute',
-        left: left - edge / 2,
-        top: inset,
-        width: edge,
-        height: span,
-        borderRadius: edge / 2,
-        backgroundColor: stroke,
-      }}
-    />
-  );
-
-  // The diagonal is one bar rotated about its centre — two half-segments would
-  // need their own joint handling for no visual gain at this size.
-  const diagonalLength = Math.sqrt(span * span + span * span);
-  const angle = `${(Math.atan2(span, span) * 180) / Math.PI}deg`;
-
   return (
-    <View
-      style={{ width: size, height: size, borderRadius: size * 0.28, backgroundColor: surface }}
-    >
-      {stem(inset)}
-      {stem(inset + span)}
+    <Svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
+      <Rect width="32" height="32" rx="8.5" fill={surface} />
 
-      <View
-        style={{
-          position: 'absolute',
-          left: size / 2 - diagonalLength / 2,
-          top: size / 2 - edge / 2,
-          width: diagonalLength,
-          height: edge,
-          borderRadius: edge / 2,
-          backgroundColor: accent,
-          transform: [{ rotate: angle }],
-        }}
+      <Path
+        d="M6.5 11.6C9.6 11.1 12.8 12 16 14.4V24.8C13.2 22.7 10.2 22.3 6.5 22.7V11.6Z"
+        fill={page}
+      />
+      <Path
+        d="M25.5 11.6C22.4 11.1 19.2 12 16 14.4V24.8C18.8 22.7 21.8 22.3 25.5 22.7V11.6Z"
+        fill={page}
       />
 
-      {dot(inset, inset, node, stroke)}
-      {dot(inset, inset + span, node, stroke)}
-      {dot(inset + span, inset, node, stroke)}
-      {dot(inset + span, inset + span, node, stroke)}
-      {dot(size / 2, size / 2, node * 1.05, accent)}
-    </View>
+      <Path d="M16 14.4V24.8" stroke={surface} strokeWidth="1" strokeLinecap="round" />
+      <Path
+        d="M9.3 15.6L13.2 15.9M9.3 18.6L12.3 18.8M22.7 15.6L18.8 15.9M22.7 18.6L19.7 18.8"
+        stroke={surface}
+        strokeWidth="1.05"
+        strokeLinecap="round"
+      />
+
+      <Path
+        d="M16 4.6C16.3 6.8 17.4 7.9 19.6 8.2C17.4 8.5 16.3 9.6 16 11.8C15.7 9.6 14.6 8.5 12.4 8.2C14.6 7.9 15.7 6.8 16 4.6Z"
+        fill={accent}
+      />
+    </Svg>
   );
 }

@@ -49,6 +49,11 @@ export const paths = {
   routine: (db: Firestore, uid: string, routineId: string) =>
     doc(db, 'users', uid, 'routines', routineId),
 
+  attendanceLogs: (db: Firestore, uid: string) =>
+    collection(db, 'users', uid, 'attendance_logs'),
+  attendanceLog: (db: Firestore, uid: string, logId: string) =>
+    doc(db, 'users', uid, 'attendance_logs', logId),
+
   sessions: (db: Firestore, uid: string) => collection(db, 'users', uid, 'sessions'),
   session: (db: Firestore, uid: string, sessionId: string) =>
     doc(db, 'users', uid, 'sessions', sessionId),
@@ -58,6 +63,42 @@ export const paths = {
   weakConcepts: (db: Firestore, uid: string) => collection(db, 'users', uid, 'weak_concepts'),
   weakConcept: (db: Firestore, uid: string, conceptId: string) =>
     doc(db, 'users', uid, 'weak_concepts', conceptId),
+
+  arenaRooms: (db: Firestore) => collection(db, 'arena_rooms'),
+  arenaRoom: (db: Firestore, roomId: string) => doc(db, 'arena_rooms', roomId),
+  arenaPlayers: (db: Firestore, roomId: string) =>
+    collection(db, 'arena_rooms', roomId, 'players'),
+  arenaPlayer: (db: Firestore, roomId: string, uid: string) =>
+    doc(db, 'arena_rooms', roomId, 'players', uid),
+  arenaDeck: (db: Firestore, roomId: string, uid: string) =>
+    doc(db, 'arena_rooms', roomId, 'decks', uid),
+  arenaGhosts: (db: Firestore) => collection(db, 'arena_ghosts'),
+  arenaGhost: (db: Firestore, ghostId: string) => doc(db, 'arena_ghosts', ghostId),
+
+  sprints: (db: Firestore) => collection(db, 'sprints'),
+  sprint: (db: Firestore, sprintId: string) => doc(db, 'sprints', sprintId),
+
+  sharedMaterials: (db: Firestore, uid: string) =>
+    collection(db, 'users', uid, 'shared_materials'),
+  sharedMaterial: (db: Firestore, uid: string, shareId: string) =>
+    doc(db, 'users', uid, 'shared_materials', shareId),
+
+  reelCards: (db: Firestore, uid: string) => collection(db, 'users', uid, 'reelCards'),
+  reelCard: (db: Firestore, uid: string, cardId: string) =>
+    doc(db, 'users', uid, 'reelCards', cardId),
+  discoveryCards: (db: Firestore) => collection(db, 'discoveryCards'),
+  noteCanvases: (db: Firestore, uid: string) =>
+    collection(db, 'users', uid, 'note_canvases'),
+  noteCanvas: (db: Firestore, uid: string, canvasId: string) =>
+    doc(db, 'users', uid, 'note_canvases', canvasId),
+  noteNotebooks: (db: Firestore, uid: string) =>
+    collection(db, 'users', uid, 'note_notebooks'),
+  noteNotebook: (db: Firestore, uid: string, notebookId: string) =>
+    doc(db, 'users', uid, 'note_notebooks', notebookId),
+  noteNotebookPages: (db: Firestore, uid: string, notebookId: string) =>
+    collection(db, 'users', uid, 'note_notebooks', notebookId, 'pages'),
+  noteNotebookPage: (db: Firestore, uid: string, notebookId: string, pageId: string) =>
+    doc(db, 'users', uid, 'note_notebooks', notebookId, 'pages', pageId),
 };
 
 export function materialsStoragePath(

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { minutesTo12h } from '@/lib/schema';
 import { feedback } from '@/lib/sound';
 import { Reveal } from './motion';
@@ -71,7 +71,7 @@ export function TimeField({
         <Text className={`text-[17px] font-semibold ${invalid ? 'text-rose' : 'text-ink'}`}>
           {minutesTo12h(value)}
         </Text>
-        <Feather name={open ? 'chevron-up' : 'clock'} size={16} color="#6F6A5F" />
+        <Icon name={open ? 'chevron-up' : 'clock'} size={16} color="#6F6A5F" />
       </Pressable>
 
       {hint ? <Text className="text-xs text-subtle">{hint}</Text> : null}

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Link, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { getDocs, orderBy, query, where } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Badge, Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
@@ -182,7 +182,7 @@ export default function StudyCenter() {
       <ScreenScroll maxWidth={760}>
         <View className="mb-6 flex-row items-center gap-3">
           <Pressable onPress={reset} className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-            <Feather name="x" size={15} color="#6F6A5F" />
+            <Icon name="x" size={15} color="#6F6A5F" />
           </Pressable>
           <View className="flex-1 gap-1.5">
             <Text className="text-xs font-medium text-muted">
@@ -235,7 +235,7 @@ export default function StudyCenter() {
                     }`}
                   >
                     {revealed && (isCorrect || isPicked) ? (
-                      <Feather name={isCorrect ? 'check' : 'x'} size={12} color="#FFFFFF" />
+                      <Icon name={isCorrect ? 'check' : 'x'} size={12} color="#FFFFFF" />
                     ) : (
                       <Text className="text-[11px] font-bold text-muted">
                         {String.fromCharCode(65 + optionIndex)}
@@ -399,19 +399,19 @@ export default function StudyCenter() {
       <View className="mb-8 flex-row flex-wrap gap-3">
         <ModeCard
           href="/study/flashcards"
-          emoji="🎴"
+          icon="layers"
           title="Flashcards"
           body="Cards written from your notes, flipped and sorted into know or review."
         />
         <ModeCard
           href="/study/tutor"
-          emoji="🧠"
+          icon="message-circle"
           title="AI tutor"
           body="Explain it in your own words. Notomi marks the answer and follows up."
         />
         <ModeCard
           href="/study/tutor?mode=exam"
-          emoji="📝"
+          icon="file-text"
           title="Exam simulator"
           body="A short-answer practice paper with a diagnostic report at the end."
         />
@@ -420,7 +420,7 @@ export default function StudyCenter() {
       {dueConcepts.length > 0 ? (
         <Card className="mb-8 gap-4 border-accent/25 bg-accent-soft">
           <View className="flex-row items-start gap-3">
-            <Feather name="target" size={18} color="#B4552D" style={{ marginTop: 2 }} />
+            <Icon name="target" size={18} color="#B4552D" style={{ marginTop: 2 }} />
             <View className="flex-1 gap-1">
               <Text className="text-[15px] font-semibold text-ink">
                 {dueConcepts.length} concept{dueConcepts.length === 1 ? '' : 's'} due for review
@@ -484,7 +484,7 @@ export default function StudyCenter() {
                   className="h-10 w-10 items-center justify-center rounded-xl"
                   style={{ backgroundColor: `${candidate.color || '#B4552D'}1A` }}
                 >
-                  <Feather name="book-open" size={16} color={candidate.color || '#B4552D'} />
+                  <Icon name="book-open" size={16} color={candidate.color || '#B4552D'} />
                 </View>
 
                 <View className="flex-1 gap-1">
@@ -496,7 +496,7 @@ export default function StudyCenter() {
                   </Text>
                 </View>
 
-                <Feather name="chevron-right" size={16} color="#9A9488" />
+                <Icon name="chevron-right" size={16} color="#9A9488" />
               </Pressable>
             );
           })}
@@ -509,12 +509,12 @@ export default function StudyCenter() {
 /** One of the study modes, as a tile that links to its own screen. */
 function ModeCard({
   href,
-  emoji,
+  icon,
   title,
   body,
 }: {
   href: string;
-  emoji: string;
+  icon: React.ComponentProps<typeof Icon>['name'];
   title: string;
   body: string;
 }) {
@@ -526,7 +526,7 @@ function ModeCard({
           accessibilityLabel={title}
           className="h-full gap-2 rounded-2xl border border-line bg-surface p-4"
         >
-          <Text className="text-2xl">{emoji}</Text>
+          <Icon name={icon} size={22} color="#B4552D" />
           <Text className="text-[15px] font-semibold text-ink">{title}</Text>
           <Text className="text-[13px] leading-5 text-muted">{body}</Text>
         </Pressable>

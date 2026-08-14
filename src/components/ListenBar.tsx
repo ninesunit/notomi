@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import * as Speech from 'expo-speech';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { notesToSpeech, pickVoices } from '@/lib/speech';
 
 /**
@@ -137,7 +137,7 @@ export function ListenBar({ markdown }: { markdown: string }) {
           onPress={() => (playing ? stop() : start(index))}
           className="h-10 w-10 items-center justify-center rounded-full bg-ink"
         >
-          <Feather name={playing ? 'square' : 'play'} size={15} color="#F7F5EE" />
+          <Icon name={playing ? 'square' : 'play'} size={15} color="#F7F5EE" />
         </Pressable>
 
         <View className="flex-1 gap-1">

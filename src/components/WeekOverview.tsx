@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import {
   DAY_FULL,
   DAY_LABELS,
@@ -29,14 +29,11 @@ export function WeekOverview({
   routines = [],
   onSelect,
   onSelectRoutine,
-  /** Drops the room line, for the dashboard where space is tighter. */
-  dense = false,
 }: {
   classes: ResolvedClass[];
   routines?: RoutineBlock[];
   onSelect?: (block: ResolvedClass) => void;
   onSelectRoutine?: (block: RoutineBlock) => void;
-  dense?: boolean;
 }) {
   const today = todayIndex();
 
@@ -79,7 +76,6 @@ export function WeekOverview({
                 <ClassChip
                   key={block.id}
                   block={block}
-                  dense={dense}
                   onPress={onSelect ? () => onSelect(block) : undefined}
                 />
               ))}
@@ -101,21 +97,20 @@ export function WeekOverview({
 
 function ClassChip({
   block,
-  dense,
   onPress,
 }: {
   block: ResolvedClass;
-  dense: boolean;
   onPress?: () => void;
 }) {
   const name = block.subjectName || block.title;
+  const venue = block.venue?.trim() || 'Venue not set';
 
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : 'none'}
       accessibilityLabel={`${name}, ${DAY_FULL[block.day]} ${minutesToLabel(
         block.startMinute
-      )} to ${minutesToLabel(block.endMinute)}`}
+      )} to ${minutesToLabel(block.endMinute)}, ${venue}`}
       disabled={!onPress}
       onPress={
         onPress
@@ -143,15 +138,23 @@ function ClassChip({
         </Text>
       </View>
 
-      <Text className="text-[11px] leading-4 text-muted" numberOfLines={1}>
-        {block.code ? (
-          <Text className="font-bold" style={{ color: block.color }}>
-            {block.code}
-          </Text>
-        ) : null}
-        {block.code && (block.section || block.kind || (!dense && block.venue)) ? ' · ' : ''}
-        {[block.section, block.kind, dense ? null : block.venue].filter(Boolean).join(' · ')}
-      </Text>
+      {block.code || block.section || block.kind ? (
+        <Text className="text-[11px] leading-4 text-muted" numberOfLines={1}>
+          {block.code ? (
+            <Text className="font-bold" style={{ color: block.color }}>
+              {block.code}
+            </Text>
+          ) : null}
+          {block.code && (block.section || block.kind) ? ' · ' : ''}
+          {[block.section, block.kind].filter(Boolean).join(' · ')}
+        </Text>
+      ) : null}
+      <View className="mt-0.5 flex-row items-center gap-1.5">
+        <Icon name="map" size={11} color="#6F6A5F" />
+        <Text className="min-w-0 flex-1 text-[11px] leading-4 text-muted" numberOfLines={1}>
+          {venue}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -177,7 +180,7 @@ function RoutineChip({ block, onPress }: { block: RoutineBlock; onPress?: () => 
       className="flex-row items-center gap-2 rounded-lg border border-dashed px-2.5 py-1.5"
       style={{ borderColor: `${block.color}59`, backgroundColor: `${block.color}0F` }}
     >
-      <Text className="text-[11px]">{meta?.emoji ?? '📌'}</Text>
+      <Icon name={meta?.icon ?? 'circle'} size={12} color={block.color} />
       <Text className="flex-1 text-[12px] font-medium text-muted" numberOfLines={1}>
         {block.title}
       </Text>
@@ -227,7 +230,7 @@ export function NowLine({ classes }: { classes: ResolvedClass[] }) {
             ? `in ${away} min`
             : minutesToLabel(block.startMinute)}
       </Text>
-      <Feather name="chevron-right" size={14} color="#9A9488" />
+      <Icon name="chevron-right" size={14} color="#9A9488" />
     </View>
   );
 }

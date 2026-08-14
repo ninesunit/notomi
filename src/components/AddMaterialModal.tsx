@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Pressable, Text, View } from 'react-native';
+import { Icon } from '@/components/Icon';
 import { FileDropZone } from './FileDropZone';
 import { Sheet } from './Sheet';
 import { Button, Notice } from './ui';
@@ -12,6 +12,7 @@ import {
   processUploadedMaterial,
   stageLabel,
   STAGE_ORDER,
+  validateMaterialBatch,
   type IngestStage,
   type MaterialFile,
 } from '@/services/ingestion';
@@ -68,6 +69,7 @@ export function AddMaterialModal({
 
   const queue = useCallback((picked: MaterialFile[]) => {
     if (picked.length === 0) return;
+    validateMaterialBatch(picked);
     setFiles(
       picked.map((file) => {
         const kind = classify(file.name, file.mimeType ?? '');
@@ -94,11 +96,12 @@ export function AddMaterialModal({
   const choose = useCallback(async () => {
     setError(null);
     try {
-      queue(await pickMaterials());
+      const picked = await pickMaterials();
+      queue([...files.map((entry) => entry.file), ...picked]);
     } catch (caught) {
       setError(describeIngestError(caught));
     }
-  }, [queue]);
+  }, [queue, files]);
 
   const run = useCallback(async () => {
     setRunning(true);
@@ -161,14 +164,15 @@ export function AddMaterialModal({
             ) : (
               <>
                 <Button
-                  label="Change"
+                  label="Add more files"
+                  icon="plus"
                   variant="ghost"
                   size="sm"
                   disabled={running}
                   onPress={() => void choose()}
                 />
                 <Button
-                  label="Upload"
+                  label="Process & Upload All"
                   icon="upload"
                   size="sm"
                   loading={running}
@@ -197,7 +201,11 @@ export function AddMaterialModal({
       ) : (
         <View className="gap-3">
           {files.map((entry, index) => (
-            <FileRow key={`${entry.file.name}-${index}`} entry={entry} />
+            <FileRow
+              key={`${entry.file.name}-${index}`}
+              entry={entry}
+              onRemove={() => setFiles((current) => current.filter((_, item) => item !== index))}
+            />
           ))}
         </View>
       )}
@@ -205,7 +213,7 @@ export function AddMaterialModal({
   );
 }
 
-function FileRow({ entry }: { entry: FileState }) {
+function FileRow({ entry, onRemove }: { entry: FileState; onRemove: () => void }) {
   const stageIndex = entry.stage ? STAGE_ORDER.indexOf(entry.stage) : -1;
   const progress =
     entry.status === 'done' ? 1 : stageIndex >= 0 ? (stageIndex + 1) / (STAGE_ORDER.length + 1) : 0;
@@ -216,7 +224,7 @@ function FileRow({ entry }: { entry: FileState }) {
   return (
     <View className="gap-2 rounded-xl border border-line p-3.5">
       <View className="flex-row items-center gap-3">
-        <Feather
+        <Icon
           name={
             entry.status === 'done'
               ? 'check-circle'
@@ -240,6 +248,16 @@ function FileRow({ entry }: { entry: FileState }) {
           </Text>
         ) : entry.file.size ? (
           <Text className="text-xs text-subtle">{humanSize(entry.file.size)}</Text>
+        ) : null}
+        {entry.status === 'queued' ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${entry.file.name}`}
+            onPress={onRemove}
+            className="h-8 w-8 items-center justify-center rounded-lg"
+          >
+            <Icon name="x" size={14} color="#6F6A5F" />
+          </Pressable>
         ) : null}
       </View>
 

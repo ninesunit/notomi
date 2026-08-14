@@ -7,6 +7,7 @@ import {
   type ModelParams,
   type Part,
 } from 'firebase/ai';
+import { withAiResponseCache } from './aiCache';
 import { GEMINI_MODEL, getAiClient, isAppCheckEnabled } from '@/services/firebase';
 import type {
   AnswerGrade,
@@ -15,6 +16,7 @@ import type {
   ExtractedClass,
   ExtractedMetadata,
   GeneratedCard,
+  GeneratedReelCard,
   LectureRundown,
   OpenQuestion,
   PodcastLine,
@@ -26,9 +28,10 @@ import type {
  * Gemini's context window is well over a million tokens, so Notomi skips RAG
  * entirely: the whole corpus for a subject is pasted into the prompt. This cap
  * exists only to stay inside the window and keep latency sane on a phone.
- * ~4 chars per token, leaving generous headroom for the response.
+ * Roughly four characters per token; 3M characters leaves substantial room
+ * for system instructions, the rolling conversation, and model output.
  */
-export const MAX_CONTEXT_CHARS = 600_000;
+export const MAX_CONTEXT_CHARS = 3_000_000;
 
 export class AiError extends Error {
   constructor(
@@ -55,6 +58,7 @@ const REQUEST_TIMEOUT_MS = 120_000;
 const FALLBACK_MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite'] as const;
 const MODEL_POOL: readonly string[] = [GEMINI_MODEL, ...FALLBACK_MODELS];
 const ACTIVE_MODEL_KEY = 'notomi:active-ai-model';
+const MODEL_COOLDOWN_KEY = 'notomi:ai-model-cooldowns-v1';
 
 function rememberedModel(): string {
   if (typeof sessionStorage === 'undefined') return GEMINI_MODEL;
@@ -76,6 +80,51 @@ function rememberModel(modelName: string): void {
   } catch {
     /* Private browsing can reject storage; the in-memory fallback still works. */
   }
+}
+
+function modelCooldowns(): Record<string, number> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MODEL_COOLDOWN_KEY) ?? '{}') as Record<string, unknown>;
+    const now = Date.now();
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, number] => typeof entry[1] === 'number' && entry[1] > now
+      )
+    );
+  } catch {
+    return {};
+  }
+}
+
+function saveModelCooldowns(cooldowns: Record<string, number>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(MODEL_COOLDOWN_KEY, JSON.stringify(cooldowns));
+  } catch {
+    /* Private browsing can reject storage; this is only a quota guard. */
+  }
+}
+
+function retryDelayMs(error: unknown): number {
+  const raw = errorDetails(error).message;
+  const seconds =
+    /retryDelay(?:\\?"|\s|:)+(\d+)s/i.exec(raw)?.[1] ??
+    /try again in\s+(\d+(?:\.\d+)?)s/i.exec(raw)?.[1];
+  return Math.max(30_000, Math.min(10 * 60_000, Math.ceil(Number(seconds) || 60) * 1000));
+}
+
+function coolDownModel(modelName: string, error: unknown): void {
+  const cooldowns = modelCooldowns();
+  cooldowns[modelName] = Date.now() + retryDelayMs(error);
+  saveModelCooldowns(cooldowns);
+}
+
+function clearModelCooldown(modelName: string): void {
+  const cooldowns = modelCooldowns();
+  if (!(modelName in cooldowns)) return;
+  delete cooldowns[modelName];
+  saveModelCooldowns(cooldowns);
 }
 
 const isUnknownModel = (raw: string): boolean =>
@@ -172,13 +221,21 @@ async function runWithModelFallback<T>(
   params: Omit<ModelParams, 'model'>,
   run: (candidate: GenerativeModel) => Promise<T>
 ): Promise<T> {
-  const candidates = [...new Set([activeModel, ...MODEL_POOL])];
+  const cooldowns = modelCooldowns();
+  const completePool = [...new Set([activeModel, ...MODEL_POOL])];
+  const candidates = completePool.filter((candidate) => !cooldowns[candidate]);
+  if (candidates.length === 0) {
+    const retryAt = Math.min(...Object.values(cooldowns));
+    const seconds = Math.max(1, Math.ceil((retryAt - Date.now()) / 1000));
+    throw new AiError(`The free AI allowance is cooling down. Try again in ${seconds} seconds.`);
+  }
   let lastError: unknown;
 
   for (let index = 0; index < candidates.length; index += 1) {
     const candidate = candidates[index];
     try {
       const value = await run(modelFor(candidate, params));
+      clearModelCooldown(candidate);
       if (candidate !== activeModel) {
         console.info(`[ai] switched from ${activeModel} to ${candidate}.`);
         rememberModel(candidate);
@@ -187,6 +244,9 @@ async function runWithModelFallback<T>(
     } catch (error) {
       lastError = error;
       logAiFailure(operation, error, candidate);
+      if (errorDetails(error).httpStatus === 429 || /quota|RESOURCE_EXHAUSTED/i.test(errorDetails(error).message)) {
+        coolDownModel(candidate, error);
+      }
       if (!canTryAnotherModel(error) || index === candidates.length - 1) throw error;
       console.warn(`[ai] ${candidate} is unavailable; trying ${candidates[index + 1]}.`);
     }
@@ -302,10 +362,18 @@ export function buildContext(sources: { title: string; text: string }[]): string
 
 async function generate(params: Omit<ModelParams, 'model'>, prompt: string): Promise<string> {
   try {
-    const result = await runWithModelFallback('generateContent', params, (candidate) =>
-      candidate.generateContent(prompt)
+    return await withAiResponseCache(
+      {
+        namespace: 'text',
+        payload: JSON.stringify({ models: MODEL_POOL, params, prompt }),
+      },
+      async () => {
+        const result = await runWithModelFallback('generateContent', params, (candidate) =>
+          candidate.generateContent(prompt)
+        );
+        return result.response.text();
+      }
     );
-    return result.response.text();
   } catch (error) {
     throw new AiError(describe(error), error);
   }
@@ -381,6 +449,223 @@ export async function generateProse(prompt: string, temperature = 0.4): Promise<
 }
 
 /* ------------------------------------------------------------------ *
+ * Notomi Reel
+ * ------------------------------------------------------------------ */
+
+const reelCardSchema = Schema.array({
+  items: Schema.object({
+    properties: {
+      format: Schema.string({ description: 'fact, quiz, diagram, or audio' }),
+      category: Schema.string({ description: 'courses, tech, science, business, or general' }),
+      title: Schema.string(),
+      body: Schema.string(),
+      takeaway: Schema.string(),
+      points: Schema.array({ items: Schema.string() }),
+      question: Schema.string(),
+      options: Schema.array({ items: Schema.string() }),
+      correctAnswerIndex: Schema.number(),
+      explanation: Schema.string(),
+      sourceQuote: Schema.string(),
+      pageNumber: Schema.number(),
+    },
+    optionalProperties: [
+      'question',
+      'options',
+      'correctAnswerIndex',
+      'explanation',
+      'sourceQuote',
+      'pageNumber',
+    ],
+  }),
+});
+
+function normaliseReelCards(value: unknown): GeneratedReelCard[] {
+  if (!Array.isArray(value)) return [];
+  const formats = new Set(['fact', 'quiz', 'diagram', 'audio']);
+  const categories = new Set(['courses', 'tech', 'science', 'business', 'general']);
+
+  return value.flatMap((raw) => {
+    if (!raw || typeof raw !== 'object') return [];
+    const card = raw as Record<string, unknown>;
+    const title = typeof card.title === 'string' ? card.title.trim() : '';
+    const body = typeof card.body === 'string' ? card.body.trim() : '';
+    if (!title || !body) return [];
+
+    const format = formats.has(String(card.format))
+      ? (String(card.format) as GeneratedReelCard['format'])
+      : 'fact';
+    const options = Array.isArray(card.options)
+      ? card.options.filter((option): option is string => typeof option === 'string').slice(0, 4)
+      : [];
+    const answer = Number(card.correctAnswerIndex);
+
+    return [{
+      format,
+      category: categories.has(String(card.category))
+        ? (String(card.category) as GeneratedReelCard['category'])
+        : 'general',
+      title,
+      body,
+      takeaway: typeof card.takeaway === 'string' ? card.takeaway.trim() : body,
+      points: Array.isArray(card.points)
+        ? card.points.filter((point): point is string => typeof point === 'string').slice(0, 4)
+        : [],
+      question: format === 'quiz' && typeof card.question === 'string' ? card.question.trim() : null,
+      options: format === 'quiz' ? options : [],
+      correctAnswerIndex:
+        format === 'quiz' && Number.isInteger(answer) && answer >= 0 && answer < options.length
+          ? answer
+          : null,
+      explanation:
+        format === 'quiz' && typeof card.explanation === 'string'
+          ? card.explanation.trim()
+          : null,
+      sourceQuote: typeof card.sourceQuote === 'string' ? card.sourceQuote.trim() || null : null,
+      pageNumber:
+        typeof card.pageNumber === 'number' && card.pageNumber > 0
+          ? Math.round(card.pageNumber)
+          : null,
+    }];
+  });
+}
+
+export async function generateMaterialReelCards(input: {
+  subjectName: string;
+  courseCode: string | null;
+  documentTitle: string;
+  text: string;
+  count?: number;
+}): Promise<GeneratedReelCard[]> {
+  const count = Math.max(3, Math.min(8, input.count ?? 6));
+  const parsed = await generateJson<GeneratedReelCard[]>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: reelCardSchema,
+        temperature: 0.45,
+      },
+    },
+    `Turn this university material into ${count} standalone micro-learning cards for a vertical knowledge feed.
+
+COURSE: ${input.courseCode || input.subjectName}
+DOCUMENT: ${input.documentTitle}
+
+Rules:
+- Each card teaches exactly one atomic concept and can be understood in under 30 seconds.
+- Mix fact, quiz, diagram, and audio formats. "audio" is a 15-second spoken TL;DR script.
+- A fact card has one sharp core idea. A diagram card has 3-4 short ordered points that form a process or relationship.
+- A quiz has exactly four credible options, one correct zero-based index, and a short explanation.
+- "body" is concise plain text. "takeaway" is one memorable sentence.
+- "sourceQuote" must be an exact short quote copied from the source that supports the card.
+- The source may contain markers such as [Page 12]. Set pageNumber only when a marker proves it; otherwise omit it. Never invent a page.
+- Ignore lecturer contacts, administrative wording, and submission instructions.
+- No emojis and no markdown.
+
+SOURCE:
+${input.text.slice(0, MAX_CONTEXT_CHARS)}`,
+    (value): value is GeneratedReelCard[] => Array.isArray(value)
+  );
+
+  const cards = normaliseReelCards(parsed);
+  if (cards.length === 0) throw new AiError('No usable Reel cards came back from this material.');
+  return cards;
+}
+
+export async function generateDiscoveryReelCards(input: {
+  courseCodes: string[];
+  category: 'all' | 'courses' | 'tech' | 'science' | 'business' | 'general';
+  count?: number;
+}): Promise<GeneratedReelCard[]> {
+  const count = Math.max(4, Math.min(8, input.count ?? 6));
+  const focus =
+    input.category === 'courses'
+      ? `the university courses ${input.courseCodes.join(', ') || 'the student is currently taking'}`
+      : input.category === 'tech'
+        ? 'technology and artificial intelligence'
+        : input.category === 'science'
+          ? 'general science'
+          : input.category === 'business'
+            ? 'business and finance'
+            : input.category === 'general'
+              ? 'high-value general academic knowledge'
+              : `a balanced mix of ${input.courseCodes.join(', ') || 'university study'}, technology, science, and business`;
+
+  const parsed = await generateJson<GeneratedReelCard[]>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: reelCardSchema,
+        temperature: 0.75,
+      },
+    },
+    `Generate ${count} accurate discovery micro-learning cards about ${focus}.
+
+Rules:
+- Mix fact, quiz, diagram, and audio formats.
+- Each card teaches one useful concept in under 30 seconds.
+- Course supplements should teach foundational concepts plausibly relevant to the listed course codes, but never claim they came from the student's files.
+- Quiz cards have exactly four plausible options and one correct zero-based index.
+- Keep "sourceQuote" empty and omit pageNumber because these are discovery cards.
+- Use category courses, tech, science, business, or general accurately.
+- No time-sensitive claims, citations, raw URLs, emojis, or markdown.
+- Return fresh concepts rather than minor rewordings of one idea.`,
+    (value): value is GeneratedReelCard[] => Array.isArray(value)
+  );
+
+  const cards = normaliseReelCards(parsed).map((card) => ({
+    ...card,
+    sourceQuote: null,
+    pageNumber: null,
+  }));
+  if (cards.length === 0) throw new AiError('No discovery cards could be generated just now.');
+  return cards;
+}
+
+export async function streamReelElaboration(
+  input: { title: string; body: string; takeaway: string; sourceContext?: string | null },
+  onText: (completeText: string) => void
+): Promise<string> {
+  const prompt = `Break down this micro-learning card for a university student.
+
+Use exactly these Markdown headings:
+## Plain-English Summary
+## Practical Example
+## Memory Hook
+
+Keep each section concise, grounded in the supplied source context when present, and do not use emojis. Never invent a citation or page number.
+
+CARD: ${input.title}
+${input.body}
+TAKEAWAY: ${input.takeaway}
+  ${input.sourceContext ? `SOURCE CONTEXT:\n${input.sourceContext.slice(0, 12_000)}` : ''}`;
+
+  try {
+    const complete = await withAiResponseCache(
+      {
+        namespace: 'reel-elaboration',
+        payload: JSON.stringify({ models: MODEL_POOL, prompt }),
+        ttlMs: 30 * 24 * 60 * 60 * 1000,
+      },
+      () =>
+        runWithModelFallback('reel elaboration', {}, async (candidate) => {
+          const result = await candidate.generateContentStream(prompt);
+          let streamed = '';
+          for await (const chunk of result.stream) {
+            streamed += chunk.text();
+            onText(streamed);
+          }
+          return streamed.trim();
+        })
+    );
+    // A cached response has no stream chunks, so still update the drawer once.
+    onText(complete);
+    return complete;
+  } catch (error) {
+    throw new AiError(describe(error), error);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Multimodal input
  * ------------------------------------------------------------------ */
 
@@ -405,16 +690,26 @@ async function generateFromMedia(
   generationConfig: Record<string, unknown> = {}
 ): Promise<string> {
   try {
-    const result = await runWithModelFallback(
-      'generateFromMedia',
-      { generationConfig: { temperature: 0.1, ...generationConfig } },
-      (candidate) =>
-        candidate.generateContent([
-          { inlineData: { data: toBase64(data), mimeType } },
-          { text: prompt },
-        ])
+    return await withAiResponseCache(
+      {
+        namespace: 'media',
+        payload: JSON.stringify({ models: MODEL_POOL, mimeType, generationConfig, prompt }),
+        bytes: data,
+        ttlMs: 30 * 24 * 60 * 60 * 1000,
+      },
+      async () => {
+        const result = await runWithModelFallback(
+          'generateFromMedia',
+          { generationConfig: { temperature: 0.1, ...generationConfig } },
+          (candidate) =>
+            candidate.generateContent([
+              { inlineData: { data: toBase64(data), mimeType } },
+              { text: prompt },
+            ])
+        );
+        return result.response.text();
+      }
     );
-    return result.response.text();
   } catch (error) {
     const raw = error instanceof Error ? error.message : String(error);
     if (/too large|payload|request entity/i.test(raw)) {
@@ -482,6 +777,10 @@ function todayContext(): string {
 
 const metadataSchema = Schema.object({
   properties: {
+    documentType: Schema.string({
+      description:
+        'Exactly one of TimetableSchedule, AcademicCalendar, SubjectMaterial, GeneralNote.',
+    }),
     moduleCode: Schema.string({
       description: 'Course/module code such as "CS3243". Empty string if absent.',
     }),
@@ -543,6 +842,11 @@ export async function extractMetadata(text: string): Promise<ExtractedMetadata> 
 ${todayContext()}
 
 Rules:
+- "documentType": classify the complete file as exactly one of:
+  "TimetableSchedule" for weekly class grids or schedules;
+  "AcademicCalendar" for institution term dates, study leave or examination windows;
+  "SubjectMaterial" for syllabuses, course outlines, lecture slides and subject notes;
+  "GeneralNote" for useful notes that do not belong to a named course.
 - "moduleCode": the official course code if one appears (e.g. "MA1521"), else "".
 - "subjectName": the subject/course this belongs to, in title case. Never empty — infer it from the content if it is not stated.
 - "summary": 2-4 sentences on what this document actually teaches. Describe the content, not the document type.
@@ -567,6 +871,7 @@ ${text.slice(0, MAX_CONTEXT_CHARS)}`,
   );
 
   return {
+    documentType: normaliseDocumentType(parsed.documentType),
     moduleCode: parsed.moduleCode?.trim() || null,
     subjectName: parsed.subjectName?.trim() || null,
     summary: parsed.summary?.trim() || null,
@@ -648,10 +953,19 @@ export async function askSources(
   ];
 
   try {
-    const result = await runWithModelFallback('askSources', params, (candidate) =>
-      candidate.generateContent({ contents })
+    return await withAiResponseCache(
+      {
+        namespace: 'reader-question',
+        payload: JSON.stringify({ models: MODEL_POOL, params, contents }),
+        ttlMs: 30 * 24 * 60 * 60 * 1000,
+      },
+      async () => {
+        const result = await runWithModelFallback('askSources', params, (candidate) =>
+          candidate.generateContent({ contents })
+        );
+        return result.response.text();
+      }
     );
-    return result.response.text();
   } catch (error) {
     throw new AiError(describe(error), error);
   }
@@ -726,11 +1040,14 @@ const quizSchema = Schema.array({
 
 export async function generateQuiz(
   context: string,
-  options: { count?: number; focusConcepts?: string[] } = {}
+  options: { count?: number; focusConcepts?: string[]; battle?: boolean } = {}
 ): Promise<QuizQuestion[]> {
   const count = options.count ?? 10;
   const focus = options.focusConcepts?.length
     ? `\n\nThe student previously got these concepts wrong. Weight at least half the questions toward them, approaching each from a different angle than a simple recall check:\n${options.focusConcepts.map((c) => `- ${c}`).join('\n')}`
+    : '';
+  const battle = options.battle
+    ? '\n- Use a standardized university quiz-battle difficulty: direct wording, one inferential step at most, and no question that depends on remembering an isolated number. This profile must stay comparable across unrelated courses.'
     : '';
 
   const parsed = await generateJson<QuizQuestion[]>(
@@ -759,7 +1076,7 @@ Rules:
 - Never test document formatting, page numbers, or administrative trivia such as
   the lecturer's email.
 - If the text is too thin to support ${count} good questions, return fewer rather
-  than padding with weak ones.${focus}
+  than padding with weak ones.${battle}${focus}
 
 TEXT:
 ${context}`,
@@ -779,6 +1096,98 @@ ${context}`,
 
   if (valid.length === 0) throw new AiError('No usable questions came back from this material.');
   return valid.map((q) => ({ ...q, explanation: q.explanation || '' }));
+}
+
+export async function generateBattleCommentary(input: {
+  round: number;
+  players: { name: string; score: number; streak: number; correct: boolean | null }[];
+}): Promise<string> {
+  return (
+    await generateProse(
+      `You are the live host of a university quiz battle. Write one energetic sentence about the round below. Use player names and scores, stay respectful, do not reveal an answer, and do not use emojis.\n\n${JSON.stringify(input)}`,
+      0.7
+    )
+  )
+    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
+    .trim();
+}
+
+const sprintPlanSchema = Schema.array({
+  items: Schema.object({
+    properties: {
+      title: Schema.string(),
+      detail: Schema.string(),
+      assigneeId: Schema.string(),
+      estimatedHours: Schema.number(),
+    },
+  }),
+});
+
+export type GeneratedSprintTask = {
+  title: string;
+  detail: string;
+  assigneeId: string;
+  estimatedHours: number;
+};
+
+export async function generateSprintPlan(input: {
+  guidelines: string;
+  members: { id: string; name: string; freeHours: number }[];
+}): Promise<GeneratedSprintTask[]> {
+  const result = await generateJson<GeneratedSprintTask[]>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: sprintPlanSchema,
+        temperature: 0.2,
+      },
+    },
+    `Split these group-project guidelines into 5-12 concrete, equally demanding sub-milestones.
+Assign every task to one supplied member id. Balance total estimated hours first, then prefer members with more freeHours. Include research, drafting, integration, checking, and submission where supported. Do not invent deliverables. Every task needs a self-contained title and actionable detail.
+
+MEMBERS:
+${JSON.stringify(input.members)}
+
+GUIDELINES:
+${input.guidelines.slice(0, MAX_CONTEXT_CHARS)}`,
+    (value): value is GeneratedSprintTask[] => Array.isArray(value)
+  );
+
+  const memberIds = new Set(input.members.map((member) => member.id));
+  return result
+    .filter((task) => task?.title?.trim() && memberIds.has(task.assigneeId))
+    .map((task) => ({
+      title: task.title.trim(),
+      detail: task.detail?.trim() || '',
+      assigneeId: task.assigneeId,
+      estimatedHours: Math.max(0.5, Math.min(40, Number(task.estimatedHours) || 1)),
+    }));
+}
+
+export async function generateChatStudyGuide(input: {
+  subjectName: string;
+  sourceSummary: string;
+  messages: ChatTurn[];
+}): Promise<string> {
+  return (
+    await generateProse(
+      `Create a concise two-page study guide in clean GitHub-flavoured Markdown from this grounded Reader conversation.
+Use this exact structure: title, Core Ideas, Important Details, Worked Reasoning, Common Mistakes, and Self-Test.
+Do not add facts that are absent from the source summary or conversation. Do not use emojis. Return Markdown only.
+
+SUBJECT: ${input.subjectName}
+
+SOURCE SUMMARY:
+${input.sourceSummary.slice(0, 120_000)}
+
+LAST CONVERSATION TURNS:
+${input.messages
+  .slice(-20)
+  .map((message) => `${message.role === 'user' ? 'Student' : 'Notomi'}: ${message.text}`)
+  .join('\n\n')}`,
+      0.25
+    )
+  ).trim();
 }
 
 /* ------------------------------------------------------------------ *
@@ -840,6 +1249,11 @@ IDENTITY
   three or more digits, such as CS2040, CPT6123, LDCW6123, LMPU3312 or MA1101R.
   Take every character exactly as printed. Look closely at the left edge and
   never drop leading letters from a code.
+- Some registrar printouts visually split the alphabetic prefix into adjacent
+  chunks before the digits. Join every adjacent letter chunk that belongs to
+  the heading before returning the code: "C PT6123" is CPT6123, "LD CW6123"
+  is LDCW6123 and "LM PU3312" is LMPU3312. This is a general typography rule,
+  not an institution-specific course list.
 - "section" is the section or session identifier printed beside the code, such
   as TC1L, TC2L, TL1L, TL2L, G1, L2, S3. It has one or two digits. It is NOT
   part of the code.
@@ -960,6 +1374,7 @@ export async function extractMetadataFromMedia(
 ${todayContext()}
 
 - moduleCode: the official course code, or empty.
+- documentType: exactly TimetableSchedule, AcademicCalendar, SubjectMaterial or GeneralNote.
 - subjectName: the course name in title case; infer it when necessary.
 - summary: 2-4 sentences describing what the material teaches.
 - deadlines: every dated assessment, assignment, examination, laboratory,
@@ -977,6 +1392,7 @@ ${todayContext()}
   if (!isMetadata(parsed)) throw new AiError('The document metadata could not be read.');
 
   return {
+    documentType: normaliseDocumentType(parsed.documentType),
     moduleCode: parsed.moduleCode?.trim() || null,
     subjectName: parsed.subjectName?.trim() || null,
     summary: parsed.summary?.trim() || null,
@@ -1004,6 +1420,17 @@ ${todayContext()}
           }))
       : [],
   };
+}
+
+function normaliseDocumentType(
+  value: unknown
+): ExtractedMetadata['documentType'] {
+  return value === 'TimetableSchedule' ||
+    value === 'AcademicCalendar' ||
+    value === 'SubjectMaterial' ||
+    value === 'GeneralNote'
+    ? value
+    : 'SubjectMaterial';
 }
 
 /* ------------------------------------------------------------------ *
@@ -1041,15 +1468,7 @@ function isoOrNull(value: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
 }
 
-/** Reads any institution's official term calendar; names and branding are ignored. */
-export async function extractAcademicCalendar(
-  data: ArrayBuffer,
-  mimeType: string
-): Promise<ExtractedAcademicTerm[]> {
-  const raw = await generateFromMedia(
-    data,
-    mimeType,
-    `This is an official academic calendar. Extract every teaching term shown.
+const ACADEMIC_CALENDAR_PROMPT = `This is an official academic calendar. Extract every teaching term shown.
 
 This must work across universities, colleges and training providers. Do not
 assume semesters, trimesters, quarters, 14-week terms or any institution name.
@@ -1065,13 +1484,9 @@ Use the document's own dates and labels.
 - "endDate" is the latest boundary belonging to that term: exam end, or term
   break end when the calendar explicitly includes that break.
 - Expand every date to ISO YYYY-MM-DD. Resolve cross-year ranges correctly.
-- Return all terms in chronological order. Ignore branding and disclaimers.`,
-    {
-      responseMimeType: 'application/json',
-      responseSchema: academicCalendarSchema,
-    }
-  );
+- Return all terms in chronological order. Ignore branding and disclaimers.`;
 
+function normaliseAcademicCalendar(raw: string): ExtractedAcademicTerm[] {
   const parsed = parseJson<ExtractedAcademicTerm[]>(raw);
   if (!Array.isArray(parsed)) throw new AiError('No academic terms could be read from that file.');
 
@@ -1090,6 +1505,40 @@ Use the document's own dates and labels.
     }))
     .filter((term) => term.name && term.startDate && term.teachingEndDate && term.endDate)
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
+}
+
+/** Reads any institution's official term calendar; names and branding are ignored. */
+export async function extractAcademicCalendar(
+  data: ArrayBuffer,
+  mimeType: string
+): Promise<ExtractedAcademicTerm[]> {
+  const raw = await generateFromMedia(
+    data,
+    mimeType,
+    ACADEMIC_CALENDAR_PROMPT,
+    {
+      responseMimeType: 'application/json',
+      responseSchema: academicCalendarSchema,
+    }
+  );
+  return normaliseAcademicCalendar(raw);
+}
+
+/** Fast path for selectable-text PDFs after local PDF.js extraction. */
+export async function extractAcademicCalendarFromText(
+  text: string
+): Promise<ExtractedAcademicTerm[]> {
+  const raw = await generate(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: academicCalendarSchema,
+        temperature: 0.1,
+      },
+    },
+    `${ACADEMIC_CALENDAR_PROMPT}\n\nEXTRACTED DOCUMENT TEXT:\n${text.slice(0, MAX_CONTEXT_CHARS)}`
+  );
+  return normaliseAcademicCalendar(raw);
 }
 
 const revisionPlanSchema = Schema.array({

@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { useIngest } from '@/hooks/useIngest';
 
 const TONE = {
@@ -21,7 +21,7 @@ export function IngestBanner() {
 
   return (
     <View className={`shrink-0 flex-row gap-3 border-b border-line px-5 py-3.5 md:px-10 ${tone.surface}`}>
-      <Feather name={tone.icon} size={16} color={tone.color} style={{ marginTop: 2 }} />
+      <Icon name={tone.icon} size={16} color={tone.color} style={{ marginTop: 2 }} />
 
       <View className="flex-1 gap-1">
         <Text className={`text-sm font-semibold ${tone.text}`}>{summary.title}</Text>
@@ -36,7 +36,7 @@ export function IngestBanner() {
         onPress={dismiss}
         className="h-6 w-6 items-center justify-center rounded"
       >
-        <Feather name="x" size={14} color={tone.color} />
+        <Icon name="x" size={14} color={tone.color} />
       </Pressable>
     </View>
   );

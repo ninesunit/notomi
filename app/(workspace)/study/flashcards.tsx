@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Link, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { getDocs, orderBy, query } from 'firebase/firestore';
 import { FlipCard } from '@/components/FlipCard';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -167,11 +167,7 @@ export default function Flashcards() {
                   className="h-10 w-10 items-center justify-center rounded-xl"
                   style={{ backgroundColor: `${candidate.color}1A` }}
                 >
-                  {candidate.emoji ? (
-                    <Text className="text-lg">{candidate.emoji}</Text>
-                  ) : (
-                    <Feather name="layers" size={16} color={candidate.color} />
-                  )}
+                  <Icon name="layers" size={16} color={candidate.color} />
                 </View>
                 <View className="flex-1 gap-1">
                   <Text className="text-[15px] font-semibold text-ink">{candidate.name}</Text>
@@ -180,7 +176,7 @@ export default function Flashcards() {
                     {(candidate.documentCount ?? 0) === 1 ? 'source' : 'sources'}
                   </Text>
                 </View>
-                <Feather name="chevron-right" size={16} color="#9A9488" />
+                <Icon name="chevron-right" size={16} color="#9A9488" />
               </Pressable>
             ))}
           </View>
@@ -276,7 +272,7 @@ export default function Flashcards() {
               onPress={() => setDeck([])}
               className="h-9 w-9 items-center justify-center rounded-lg bg-sand"
             >
-              <Feather name="x" size={15} color="#6F6A5F" />
+              <Icon name="x" size={15} color="#6F6A5F" />
             </Pressable>
             <View className="flex-1 gap-1.5">
               <Text className="text-xs font-medium text-muted">
@@ -325,7 +321,7 @@ export default function Flashcards() {
         </View>
       ) : finished ? (
         <Card className="items-center gap-4 py-10">
-          <Text className="text-4xl">🎉</Text>
+          <Icon name="check-circle" size={36} color="#2E6F5E" />
           <Text className="text-lg font-semibold text-ink">Deck complete</Text>
           <Text className="max-w-sm text-center text-sm leading-6 text-muted">
             You went through {reviewed} card{reviewed === 1 ? '' : 's'}. {stats.review} card
@@ -408,10 +404,10 @@ export default function Flashcards() {
 
 function BackLink() {
   return (
-    <Link href="/study" asChild>
+    <Link href="/knowledge" asChild>
       <Pressable className="mb-5 flex-row items-center gap-1.5 self-start py-1">
-        <Feather name="chevron-left" size={15} color="#6F6A5F" />
-        <Text className="text-sm font-medium text-muted">Study Center</Text>
+        <Icon name="arrow-left" size={15} color="#6F6A5F" />
+        <Text className="text-sm font-medium text-muted">Back to Knowledge</Text>
       </Pressable>
     </Link>
   );

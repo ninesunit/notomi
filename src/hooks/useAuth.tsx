@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 import {
+  browserLocalPersistence,
   createUserWithEmailAndPassword,
+  deleteUser,
   getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
@@ -9,12 +11,14 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
+  setPersistence,
   signOut,
   updateProfile,
   type User,
 } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getDb, getFirebaseAuth, isFirebaseConfigured } from '@/services/firebase';
+import { deleteGuestWorkspace } from '@/services/guestCleanup';
 
 type AuthValue = {
   user: User | null;
@@ -27,6 +31,24 @@ type AuthValue = {
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
+
+function isClosingDatabaseError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /database is closing\/hidden|indexeddb.*(?:closing|closed)|transaction.*inactive/i.test(
+    message
+  );
+}
+
+/** Retry once without IndexedDB when iPadOS restores a stale Auth database. */
+async function withPersistenceRecovery<T>(action: () => Promise<T>): Promise<T> {
+  try {
+    return await action();
+  } catch (error) {
+    if (Platform.OS !== 'web' || !isClosingDatabaseError(error)) throw error;
+    await setPersistence(getFirebaseAuth(), browserLocalPersistence);
+    return action();
+  }
+}
 
 /** Maps Firebase's error codes onto something a student can act on. */
 export function authErrorMessage(error: unknown): string {
@@ -110,13 +132,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       initializing,
       signIn: async (email, password) => {
-        await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
+        await withPersistenceRecovery(() =>
+          signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password)
+        );
       },
       signUp: async (email, password, displayName) => {
-        const credential = await createUserWithEmailAndPassword(
-          getFirebaseAuth(),
-          email.trim(),
-          password
+        const credential = await withPersistenceRecovery(() =>
+          createUserWithEmailAndPassword(getFirebaseAuth(), email.trim(), password)
         );
         const name = displayName.trim();
         if (name) await updateProfile(credential.user, { displayName: name });
@@ -136,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-          await signInWithPopup(auth, provider);
+          await withPersistenceRecovery(() => signInWithPopup(auth, provider));
         } catch (error) {
           const code = (error as { code?: string }).code ?? '';
           // Popups are blocked outright in some in-app browsers and iOS
@@ -149,10 +171,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
       continueAsGuest: async () => {
-        await signInAnonymously(getFirebaseAuth());
+        await withPersistenceRecovery(() => signInAnonymously(getFirebaseAuth()));
       },
       logOut: async () => {
-        await signOut(getFirebaseAuth());
+        const auth = getFirebaseAuth();
+        const current = auth.currentUser;
+        if (current?.isAnonymous) {
+          try {
+            await deleteGuestWorkspace(current.uid);
+            await deleteUser(current);
+          } catch (error) {
+            console.error('[auth] Temporary guest cleanup failed; keeping the session signed in.', error);
+            throw new Error(
+              'Your temporary data could not be deleted, so Notomi kept you signed in. Check your connection and try again.'
+            );
+          }
+          return;
+        }
+        await signOut(auth);
       },
     }),
     [user, initializing]

@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import type { Subject } from '@/lib/schema';
 import { FadeIn } from './motion';
 
@@ -15,9 +15,11 @@ import { FadeIn } from './motion';
 export function SubjectCard({
   subject,
   onEdit,
+  href,
 }: {
   subject: Subject;
   onEdit?: () => void;
+  href?: string;
 }) {
   const count = subject.documentCount ?? 0;
   const color = subject.color || '#B4552D';
@@ -37,7 +39,7 @@ export function SubjectCard({
     >
       <View className="h-1.5 w-full" style={{ backgroundColor: color }} />
 
-      <Link href={`/library/${subject.id}`} asChild>
+      <Link href={href ?? `/library/${subject.id}`} asChild>
         <Pressable
           accessibilityRole="link"
           accessibilityLabel={`Open ${subject.name}`}
@@ -48,17 +50,13 @@ export function SubjectCard({
               className="h-11 w-11 items-center justify-center rounded-xl"
               style={{ backgroundColor: `${color}24` }}
             >
-              {subject.emoji ? (
-                <Text className="text-xl">{subject.emoji}</Text>
-              ) : (
-                <Feather name="book" size={18} color={color} />
-              )}
+              <Icon name="book-open" size={18} color={color} />
             </View>
 
             {/* Space reserved for the overlaid menu button so the arrow never
                 sits underneath it. */}
             <View className="flex-row items-center gap-1" style={{ paddingRight: onEdit ? 30 : 0 }}>
-              <Feather name="arrow-up-right" size={16} color="#9A9488" />
+              <Icon name="arrow-up-right" size={16} color="#9A9488" />
             </View>
           </View>
 
@@ -79,7 +77,7 @@ export function SubjectCard({
 
           <View className="flex-row flex-wrap items-center gap-2">
             <View className="flex-row items-center gap-1.5">
-              <Feather name="file-text" size={13} color="#9A9488" />
+              <Icon name="file-text" size={13} color="#9A9488" />
               <Text className="text-[13px] text-muted">
                 {count} {count === 1 ? 'source' : 'sources'}
               </Text>
@@ -113,7 +111,7 @@ export function SubjectCard({
           onPress={onEdit}
           className="absolute right-3.5 top-6 h-8 w-8 items-center justify-center rounded-lg"
         >
-          <Feather name="more-horizontal" size={16} color="#6F6A5F" />
+          <Icon name="more-horizontal" size={16} color="#6F6A5F" />
         </Pressable>
       ) : null}
     </View>

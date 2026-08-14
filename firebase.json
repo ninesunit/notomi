@@ -61,7 +61,7 @@
         ]
       },
       {
-        "source": "/@(login|calendar|capture|focus|friends|library|program|reader|settings|study|timetable|todos){,/**}",
+        "source": "/@(login|today|dashboard|schedule|tasks|knowledge|reel|profile|academics|studio|social|calendar|capture|focus|friends|library|program|reader|settings|study|timetable|todos){,/**}",
         "headers": [
           {
             "key": "Cache-Control",

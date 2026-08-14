@@ -1,51 +1,68 @@
-import type { IconName } from './ui';
+import type { IconName } from './Icon';
 
 export type NavItem = {
   href: string;
   label: string;
   shortLabel: string;
   icon: IconName;
+  legacyPaths?: string[];
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Dashboard', shortLabel: 'Home', icon: 'home' },
-  { href: '/timetable', label: 'Timetable', shortLabel: 'Classes', icon: 'grid' },
-  { href: '/library', label: 'Library', shortLabel: 'Library', icon: 'folder' },
-  { href: '/program', label: 'Program structure', shortLabel: 'Program', icon: 'layers' },
-  { href: '/todos', label: 'Tasks', shortLabel: 'Tasks', icon: 'check-square' },
-  { href: '/calendar', label: 'Calendar', shortLabel: 'Calendar', icon: 'calendar' },
-  { href: '/study', label: 'Study Center', shortLabel: 'Study', icon: 'zap' },
-  { href: '/focus', label: 'Focus', shortLabel: 'Focus', icon: 'target' },
-  { href: '/capture', label: 'Capture', shortLabel: 'Capture', icon: 'camera' },
-  { href: '/friends', label: 'Friends', shortLabel: 'Friends', icon: 'users' },
-  { href: '/settings', label: 'Settings', shortLabel: 'Settings', icon: 'settings' },
-];
-
-/**
- * The drawer groups rather than lists.
- *
- * Nine flat rows read as a wall; split into what a student is doing right now
- * versus what they study with, each group is scannable in one glance. Settings
- * is deliberately absent — it lives beside the profile at the foot of the
- * drawer, which is where people look for it.
- */
-export const DRAWER_SECTIONS: { title: string; items: NavItem[] }[] = [
   {
-    title: 'Study',
-    items: NAV_ITEMS.filter((item) =>
-      ['/', '/timetable', '/library', '/program', '/todos', '/calendar'].includes(item.href)
-    ),
+    href: '/dashboard',
+    label: 'Dashboard',
+    shortLabel: 'Dashboard',
+    icon: 'layout-dashboard',
+    legacyPaths: ['/', '/today'],
   },
   {
-    title: 'Tools',
-    items: NAV_ITEMS.filter((item) =>
-      ['/study', '/focus', '/capture', '/friends'].includes(item.href)
-    ),
+    href: '/knowledge',
+    label: 'Knowledge',
+    shortLabel: 'Knowledge',
+    icon: 'book-open',
+    legacyPaths: ['/library', '/reader', '/study'],
+  },
+  {
+    href: '/schedule',
+    label: 'Schedule & Calendar',
+    shortLabel: 'Schedule',
+    icon: 'calendar',
+    legacyPaths: ['/academics', '/timetable', '/calendar', '/program'],
+  },
+  {
+    href: '/tasks',
+    label: 'Tasks & Focus',
+    shortLabel: 'Tasks',
+    icon: 'check-square',
+    legacyPaths: ['/studio', '/todos', '/focus', '/capture'],
+  },
+  {
+    href: '/reel',
+    label: 'Notomi Reel',
+    shortLabel: 'Reel',
+    icon: 'film',
+  },
+  {
+    href: '/social',
+    label: 'Arena & Social',
+    shortLabel: 'Social',
+    icon: 'users',
+    legacyPaths: ['/friends'],
   },
 ];
 
-/** `/` only matches exactly; everything else matches its subtree. */
-export function isActive(pathname: string, href: string): boolean {
-  if (href === '/') return pathname === '/';
-  return pathname === href || pathname.startsWith(`${href}/`);
+export const SETTINGS_ITEM: NavItem = {
+  href: '/settings',
+  label: 'Settings',
+  shortLabel: 'Settings',
+  icon: 'settings',
+};
+
+export const DRAWER_SECTIONS = [{ title: 'Workspace', items: NAV_ITEMS }];
+
+export function isActive(pathname: string, href: string, legacyPaths: string[] = []): boolean {
+  const matches = (path: string) =>
+    path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`);
+  return matches(href) || legacyPaths.some(matches);
 }

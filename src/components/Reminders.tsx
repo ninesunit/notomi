@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { useReminders } from '@/hooks/useReminders';
 import { feedback } from '@/lib/sound';
 import { describeWhen, LEAD_OPTIONS, notify } from '@/services/reminders';
@@ -43,7 +43,7 @@ export function RemindersCard() {
     <Card className="mb-8 gap-4">
       <View className="flex-row items-center gap-3">
         <View className="h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
-          <Feather name="bell" size={16} color="#B4552D" />
+          <Icon name="bell" size={16} color="#B4552D" />
         </View>
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Reminders</Text>
@@ -64,7 +64,7 @@ export function RemindersCard() {
             }}
             className="h-9 w-9 items-center justify-center rounded-lg bg-sand"
           >
-            <Feather name={settings ? 'x' : 'settings'} size={15} color="#6F6A5F" />
+            <Icon name={settings ? 'x' : 'settings'} size={15} color="#6F6A5F" />
           </Pressable>
         ) : null}
       </View>
@@ -110,7 +110,7 @@ export function RemindersCard() {
               {next.map((reminder, index) => (
                 <FadeIn key={reminder.id} index={index}>
                   <View className="flex-row items-center gap-3 rounded-xl bg-paper px-3.5 py-3">
-                    <Feather
+                    <Icon
                       name={
                         reminder.kind === 'deadline'
                           ? 'flag'
@@ -195,7 +195,7 @@ export function RemindersCard() {
                       }`}
                     >
                       {prefs[option.key] ? (
-                        <Feather name="check" size={11} color="#FFFFFF" />
+                        <Icon name="check" size={11} color="#FFFFFF" />
                       ) : null}
                     </View>
                     <View className="flex-1">

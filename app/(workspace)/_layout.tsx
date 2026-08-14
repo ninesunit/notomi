@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Platform,
+  Pressable,
   useWindowDimensions,
   View,
   type ViewStyle,
 } from 'react-native';
 import { Slot, usePathname } from 'expo-router';
+import { getDocs } from 'firebase/firestore';
 import { Copilot } from '@/components/Copilot';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
@@ -16,6 +20,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { IngestProvider } from '@/hooks/useIngest';
 import { ReminderProvider } from '@/hooks/useReminders';
 import { UndoProvider } from '@/hooks/useUndo';
+import { useWorkspaceChrome, WorkspaceChromeProvider } from '@/hooks/useWorkspaceChrome';
+import { Icon } from '@/components/Icon';
+import { paths } from '@/lib/paths';
+import type { ClassBlock } from '@/lib/schema';
+import { getDb } from '@/services/firebase';
+import { canSharePresence, setPresence } from '@/services/social';
 
 /** Below this the rail becomes a swipeable drawer (iPhone portrait, split-view iPad). */
 export const RAIL_BREAKPOINT = 900;
@@ -54,14 +64,64 @@ const VIEWPORT =
  * surface colour is painted by an in-flow View that owns its own box.
  */
 export default function WorkspaceLayout() {
+  return (
+    <WorkspaceChromeProvider>
+      <WorkspaceShell />
+    </WorkspaceChromeProvider>
+  );
+}
+
+function WorkspaceShell() {
   const { width } = useWindowDimensions();
   const insets = useSafeArea();
   const { user } = useAuth();
+  const uid = user?.uid ?? '';
   const pathname = usePathname();
   const showRail = width >= RAIL_BREAKPOINT;
+  const chrome = useWorkspaceChrome();
+  const chromeProgress = useRef(new Animated.Value(chrome.hidden ? 0 : 1)).current;
 
   const [drawer, setDrawer] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [classBlocks, setClassBlocks] = useState<ClassBlock[]>([]);
+  const [sharePresence, setSharePresence] = useState(false);
+
+  useEffect(() => {
+    if (!uid) return;
+    let active = true;
+    void Promise.all([
+      canSharePresence(uid),
+      getDocs(paths.classes(getDb(), uid)),
+    ]).then(([allowed, snapshot]) => {
+      if (!active) return;
+      setSharePresence(allowed);
+      setClassBlocks(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as ClassBlock));
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [uid]);
+
+  useEffect(() => {
+    if (!uid || !sharePresence || pathname.startsWith('/tasks') || pathname.startsWith('/reel')) return;
+    const publishCurrentClass = () => {
+      const now = new Date();
+      const day = (now.getDay() + 6) % 7;
+      const minute = now.getHours() * 60 + now.getMinutes();
+      const activeClass = classBlocks.find(
+        (block) => block.day === day && block.startMinute <= minute && block.endMinute > minute
+      );
+      if (!activeClass) return;
+      void setPresence(uid, {
+        status: 'class',
+        subjectName: activeClass.subjectName || activeClass.title,
+        minutes: Math.max(2, activeClass.endMinute - minute),
+      }).catch(() => undefined);
+    };
+    publishCurrentClass();
+    const timer = setInterval(publishCurrentClass, 60_000);
+    return () => clearInterval(timer);
+  }, [uid, sharePresence, classBlocks, pathname]);
 
   /**
    * Navigating closes the drawer.
@@ -77,6 +137,17 @@ export default function WorkspaceLayout() {
   useEffect(() => {
     if (showRail) setDrawer(false);
   }, [showRail]);
+
+  useEffect(() => {
+    const animation = Animated.timing(chromeProgress, {
+      toValue: chrome.hidden ? 0 : 1,
+      duration: chrome.hidden ? 190 : 240,
+      easing: chrome.hidden ? Easing.in(Easing.cubic) : Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [chrome.hidden, chromeProgress]);
 
   // Belt-and-braces against a deep link rendering a screen that calls useUid()
   // before the gate in app/_layout.tsx has settled.
@@ -96,10 +167,24 @@ export default function WorkspaceLayout() {
               its own background fills the notch area, rather than leaving a
               bare strip of paper above a floating bar. */}
           <View
-            className={`w-full h-full bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}
+            className={`relative w-full h-full bg-paper ${showRail ? 'flex-row' : 'flex-col'}`}
             style={VIEWPORT}
           >
-            {showRail ? <Sidebar onAsk={() => setAsking(true)} /> : null}
+            {showRail ? (
+              <Animated.View
+                pointerEvents={chrome.hidden ? 'none' : 'auto'}
+                accessibilityElementsHidden={chrome.hidden}
+                importantForAccessibility={chrome.hidden ? 'no-hide-descendants' : 'auto'}
+                style={{
+                  width: chromeProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 256] }),
+                  height: '100%',
+                  opacity: chromeProgress,
+                  overflow: 'hidden',
+                }}
+              >
+                <Sidebar onAsk={() => setAsking(true)} onCollapse={() => chrome.setHidden(true)} />
+              </Animated.View>
+            ) : null}
 
             <View
               className={`flex-1 min-w-0 h-full bg-paper ${
@@ -108,7 +193,22 @@ export default function WorkspaceLayout() {
               style={showRail ? { paddingRight: insets.right } : undefined}
             >
               {showRail ? null : (
-                <MobileTopBar onMenu={() => setDrawer(true)} onAsk={() => setAsking(true)} />
+                <Animated.View
+                  pointerEvents={chrome.hidden ? 'none' : 'auto'}
+                  accessibilityElementsHidden={chrome.hidden}
+                  importantForAccessibility={chrome.hidden ? 'no-hide-descendants' : 'auto'}
+                  style={{
+                    maxHeight: chromeProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 160] }),
+                    opacity: chromeProgress,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <MobileTopBar
+                    onMenu={() => setDrawer(true)}
+                    onAsk={() => setAsking(true)}
+                    onHide={() => chrome.setHidden(true)}
+                  />
+                </Animated.View>
               )}
 
               <IngestBanner />
@@ -125,6 +225,18 @@ export default function WorkspaceLayout() {
                 </EdgeSwipeArea>
               )}
             </View>
+
+            {chrome.hidden && !pathname.startsWith('/knowledge/notes/') ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Show navigation"
+                onPress={() => chrome.setHidden(false)}
+                className="absolute z-50 h-11 w-11 items-center justify-center rounded-xl border border-line bg-surface shadow"
+                style={{ top: insets.top + 12, left: insets.left + 12 }}
+              >
+                <Icon name="panel-left-open" size={19} color="#1B1A17" />
+              </Pressable>
+            ) : null}
 
             {showRail ? null : (
               <NavDrawer open={drawer} onClose={() => setDrawer(false)} pathname={pathname} />

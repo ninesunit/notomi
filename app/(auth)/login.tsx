@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { GoogleButton } from '@/components/GoogleButton';
+import { Sheet } from '@/components/Sheet';
 import { Button, Field, Notice } from '@/components/ui';
 import { authErrorMessage, useAuth } from '@/hooks/useAuth';
 
@@ -14,6 +15,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<'form' | 'guest' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [guestNoticeOpen, setGuestNoticeOpen] = useState(false);
 
   async function run(action: () => Promise<void>, kind: 'form' | 'guest' | 'google') {
     setError(null);
@@ -113,7 +115,7 @@ export default function Login() {
               label="Continue as guest"
               variant="secondary"
               icon="user"
-              onPress={() => run(continueAsGuest, 'guest')}
+              onPress={() => setGuestNoticeOpen(true)}
               loading={busy === 'guest'}
               disabled={busy !== null}
             />
@@ -136,6 +138,49 @@ export default function Login() {
           </Pressable>
         </View>
       </ScrollView>
+
+      <Sheet
+        visible={guestNoticeOpen}
+        onClose={() => setGuestNoticeOpen(false)}
+        title="Temporary guest session"
+        icon="user"
+        maxHeight={390}
+        footer={
+          <>
+            <Button
+              label="Cancel"
+              variant="ghost"
+              onPress={() => setGuestNoticeOpen(false)}
+              disabled={busy !== null}
+            />
+            <View className="flex-1" />
+            <Button
+              label="Enter as guest"
+              icon="arrow-right"
+              loading={busy === 'guest'}
+              disabled={busy !== null}
+              onPress={() =>
+                void run(continueAsGuest, 'guest').then(() => setGuestNoticeOpen(false))
+              }
+            />
+          </>
+        }
+      >
+        <View className="gap-3">
+          <Text className="text-sm leading-6 text-ink">
+            Guest mode is for a temporary trial on this device.
+          </Text>
+          <Text className="text-sm leading-6 text-muted">
+            When you sign out, Notomi permanently deletes the guest workspace, uploaded originals,
+            notes, schedules, tasks and the anonymous account. Guest data cannot be recovered or
+            transferred after sign-out.
+          </Text>
+          <Text className="text-xs leading-5 text-subtle">
+            Create a regular account if you want your work to remain available later or on another
+            device.
+          </Text>
+        </View>
+      </Sheet>
     </KeyboardAvoidingView>
   );
 }

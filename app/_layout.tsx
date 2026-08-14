@@ -1,10 +1,16 @@
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
+import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
+import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
+import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
+import { PlusJakartaSans_500Medium } from '@expo-google-fonts/plus-jakarta-sans/500Medium';
+import { PlusJakartaSans_600SemiBold } from '@expo-google-fonts/plus-jakarta-sans/600SemiBold';
+import { PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans/700Bold';
 import { SetupScreen } from '@/components/SetupScreen';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { registerServiceWorker } from '@/services/appUpdate';
@@ -35,7 +41,7 @@ function AuthGate() {
   useEffect(() => {
     if (initializing) return;
     if (!user && !inAuthGroup) router.replace('/login');
-    else if (user && inAuthGroup) router.replace('/');
+    else if (user && inAuthGroup) router.replace('/dashboard');
   }, [user, initializing, inAuthGroup, router]);
 
   if (mismatched) return <Splash />;
@@ -44,20 +50,25 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
-  // Load Claude's original Feather icon set before mounting the workspace.
-  // Without this gate, a slow or stale browser cache can briefly render the
-  // private-use glyphs as empty squares and never repaint them.
-  const [iconsLoaded, iconError] = useFonts(Feather.font);
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+  });
 
   // Registered once, at the top of the tree: an installed home-screen app has
   // no other moment where it reliably checks whether a deploy has landed.
   useEffect(() => registerServiceWorker(), []);
 
   useEffect(() => {
-    if (iconError) console.error('[fonts] Feather icon font failed to load.', iconError);
-  }, [iconError]);
+    if (fontError) console.error('[fonts] Brand font loading failed.', fontError);
+  }, [fontError]);
 
-  if (!iconsLoaded && !iconError) {
+  if (!fontsLoaded && !fontError) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" />

@@ -1,23 +1,24 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { Link } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
-import { ImportReview } from '@/components/ImportReview';
+import { FileDropZone } from '@/components/FileDropZone';
 import { LogComposer } from '@/components/LectureLog';
 import { ScreenScroll } from '@/components/ScreenScroll';
-import { NowLine, WeekOverview } from '@/components/WeekOverview';
+import { Sheet } from '@/components/Sheet';
+import { WeekOverview } from '@/components/WeekOverview';
 import { defaultScope, filterByTerm } from '@/components/TermFilter';
-import { FadeIn, Reveal } from '@/components/motion';
-import { Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
+import { Badge, Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { useIngest } from '@/hooks/useIngest';
-import { useScheduleImport } from '@/hooks/useScheduleImport';
 import { bucketFor, formatDue, toDate } from '@/lib/dates';
 import { paths } from '@/lib/paths';
 import {
   calculateGpa,
+  DAY_FULL,
+  minutesToLabel,
   todayIndex,
   type ClassBlock,
   type RoutineBlock,
@@ -27,6 +28,7 @@ import {
 } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { academicClasses, type ResolvedClass } from '@/services/timetable';
+import { buildBurnoutWeeks, findActiveSemester } from '@/services/academicPlanner';
 
 /**
  * The dashboard.
@@ -61,8 +63,7 @@ export default function Dashboard() {
     [uid]
   );
 
-  const { start } = useIngest();
-  const importer = useScheduleImport(subjects.data, classes.data, routines.data);
+  const ingest = useIngest();
 
   const scope = useMemo(
     () => defaultScope(subjects.data, semesters.data),
@@ -86,6 +87,7 @@ export default function Dashboard() {
   );
 
   const open = useMemo(() => todos.data.filter((todo) => !todo.isCompleted), [todos.data]);
+  const activeSemester = useMemo(() => findActiveSemester(semesters.data), [semesters.data]);
   const firstName = (user?.displayName || '').split(' ')[0];
   const setUp = subjects.data.length > 0 || classes.data.length > 0;
 
@@ -115,6 +117,8 @@ export default function Dashboard() {
         />
       )}
 
+      <MissionStatus semester={activeSemester} todos={open} />
+
       {subjects.error ? (
         <View className="mb-6">
           <Notice title="Could not load your library" body={subjects.error.message} />
@@ -122,19 +126,22 @@ export default function Dashboard() {
       ) : null}
 
       <Engines
-        scanning={importer.scanning}
-        onScan={() => void importer.scan()}
-        onUpload={() => void start()}
-        error={importer.error}
-        notice={importer.notice}
+        busy={ingest.busy}
+        onFiles={(files) => ingest.startFiles(files).then(() => undefined)}
       />
 
       <ThisWeek
         classes={liveClasses}
+        routines={routines.data}
         todos={open}
         loading={classes.loading || todos.loading}
         configured={setUp}
         compact={compact}
+      />
+
+      <CompactBurnout
+        semester={activeSemester}
+        todos={open}
       />
 
       {currentSubjects.length > 0 ? (
@@ -148,17 +155,41 @@ export default function Dashboard() {
         classes={liveClasses}
       />
 
-      {importer.staged ? (
-        <ImportReview
-          uid={uid}
-          rows={importer.staged.rows}
-          skipped={importer.staged.skipped}
-          semesters={semesters.data}
-          onClose={() => importer.setStaged(null)}
-          onDone={importer.describe}
-        />
-      ) : null}
     </ScreenScroll>
+  );
+}
+
+function MissionStatus({ semester, todos }: { semester: Semester | null; todos: Todo[] }) {
+  if (!semester) {
+    return (
+      <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-surface px-4 py-3">
+        <Icon name="calendar" size={16} color="#6F6A5F" />
+        <Text className="flex-1 text-sm font-semibold text-ink">No active term selected</Text>
+        <Link href="/schedule?tab=terms" asChild>
+          <Button label="Manage terms" icon="arrow-right" variant="ghost" size="sm" />
+        </Link>
+      </View>
+    );
+  }
+
+  const start = toDate(semester.startDate);
+  const week = start
+    ? Math.max(1, Math.min(semester.teachingWeeks ?? 52, Math.floor((Date.now() - start.getTime()) / 604_800_000) + 1))
+    : null;
+  const weeks = buildBurnoutWeeks(semester, todos);
+  const current = week ? weeks[week - 1] : weeks[0];
+  const peak = Math.max(1, ...weeks.map((entry) => entry.workload));
+  const ratio = current ? current.workload / peak : 0;
+  const status = ratio >= 0.8 ? 'High load' : ratio >= 0.45 ? 'Building load' : 'Balanced';
+  const tone = ratio >= 0.8 ? 'rose' : ratio >= 0.45 ? 'amber' : 'pine';
+
+  return (
+    <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-surface px-4 py-3">
+      <Icon name="layout-dashboard" size={16} color="#18181B" />
+      <Badge label={`${semester.name}${week ? ` • Week ${week}` : ''}`} />
+      <View className="flex-1" />
+      <Badge label={`Burnout: ${status}`} tone={tone} />
+    </View>
   );
 }
 
@@ -175,148 +206,21 @@ export default function Dashboard() {
  * is downstream of these two buttons.
  */
 function Engines({
-  scanning,
-  onScan,
-  onUpload,
-  error,
-  notice,
+  busy,
+  onFiles,
 }: {
-  scanning: boolean;
-  onScan: () => void;
-  onUpload: () => void;
-  error: string | null;
-  notice: string | null;
-}) {
-  const { width } = useWindowDimensions();
-  /**
-   * Two tiles side by side on a phone, two full cards on anything wider.
-   *
-   * The explanatory paragraph is what a landing page needs; on a 393pt screen
-   * it pushed the actual content of the app below the fold, which is the
-   * opposite of what a home screen is for. The short form says the same thing
-   * in the space a native app would give it.
-   */
-  const compact = width < 560;
-
-  return (
-    <View className="mb-5 gap-3">
-      <View className="flex-row flex-wrap gap-3">
-        <EngineCard
-          index={0}
-          compact={compact}
-          heroIcon="calendar"
-          title="Scan schedule"
-          caption="Merge PDFs, images and slides"
-          body="Upload up to 10 schedule files. Notomi reads them together, checks classes and routines for conflicts, then stages the result for review."
-          action={scanning ? 'Reading your schedule…' : 'Choose schedule files'}
-          icon="upload-cloud"
-          busy={scanning}
-          tint="#B4552D"
-          onPress={onScan}
-        />
-        <EngineCard
-          index={1}
-          compact={compact}
-          heroIcon="file-text"
-          title="Upload syllabus"
-          caption="Deadlines and topics from a PDF"
-          body="Drop in a course outline or lecture slides. Notomi reads them on your device, then pulls out the topics, key dates and deadlines."
-          action="Choose a document"
-          icon="upload-cloud"
-          tint="#4C5FA8"
-          onPress={onUpload}
-        />
-      </View>
-
-      {error ? <Notice title="Could not read that timetable" body={error} /> : null}
-      {notice ? <Notice tone="pine" title="Your semester is set up" body={notice} /> : null}
-    </View>
-  );
-}
-
-function EngineCard({
-  index,
-  compact,
-  heroIcon,
-  title,
-  caption,
-  body,
-  action,
-  icon,
-  tint,
-  busy = false,
-  onPress,
-}: {
-  index: number;
-  compact: boolean;
-  heroIcon: React.ComponentProps<typeof Feather>['name'];
-  title: string;
-  /** The one-line form, used where there is no room for the paragraph. */
-  caption: string;
-  body: string;
-  action: string;
-  icon: React.ComponentProps<typeof Feather>['name'];
-  tint: string;
-  busy?: boolean;
-  onPress: () => void;
+  busy: boolean;
+  onFiles: (files: import('@/services/ingestion').MaterialFile[]) => Promise<void>;
 }) {
   return (
-    <View
-      className="flex-1 grow"
-      style={compact ? { flexBasis: 0, minWidth: 0 } : { minWidth: 250, flexBasis: 250 }}
-    >
-      <FadeIn index={index}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={title}
-          accessibilityState={{ busy }}
-          onPress={onPress}
-          disabled={busy}
-          className={`h-full overflow-hidden rounded-2xl border ${
-            compact ? 'gap-1.5 p-3.5' : 'gap-3 p-5'
-          }`}
-          style={{ backgroundColor: `${tint}12`, borderColor: `${tint}3D` }}
-        >
-          <View className="flex-row items-center gap-2">
-            <View
-              className={`items-center justify-center rounded-xl ${
-                compact ? 'h-9 w-9' : 'h-11 w-11'
-              }`}
-              style={{ backgroundColor: `${tint}24` }}
-            >
-              <Feather name={heroIcon} size={compact ? 17 : 20} color={tint} />
-            </View>
-            {compact ? (
-              <Feather
-                name={busy ? 'loader' : icon}
-                size={13}
-                color={tint}
-                style={{ marginLeft: 'auto' }}
-              />
-            ) : null}
-          </View>
-
-          {compact ? (
-            <>
-              <Text className="text-[15px] font-bold leading-5 text-ink">{title}</Text>
-              <Text className="text-[12px] leading-4 text-ink/70">
-                {busy ? 'Reading your schedule…' : caption}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text className="text-[17px] font-bold leading-6 text-ink">{title}</Text>
-              <Text className="text-[13px] leading-5 text-ink/70">{body}</Text>
-              <View className="mt-auto flex-row items-center gap-2 pt-1">
-                <Feather name={busy ? 'loader' : icon} size={14} color={tint} />
-                <Text className="text-[13px] font-semibold" style={{ color: tint }}>
-                  {action}
-                </Text>
-              </View>
-            </>
-          )}
-        </Pressable>
-      </FadeIn>
+    <View className="mb-5">
+      <FileDropZone
+        busy={busy}
+        compact
+        title="Drop anything academic"
+        body="Up to 10 schedules, calendars, syllabuses, slides or notes. Notomi stages the files, identifies each type, then routes each one automatically. Maximum 25 MB total."
+        onFiles={onFiles}
+      />
     </View>
   );
 }
@@ -338,12 +242,14 @@ type Entry = { todo: Todo; overdue: boolean };
  */
 function ThisWeek({
   classes,
+  routines,
   todos,
   loading,
   configured,
   compact,
 }: {
   classes: ResolvedClass[];
+  routines: RoutineBlock[];
   todos: Todo[];
   loading: boolean;
   configured: boolean;
@@ -351,6 +257,7 @@ function ThisWeek({
   compact: boolean;
 }) {
   const now = new Date();
+  const [selectedClass, setSelectedClass] = useState<ResolvedClass | null>(null);
 
   const due = useMemo(() => {
     const rows: Entry[] = [];
@@ -371,16 +278,16 @@ function ThisWeek({
     <View className="mb-6 gap-2.5">
       {compact ? null : (
         <View className="flex-row items-center justify-between">
-          <Text className="text-lg font-semibold tracking-tight text-ink">Your week</Text>
-          <Link href="/timetable" asChild>
-            <Button label="Timetable" variant="ghost" size="sm" />
+          <Text className="text-lg font-semibold tracking-tight text-ink">Weekly schedule</Text>
+          <Link href="/schedule" asChild>
+            <Button label="Full schedule" variant="ghost" size="sm" />
           </Link>
         </View>
       )}
 
       {loading ? (
         <Loading label="Checking your week…" />
-      ) : classes.length === 0 ? (
+      ) : classes.length === 0 && routines.length === 0 ? (
         <Card className="gap-1">
           <Text className="text-[15px] font-semibold text-ink">
             {configured ? 'No classes this term' : 'No timetable yet'}
@@ -392,16 +299,7 @@ function ThisWeek({
           </Text>
         </Card>
       ) : (
-        <>
-          <NowLine classes={classes} />
-          {/* The card is the link on a phone, where the heading that used to
-              carry one has been dropped. */}
-          <Link href="/timetable" asChild>
-            <Pressable accessibilityRole="link" accessibilityLabel="Open your timetable">
-              <WeekOverview classes={classes} />
-            </Pressable>
-          </Link>
-        </>
+        <WeekOverview classes={classes} routines={routines} onSelect={setSelectedClass} />
       )}
 
       {due.length > 0 ? (
@@ -411,6 +309,123 @@ function ThisWeek({
           ))}
         </Card>
       ) : null}
+
+      <DashboardClassSheet block={selectedClass} onClose={() => setSelectedClass(null)} />
+    </View>
+  );
+}
+
+function DashboardClassSheet({
+  block,
+  onClose,
+}: {
+  block: ResolvedClass | null;
+  onClose: () => void;
+}) {
+  const subjectName = block?.subjectName || block?.title || 'Class details';
+
+  return (
+    <Sheet
+      visible={block !== null}
+      onClose={onClose}
+      title={subjectName}
+      icon="book-open"
+      footer={
+        block ? (
+          <>
+            <Link href={`/knowledge/subject/${block.subjectId}` as never} asChild>
+              <Button label="Course materials" icon="book-open" variant="secondary" size="sm" />
+            </Link>
+            <View className="flex-1" />
+            <Link href={`/schedule?tab=timetable&editClassId=${block.id}` as never} asChild>
+              <Button label="Edit class" icon="edit-3" size="sm" />
+            </Link>
+          </>
+        ) : null
+      }
+    >
+      {block ? (
+        <View className="gap-3">
+          <View
+            className="rounded-2xl border border-line p-4"
+            style={{
+              backgroundColor: `${block.color}12`,
+              borderLeftColor: block.color,
+              borderLeftWidth: 4,
+            }}
+          >
+            <Text className="text-lg font-semibold text-ink">{subjectName}</Text>
+            <Text className="mt-1 text-sm text-muted">
+              {[block.code, block.kind, block.section].filter(Boolean).join(' · ') ||
+                'Scheduled class'}
+            </Text>
+          </View>
+
+          <ClassDetailRow
+            icon="calendar"
+            label="Time"
+            value={`${DAY_FULL[block.day]} · ${minutesToLabel(block.startMinute)}–${minutesToLabel(
+              block.endMinute
+            )}`}
+          />
+          <ClassDetailRow
+            icon="map"
+            label="Venue"
+            value={block.venue?.trim() || 'Venue not set'}
+          />
+        </View>
+      ) : null}
+    </Sheet>
+  );
+}
+
+function ClassDetailRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: 'calendar' | 'map';
+  label: string;
+  value: string;
+}) {
+  return (
+    <View className="flex-row items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+      <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
+        <Icon name={icon} size={16} color="#6F6A5F" />
+      </View>
+      <View className="min-w-0 flex-1">
+        <Text className="text-[11px] font-bold uppercase tracking-wider text-subtle">{label}</Text>
+        <Text className="text-sm font-semibold text-ink">{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+function CompactBurnout({ semester, todos }: { semester: Semester | null; todos: Todo[] }) {
+  const weeks = useMemo(() => buildBurnoutWeeks(semester, todos), [semester, todos]);
+  if (!semester || weeks.length === 0) return null;
+  const peak = Math.max(1, ...weeks.map((week) => week.workload));
+  return (
+    <View className="mb-6 flex-row items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
+      <Icon name="activity" size={16} color="#B4552D" />
+      <View className="min-w-0 flex-1">
+        <Text className="text-sm font-semibold text-ink">Burnout forecast</Text>
+        <Text className="text-[11px] text-muted" numberOfLines={1}>{semester.name}</Text>
+      </View>
+      <View className="flex-row gap-1">
+        {weeks.slice(0, 14).map((week) => {
+          const ratio = week.workload / peak;
+          const color = week.workload === 0 ? '#E9E5D9' : ratio < 0.5 ? '#DCE9E3' : ratio < 0.8 ? '#EAD9B6' : '#E7BDB8';
+          return (
+            <View
+              key={week.index}
+              accessibilityLabel={`Week ${week.index + 1}, workload ${week.workload}`}
+              className="h-5 w-2 rounded-full"
+              style={{ backgroundColor: color }}
+            />
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -419,7 +434,7 @@ function TaskRow({ entry, first }: { entry: Entry; first: boolean }) {
   const due = toDate(entry.todo.dueDate);
 
   return (
-    <Link href="/todos" asChild>
+    <Link href="/tasks" asChild>
       <Pressable
         accessibilityRole="link"
         accessibilityLabel={`Open ${entry.todo.title}`}
@@ -430,7 +445,7 @@ function TaskRow({ entry, first }: { entry: Entry; first: boolean }) {
             entry.overdue ? 'bg-rose-soft' : 'bg-sand'
           }`}
         >
-          <Feather
+          <Icon
             name={entry.overdue ? 'alert-circle' : 'check-square'}
             size={14}
             color={entry.overdue ? '#B0443E' : '#6F6A5F'}
@@ -514,7 +529,7 @@ function QuickLog({
         className="flex-row items-center gap-3 rounded-2xl border border-line bg-surface p-4"
       >
         <View className="h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
-          <Feather name="edit-3" size={15} color="#B4552D" />
+          <Icon name="edit-3" size={15} color="#B4552D" />
         </View>
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Log a class</Text>
@@ -524,10 +539,16 @@ function QuickLog({
               : 'Say what you covered and Notomi writes the notes'}
           </Text>
         </View>
-        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
       </Pressable>
 
-      <Reveal open={open}>
+      <Sheet
+        visible={open}
+        onClose={() => setOpen(false)}
+        title="Log a Class"
+        icon="edit-3"
+        maxHeight={680}
+      >
         <View className="gap-3">
           {subjects.length > 1 ? (
             <View className="flex-row flex-wrap gap-1.5">
@@ -546,7 +567,6 @@ function QuickLog({
                     <Text
                       className={`text-xs font-medium ${selected ? 'text-accent' : 'text-muted'}`}
                     >
-                      {subject.emoji ? `${subject.emoji} ` : ''}
                       {subject.moduleCode || subject.name}
                     </Text>
                   </Pressable>
@@ -563,11 +583,11 @@ function QuickLog({
             subjectName={active.name}
           />
 
-          <Link href={`/library/${active.id}`} asChild>
+          <Link href={`/knowledge/subject/${active.id}`} asChild>
             <Button label="Open the full log" icon="book-open" variant="ghost" size="sm" />
           </Link>
         </View>
-      </Reveal>
+      </Sheet>
     </View>
   );
 }
@@ -615,7 +635,7 @@ function TermProgress({
   const fraction = credits > 0 ? gradedCredits / credits : 0;
 
   return (
-    <Link href="/program" asChild>
+    <Link href="/schedule?tab=terms" asChild>
       <Pressable accessibilityRole="link" accessibilityLabel="Open your program structure">
         <Card className="gap-3">
           <View className="flex-row items-end justify-between">
@@ -628,7 +648,7 @@ function TermProgress({
                 {credits > 0 ? ` · ${credits} credits` : ''}
               </Text>
             </View>
-            <Feather name="chevron-right" size={16} color="#9A9488" />
+            <Icon name="chevron-right" size={16} color="#9A9488" />
           </View>
 
           <View className="h-2 w-full overflow-hidden rounded-full bg-sand">

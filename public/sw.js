@@ -16,7 +16,7 @@
  * cache-first and safe to keep forever.
  */
 
-const VERSION = 'notomi-v5';
+const VERSION = 'notomi-v15';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -92,7 +92,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith('/_expo/static/')) {
+  if (url.pathname.startsWith('/_expo/static/') || url.pathname.startsWith('/data/')) {
     event.respondWith(cacheFirst(request));
     return;
   }

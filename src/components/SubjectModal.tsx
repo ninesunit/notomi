@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { Sheet } from './Sheet';
+import { Icon } from './Icon';
 import { Button, Field } from './ui';
 import { paths } from '@/lib/paths';
 import {
   colorForSubject,
-  SUBJECT_EMOJI,
   SUBJECT_PALETTE,
   tidyName,
   type Subject,
@@ -69,7 +69,6 @@ function SubjectForm({
   const [name, setName] = useState(tidyName(subject?.name ?? ''));
   const [moduleCode, setModuleCode] = useState(subject?.moduleCode ?? '');
   const [tag, setTag] = useState(subject?.tag ?? '');
-  const [emoji, setEmoji] = useState<string | null>(subject?.emoji ?? null);
   const [color, setColor] = useState(subject?.color ?? SUBJECT_PALETTE[0].value);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +85,7 @@ function SubjectForm({
       name: name.trim(),
       moduleCode: moduleCode.trim() || null,
       tag: tag.trim() || null,
-      emoji,
+      emoji: null,
       color,
       updatedAt: serverTimestamp(),
     };
@@ -168,26 +167,6 @@ function SubjectForm({
         </View>
 
         <View className="gap-2">
-          <Text className="text-sm font-medium text-muted">Icon</Text>
-          <View className="flex-row flex-wrap gap-1.5">
-            {SUBJECT_EMOJI.map((option) => (
-              <Pressable
-                key={option}
-                accessibilityRole="button"
-                accessibilityLabel={`Icon ${option}`}
-                accessibilityState={{ selected: emoji === option }}
-                onPress={() => setEmoji(emoji === option ? null : option)}
-                className={`h-9 w-9 items-center justify-center rounded-lg border ${
-                  emoji === option ? 'border-ink bg-sand' : 'border-line bg-paper'
-                }`}
-              >
-                <Text className="text-base">{option}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        <View className="gap-2">
           <Text className="text-sm font-medium text-muted">Colour</Text>
           <View className="flex-row flex-wrap gap-2">
             {SUBJECT_PALETTE.map((option) => (
@@ -210,7 +189,7 @@ function SubjectForm({
           </View>
         </View>
 
-        {/* Live preview: colour and emoji only make sense together. */}
+        {/* Live preview uses the same vector icon as every subject card. */}
         <View className="gap-2">
           <Text className="text-sm font-medium text-muted">Preview</Text>
           <View
@@ -219,7 +198,7 @@ function SubjectForm({
           >
             <View className="h-1.5 w-full" style={{ backgroundColor: color }} />
             <View className="flex-row items-center gap-3 p-3.5">
-              <Text className="text-xl">{emoji ?? '📘'}</Text>
+              <Icon name="book-open" size={20} color={color} />
               <View className="flex-1">
                 <Text className="text-sm font-semibold text-ink" numberOfLines={1}>
                   {name.trim() || 'Subject name'}

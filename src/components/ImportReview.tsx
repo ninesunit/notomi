@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon } from '@/components/Icon';
+import { ResponsiveTermPicker } from './ResponsiveTermPicker';
 import { Sheet } from './Sheet';
 import { Reveal } from './motion';
 import { Button, Field, Notice } from './ui';
@@ -214,28 +215,20 @@ export function ImportReview({
           four cards would be the wrong order. */}
       <View className="gap-2">
         <Text className="text-sm font-medium text-muted">Which term is this?</Text>
-        <View className="flex-row flex-wrap gap-1.5">
-          {semesters.map((semester) => (
-            <Pressable
-              key={semester.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected: semesterId === semester.id }}
-              onPress={() => {
-                setSemesterId(semester.id);
-                setTerm('');
-              }}
-              className={`rounded-lg px-3 py-2 ${semesterId === semester.id ? 'bg-ink' : 'bg-sand'}`}
-            >
-              <Text
-                className={`text-xs font-semibold ${
-                  semesterId === semester.id ? 'text-paper' : 'text-ink'
-                }`}
-              >
-                {semester.name}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        <ResponsiveTermPicker
+          options={semesters.map((semester) => ({
+            id: semester.id,
+            label: semester.name,
+            current: semester.isCurrent,
+          }))}
+          value={semesterId ?? ''}
+          onChange={(next) => {
+            setSemesterId(next);
+            setTerm('');
+          }}
+          title="Choose an existing term"
+          placeholder="Choose an existing term"
+        />
 
         <Field
           value={term}
@@ -341,7 +334,7 @@ function SubjectCard({
             group.include ? 'border-pine bg-pine' : 'border-subtle bg-surface'
           }`}
         >
-          {group.include ? <Feather name="check" size={12} color="#FFFFFF" /> : null}
+          {group.include ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
         </Pressable>
 
         <Pressable
@@ -360,7 +353,7 @@ function SubjectCard({
           </Text>
         </Pressable>
 
-        <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#6F6A5F" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#6F6A5F" />
       </View>
 
       <Reveal open={open}>
@@ -434,7 +427,7 @@ function SessionRow({
             session.include ? 'border-pine bg-pine' : 'border-subtle bg-surface'
           }`}
         >
-          {session.include ? <Feather name="check" size={10} color="#FFFFFF" /> : null}
+          {session.include ? <Icon name="check" size={10} color="#FFFFFF" /> : null}
         </Pressable>
 
         <Text className="flex-1 text-xs font-medium text-ink" numberOfLines={1}>
@@ -449,7 +442,7 @@ function SessionRow({
       {session.conflicts.length > 0 ? (
         <View className="gap-1 rounded-lg bg-amber-soft px-3 py-2">
           <View className="flex-row items-center gap-2">
-            <Feather name="alert-triangle" size={12} color="#B4832A" />
+            <Icon name="alert-triangle" size={12} color="#B4832A" />
             <Text className="text-xs font-semibold text-amber">Schedule conflict</Text>
           </View>
           {session.conflicts.map((conflict) => (

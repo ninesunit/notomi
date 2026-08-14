@@ -1,16 +1,17 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: ['./app/**/*.{js,jsx,ts,tsx}', './src/**/*.{js,jsx,ts,tsx}'],
   presets: [require('nativewind/preset')],
   theme: {
     extend: {
       colors: {
         // Warm "paper" workspace palette.
-        paper: '#F7F5EE',
+        paper: '#FAF9F5',
         surface: '#FFFFFF',
-        sand: '#EFEBE0',
-        line: '#E3DED1',
-        ink: '#1B1A17',
+        sand: '#F5F3EF',
+        line: '#E7E5E4',
+        ink: '#18181B',
         muted: '#6F6A5F',
         subtle: '#9A9488',
         accent: '#B4552D',
@@ -23,7 +24,18 @@ module.exports = {
         'rose-soft': '#F7E2E1',
       },
       fontFamily: {
-        sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        sans: ['Inter_400Regular', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        medium: ['Inter_500Medium', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        semibold: ['Inter_600SemiBold', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        bold: ['Inter_700Bold', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        heading: [
+          'PlusJakartaSans_600SemiBold',
+          'Plus Jakarta Sans',
+          'Inter',
+          'ui-sans-serif',
+          'system-ui',
+          'sans-serif',
+        ],
         serif: ['ui-serif', 'Iowan Old Style', 'Georgia', 'serif'],
       },
     },

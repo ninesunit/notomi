@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { View } from 'react-native';
+import { ResponsiveTermPicker, type TermPickerOption } from './ResponsiveTermPicker';
 import type { Semester, Subject } from '@/lib/schema';
 
 /**
@@ -77,75 +77,25 @@ export function TermFilter({
   if (semesters.length === 0 && unassigned === subjects.length) return null;
   if (semesters.length <= 1 && unassigned === 0) return null;
 
+  const options: TermPickerOption[] = [
+    { id: 'all', label: 'All', count: subjects.length },
+    ...semesters.map((semester) => ({
+      id: semester.id,
+      label: semester.name,
+      count: counts.get(semester.id) ?? 0,
+      current: semester.isCurrent,
+    })),
+    ...(unassigned > 0 ? [{ id: 'unassigned', label: 'Unfiled', count: unassigned }] : []),
+  ];
+
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
-      <View className="flex-row gap-1.5 pr-4">
-        <Chip
-          label="All"
-          count={subjects.length}
-          active={scope === 'all'}
-          onPress={() => onScope('all')}
-        />
-
-        {semesters.map((semester) => (
-          <Chip
-            key={semester.id}
-            label={semester.name}
-            count={counts.get(semester.id) ?? 0}
-            current={semester.isCurrent}
-            active={scope === semester.id}
-            onPress={() => onScope(semester.id)}
-          />
-        ))}
-
-        {unassigned > 0 ? (
-          <Chip
-            label="Unfiled"
-            count={unassigned}
-            active={scope === 'unassigned'}
-            onPress={() => onScope('unassigned')}
-          />
-        ) : null}
-      </View>
-    </ScrollView>
-  );
-}
-
-function Chip({
-  label,
-  count,
-  active,
-  current = false,
-  onPress,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  current?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={`${label}, ${count} subjects`}
-      onPress={onPress}
-      className={`flex-row items-center gap-2 rounded-full border px-3.5 py-2 ${
-        active ? 'border-ink bg-ink' : 'border-line bg-surface'
-      }`}
-    >
-      {current ? (
-        <View
-          className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-accent' : 'bg-accent'}`}
-        />
-      ) : null}
-      <Text
-        className={`text-[13px] font-semibold ${active ? 'text-paper' : 'text-muted'}`}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-      <Text className={`text-[11px] ${active ? 'text-paper/60' : 'text-subtle'}`}>{count}</Text>
-    </Pressable>
+    <View className="mb-4">
+      <ResponsiveTermPicker
+        options={options}
+        value={scope}
+        onChange={onScope}
+        title="Select library term"
+      />
+    </View>
   );
 }

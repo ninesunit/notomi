@@ -139,6 +139,8 @@ async function brokerFetch(path: string, init: RequestInit = {}): Promise<Respon
  * ------------------------------------------------------------------ */
 
 export type UploadResult = { fileKey: string; fileUrl: string };
+export const PROFILE_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const PROFILE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 /**
  * Uploads the original binary to R2 at users/{userId}/{subjectId}/{fileName}.
@@ -152,7 +154,8 @@ export async function uploadFileToR2(
   userId: string,
   subjectId: string,
   contentType = 'application/octet-stream',
-  bytes?: ArrayBuffer
+  bytes?: ArrayBuffer,
+  resolveFileUrl = true
 ): Promise<UploadResult> {
   const mode = r2Mode();
   if (mode === 'unconfigured') throw new R2Error(r2ConfigHint());
@@ -160,11 +163,17 @@ export async function uploadFileToR2(
   const body = bytes ?? (await (await fetch(fileUri)).arrayBuffer());
   const fileKey = buildFileKey(userId, subjectId, fileName);
 
+  // Keep the caller's buffer reusable. Browser APIs and PDF workers are
+  // allowed to transfer ArrayBuffers; an owned upload copy prevents a later
+  // stage (or a retry) from observing detached storage.
+  const uploadBytes = new Uint8Array(body.byteLength);
+  uploadBytes.set(new Uint8Array(body));
+
   if (mode === 'broker') {
     await brokerFetch(`/object?key=${encodeURIComponent(fileKey)}`, {
       method: 'PUT',
       headers: { 'Content-Type': contentType },
-      body: new Uint8Array(body),
+      body: uploadBytes,
     });
   } else {
     try {
@@ -174,7 +183,7 @@ export async function uploadFileToR2(
         new PutObjectCommand({
           Bucket: R2_BUCKET,
           Key: fileKey,
-          Body: new Uint8Array(body),
+          Body: uploadBytes,
           ContentType: contentType,
         })
       );
@@ -183,7 +192,38 @@ export async function uploadFileToR2(
     }
   }
 
-  return { fileKey, fileUrl: await getR2FileUrl(fileKey) };
+  return { fileKey, fileUrl: resolveFileUrl ? await getR2FileUrl(fileKey) : '' };
+}
+
+export async function uploadProfileImage(
+  fileUri: string,
+  fileName: string,
+  userId: string,
+  contentType: string,
+  bytes: ArrayBuffer
+): Promise<UploadResult> {
+  if (!R2_PUBLIC_BASE && !R2_WORKER_URL) {
+    throw new R2Error('Profile image hosting is not configured for this build.');
+  }
+  if (!PROFILE_IMAGE_TYPES.has(contentType)) {
+    throw new R2Error('Choose a JPEG, PNG or WebP profile image.');
+  }
+  if (bytes.byteLength > PROFILE_IMAGE_MAX_BYTES) {
+    throw new R2Error('Profile images must be 2 MB or smaller.');
+  }
+  const uploaded = await uploadFileToR2(
+    fileUri,
+    fileName,
+    userId,
+    'profile',
+    contentType,
+    bytes,
+    false
+  );
+  const fileUrl = R2_PUBLIC_BASE
+    ? `${R2_PUBLIC_BASE}/${uploaded.fileKey}`
+    : `${R2_WORKER_URL}/avatar?key=${encodeURIComponent(uploaded.fileKey)}`;
+  return { ...uploaded, fileUrl };
 }
 
 /* ------------------------------------------------------------------ *
@@ -257,6 +297,18 @@ export async function deleteR2File(fileKey: string): Promise<void> {
   } catch (error) {
     throw new R2Error(describe(error), error);
   }
+}
+
+/** Deletes every original owned by the current user (guest-session cleanup). */
+export async function deleteR2UserData(): Promise<void> {
+  const mode = r2Mode();
+  if (mode === 'unconfigured') return;
+  if (mode !== 'broker') {
+    // Direct browser credentials deliberately cannot list the whole bucket.
+    // Production uses the authenticated broker, where ownership is enforced.
+    return;
+  }
+  await brokerFetch('/user-data', { method: 'DELETE' });
 }
 
 function describe(error: unknown): string {

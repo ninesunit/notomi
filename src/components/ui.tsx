@@ -10,10 +10,8 @@ import {
   type GestureResponderEvent,
   type TextInputProps,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Icon, type IconName } from '@/components/Icon';
 import { feedback } from '@/lib/sound';
-
-type IconName = keyof typeof Feather.glyphMap;
 
 /* ----------------------------- Button ----------------------------- */
 
@@ -95,7 +93,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator size="small" color={iconColor} />
       ) : icon ? (
-        <Feather name={icon} size={size === 'sm' ? 14 : 16} color={iconColor} />
+        <Icon name={icon} size={size === 'sm' ? 14 : 16} color={iconColor} />
       ) : null}
       <Text
         className={`${size === 'sm' ? 'text-sm' : 'text-[15px]'} font-semibold ${BUTTON_TEXT[variant]}`}
@@ -198,9 +196,9 @@ export function EmptyState({
   return (
     <View className="items-center justify-center rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-12">
       <View className="mb-4 h-12 w-12 items-center justify-center rounded-full bg-sand">
-        <Feather name={icon} size={20} color="#6F6A5F" />
+        <Icon name={icon} size={20} color="#6F6A5F" />
       </View>
-      <Text className="mb-1.5 text-center text-base font-semibold text-ink">{title}</Text>
+      <Text className="mb-1.5 text-center font-heading text-base font-semibold text-ink">{title}</Text>
       <Text className="mb-5 max-w-sm text-center text-sm leading-5 text-muted">{body}</Text>
       {action}
     </View>
@@ -238,7 +236,7 @@ export function Notice({
 
   return (
     <View className={`flex-row gap-3 rounded-xl p-3.5 ${surface}`}>
-      <Feather name={icon} size={16} color={color} style={{ marginTop: 2 }} />
+      <Icon name={icon} size={16} color={color} style={{ marginTop: 2 }} />
       <View className="flex-1 gap-1">
         <Text className={`text-sm font-semibold ${text}`}>{title}</Text>
         {body ? <Text className="text-sm leading-5 text-ink/80">{body}</Text> : null}
@@ -261,7 +259,7 @@ export function PageHeader({
   return (
     <View className="mb-5 flex-row flex-wrap items-end justify-between gap-4">
       <View className="flex-1 gap-1.5" style={{ minWidth: 220 }}>
-        <Text className="text-[28px] font-bold leading-8 tracking-tight text-ink">{title}</Text>
+        <Text className="font-heading text-[28px] font-bold leading-8 tracking-tight text-ink">{title}</Text>
         {subtitle ? <Text className="text-[15px] leading-6 text-muted">{subtitle}</Text> : null}
       </View>
       {actions ? <View className="flex-row items-center gap-2">{actions}</View> : null}
@@ -289,7 +287,7 @@ export function IconButton({
       onPress={onPress}
       className="h-9 w-9 items-center justify-center rounded-lg"
     >
-      <Feather name={icon} size={16} color={tone === 'rose' ? '#B0443E' : '#6F6A5F'} />
+      <Icon name={icon} size={16} color={tone === 'rose' ? '#B0443E' : '#6F6A5F'} />
     </Pressable>
   );
 }

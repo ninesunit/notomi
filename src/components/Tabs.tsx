@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Easing, Platform, Pressable, ScrollView, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Animated, Easing, Platform, Pressable, Text, View } from 'react-native';
+import { Icon } from '@/components/Icon';
 import { feedback } from '@/lib/sound';
 import type { IconName } from './ui';
 
@@ -16,8 +16,8 @@ export type Tab<T extends string> = {
  * The segmented control used inside a subject.
  *
  * The selected pill slides between tabs rather than cutting, which is the one
- * piece of motion that makes a web tab bar read as a native one. It scrolls
- * horizontally so a fifth tab never squeezes the others into initials.
+ * piece of motion that makes a web tab bar read as a native one. Phone layouts
+ * use equal-width icon buttons, while labels and counts return from `sm` up.
  */
 export function Tabs<T extends string>({
   tabs,
@@ -60,13 +60,8 @@ export function Tabs<T extends string>({
   }, [index, tabs.length]);
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      className="mb-6"
-      contentContainerStyle={{ paddingRight: 8 }}
-    >
-      <View className="flex-row rounded-2xl border border-line bg-sand p-1">
+    <View className="mb-6 w-full overflow-hidden">
+      <View className="w-full flex-row rounded-2xl border border-line bg-sand p-1 sm:w-auto sm:self-start">
         <Animated.View
           pointerEvents="none"
           style={{
@@ -101,11 +96,11 @@ export function Tabs<T extends string>({
                 feedback('toggle');
                 onChange(tab.id);
               }}
-              className="flex-row items-center gap-2 rounded-xl px-3.5 py-2.5"
+              className="h-10 min-w-0 flex-1 flex-row items-center justify-center rounded-xl sm:h-auto sm:flex-none sm:px-3.5 sm:py-2.5"
             >
-              <Feather name={tab.icon} size={14} color={active ? '#B4552D' : '#6F6A5F'} />
+              <Icon name={tab.icon} size={14} color={active ? '#B4552D' : '#6F6A5F'} />
               <Text
-                className={`text-[13px] ${
+                className={`hidden text-[13px] sm:ml-2 sm:inline ${
                   active ? 'font-semibold text-ink' : 'font-medium text-muted'
                 }`}
               >
@@ -113,7 +108,7 @@ export function Tabs<T extends string>({
               </Text>
               {tab.count ? (
                 <View
-                  className={`min-w-[18px] items-center rounded-full px-1.5 py-0.5 ${
+                  className={`hidden min-w-[18px] items-center rounded-full px-1.5 py-0.5 sm:ml-2 sm:flex ${
                     active ? 'bg-accent-soft' : 'bg-line/60'
                   }`}
                 >
@@ -128,7 +123,7 @@ export function Tabs<T extends string>({
           );
         })}
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
