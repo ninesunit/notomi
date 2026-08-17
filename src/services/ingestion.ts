@@ -652,11 +652,10 @@ export async function ingestFiles(
             route: 'SubjectMaterial',
           });
           continue;
-        } catch (planError) {
-          // Not a plan after all, or unreadable as one. Fall through and file it
-          // as ordinary material rather than losing the upload.
-          errors.push({ fileName: file.name, message: describeIngestError(planError) });
-          continue;
+        } catch {
+          // Not a plan after all, or unreadable as one. Falling through files it
+          // as ordinary material; reporting an error here would throw away an
+          // upload the student can still read, over a guess made from its name.
         }
       }
 

@@ -51,6 +51,41 @@ export function lectureNumber(document: SourceDocument): number | null {
   return bare ? Number(bare[1]) : null;
 }
 
+/** What a file is for, as far as its name gives it away. */
+export type MaterialKind = 'lecture' | 'tutorial' | 'assignment' | 'lab' | 'other';
+
+export const MATERIAL_KINDS: { key: MaterialKind; label: string }[] = [
+  { key: 'lecture', label: 'Lectures' },
+  { key: 'tutorial', label: 'Tutorials' },
+  { key: 'assignment', label: 'Assignments' },
+  { key: 'lab', label: 'Labs' },
+  { key: 'other', label: 'Other' },
+];
+
+/**
+ * Which of those a document is.
+ *
+ * Coursework is the reason a student opens the vault at all — "where is that
+ * tutorial sheet" is a question a flat list of two hundred files cannot answer.
+ * Assignments are tested before tutorials because "Assignment 2 Tutorial
+ * Questions" is coursework first.
+ */
+export function materialKind(document: SourceDocument): MaterialKind {
+  const source = `${document.fileName ?? ''} ${document.title ?? ''}`.toLowerCase();
+
+  if (/\b(assignment|coursework|cw\d|project brief|report brief|submission)\b/.test(source)) {
+    return 'assignment';
+  }
+  if (/\b(tutorial|tut\d*|exercise|worksheet|problem set|practice)\b/.test(source)) {
+    return 'tutorial';
+  }
+  if (/\b(lab|practical|workshop|experiment)\b/.test(source)) return 'lab';
+  if (/\b(lect(?:ure)?\d*|lec\d*|slides?|notes?|chapter|topic|week|wk\d+)\b/.test(source)) {
+    return 'lecture';
+  }
+  return 'other';
+}
+
 /**
  * Student order first, then the lecturer's numbering, then the title.
  *
