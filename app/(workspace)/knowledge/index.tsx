@@ -14,7 +14,7 @@ import { getDb } from '@/services/firebase';
 import {
   materialKind,
   MATERIAL_KINDS,
-  sortMaterials,
+  sortForVault,
   type MaterialKind,
 } from '@/services/materials';
 import Library from '../library';
@@ -174,7 +174,7 @@ function DocumentVault({ onOpen }: { onOpen: (subjectId: string, documentId: str
     return [...bySubject.values()]
       .map((entries) => ({
         subject: entries[0].subject,
-        documents: sortMaterials(entries.map((entry) => entry.document)),
+        documents: sortForVault(entries.map((entry) => entry.document)),
       }))
       .sort(
         (a, b) =>

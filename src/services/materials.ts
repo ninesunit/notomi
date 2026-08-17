@@ -114,6 +114,21 @@ export function sortMaterials(documents: SourceDocument[]): SourceDocument[] {
   });
 }
 
+/**
+ * A course's whole shelf, ordered for reading rather than for a chapter.
+ *
+ * `sortMaterials` orders by the number in the filename, which is right inside a
+ * chapter and wrong across a mixed pile: "Assignment 1, lect1, Lab 2, lect2"
+ * interleaves four unrelated series because they all start counting at one.
+ * Kinds are kept together first, then numbered within.
+ */
+export function sortForVault(documents: SourceDocument[]): SourceDocument[] {
+  const order = MATERIAL_KINDS.map((entry) => entry.key);
+  return order.flatMap((kind) =>
+    sortMaterials(documents.filter((document) => materialKind(document) === kind))
+  );
+}
+
 /** Groups sorted by name, with the catch-all bucket always last. */
 export function groupMaterials(documents: SourceDocument[]): [string, SourceDocument[]][] {
   const groups = new Map<string, SourceDocument[]>();
