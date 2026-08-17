@@ -231,6 +231,38 @@ export async function uploadProfileImage(
  * ------------------------------------------------------------------ */
 
 /**
+ * The bytes of a stored original, without minting a URL for them.
+ *
+ * `getR2FileUrl` exists to put something in an `<iframe src>`, and in broker
+ * mode it does that by creating an object URL that stays alive for an hour so
+ * the viewer can still load it. That is right for viewing one file and wrong
+ * for reading several hundred in a loop: the migration only wants the bytes,
+ * and every object URL it never revoked held its blob in memory until the tab
+ * ran out. Anything reading a file to re-upload it should call this instead.
+ */
+export async function r2FileBlob(fileKey: string): Promise<Blob> {
+  if (R2_PUBLIC_BASE) {
+    const res = await fetch(`${R2_PUBLIC_BASE}/${fileKey}`);
+    if (!res.ok) throw new R2Error(`The original could not be read (${res.status}).`);
+    return res.blob();
+  }
+
+  const mode = r2Mode();
+  if (mode === 'unconfigured') throw new R2Error(r2ConfigHint());
+
+  if (mode === 'broker') {
+    const res = await brokerFetch(`/object?key=${encodeURIComponent(fileKey)}`);
+    return res.blob();
+  }
+
+  // Direct mode signs a GET; the URL is used once and dropped.
+  const url = await getR2FileUrl(fileKey, 300);
+  const res = await fetch(url);
+  if (!res.ok) throw new R2Error(`The original could not be read (${res.status}).`);
+  return res.blob();
+}
+
+/**
  * A URL for viewing an uploaded material. Uses the bucket's public base when
  * one is configured, otherwise a short-lived presigned GET.
  */

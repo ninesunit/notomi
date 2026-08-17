@@ -12,7 +12,7 @@ import {
 } from '@/lib/driveUtils';
 import { getDb } from '@/services/firebase';
 import { ensureCourseFolder } from '@/services/driveStorage';
-import { deleteR2File, getR2FileUrl, isR2Configured } from '@/services/r2Storage';
+import { deleteR2File, isR2Configured, r2FileBlob } from '@/services/r2Storage';
 
 /**
  * Moving a student's originals into their own Drive.
@@ -212,11 +212,10 @@ export function useDriveMigration(uid: string) {
           // Resume point: a copy already there is the one a previous run made.
           let uploaded = await findInFolder(folderId, file.fileName);
           if (!uploaded) {
-            const response = await fetch(await getR2FileUrl(file.r2FileKey));
-            if (!response.ok) {
-              throw new Error(`The original could not be read (${response.status}).`);
-            }
-            const blob = await response.blob();
+            // Bytes, not a URL: a viewing URL keeps its blob alive for an hour,
+            // and several hundred of those in a row is how a full migration ran
+            // the tab out of memory partway through.
+            const blob = await r2FileBlob(file.r2FileKey);
             uploaded = await uploadToDrive(
               blob,
               file.fileName,

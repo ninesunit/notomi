@@ -61,6 +61,9 @@ const RESUMABLE_THRESHOLD = 5 * 1024 * 1024;
 /** Renewed a minute early, so a token cannot expire mid-upload. */
 const EXPIRY_MARGIN_MS = 60_000;
 
+/** Backoff attempts before a throttled request is reported as a failure. */
+const MAX_RETRIES = 4;
+
 export function isDriveConfigured(): boolean {
   return Platform.OS === 'web' && DRIVE_CLIENT_ID.length > 0;
 }
@@ -296,7 +299,58 @@ export async function connectDrive(): Promise<void> {
  * Requests
  * ------------------------------------------------------------------ */
 
-async function driveFetch(url: string, init: RequestInit = {}, retry = true): Promise<Response> {
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Whether waiting could plausibly change the answer.
+ *
+ * Google rate limits a busy account rather than refusing it, and returns that
+ * as a 403 with a `rateLimit` reason — the same status as "your Drive is full",
+ * which waiting will never fix. Only the ones that pass through here are worth
+ * repeating.
+ */
+async function isTransient(response: Response): Promise<boolean> {
+  if (response.status === 429 || response.status >= 500) return true;
+  if (response.status !== 403) return false;
+
+  // Reading the body consumes it, so this only runs on the failure path where
+  // the response is about to be turned into an error anyway.
+  try {
+    const body = await response.clone().json();
+    const reason = body?.error?.errors?.[0]?.reason ?? '';
+    return /rateLimit|userRateLimit|backendError/i.test(reason);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * One Drive request, with the retries that a batch actually needs.
+ *
+ * Migrating a semester means hundreds of uploads in a row, which is exactly the
+ * shape of traffic Google throttles. Without a backoff the first throttle
+ * turned into a wall of failures — every remaining file reported "could not be
+ * moved" for a condition that clears in a couple of seconds.
+ */
+type FetchOptions = {
+  /** Re-ask for a token once on 401. Off for the retry itself. */
+  reauth?: boolean;
+  /**
+   * Wait and repeat when Google throttles. Off for calls whose failure is
+   * already handled — retrying a best-effort lookup for fifteen seconds only
+   * delays the fallback that was going to run anyway.
+   */
+  backoff?: boolean;
+  attempt?: number;
+};
+
+async function driveFetch(
+  url: string,
+  init: RequestInit = {},
+  options: FetchOptions = {}
+): Promise<Response> {
+  const { reauth = true, backoff = true, attempt = 0 } = options;
+
   const token = await getAccessToken();
   const response = await fetch(url, {
     ...init,
@@ -304,17 +358,27 @@ async function driveFetch(url: string, init: RequestInit = {}, retry = true): Pr
   });
 
   // A token revoked in another tab reads as 401. Re-ask once, then give up.
-  if (response.status === 401 && retry) {
+  if (response.status === 401 && reauth) {
     accessToken = null;
     expiresAt = 0;
-    return driveFetch(url, init, false);
+    return driveFetch(url, init, { ...options, reauth: false });
+  }
+
+  if (backoff && !response.ok && attempt < MAX_RETRIES && (await isTransient(response))) {
+    // 1s, 2s, 4s, 8s, plus jitter so a stalled batch does not resume in lockstep.
+    await sleep(2 ** attempt * 1000 + Math.random() * 400);
+    return driveFetch(url, init, { ...options, attempt: attempt + 1 });
   }
 
   return response;
 }
 
-async function driveJson<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const response = await driveFetch(url, init);
+async function driveJson<T>(
+  url: string,
+  init: RequestInit = {},
+  options: FetchOptions = {}
+): Promise<T> {
+  const response = await driveFetch(url, init, options);
   if (!response.ok) throw await driveError(response);
   return (await response.json()) as T;
 }
@@ -389,13 +453,28 @@ export type DriveFolderStore = {
   write: (folderId: string) => Promise<void>;
 };
 
-/** Confirms a remembered folder is still there and not in the bin. */
-async function folderIsUsable(folderId: string): Promise<boolean> {
+/**
+ * Confirms a remembered folder is still somewhere the student can see.
+ *
+ * Two conditions, and the second is the one that bit. Trashing a folder in
+ * Drive does not mark its children trashed — they simply become unreachable
+ * except through the bin. So a course folder whose workspace parent had been
+ * deleted still answered `trashed: false`, and Notomi happily kept uploading
+ * lectures into a folder sitting in the bin, where they were invisible until
+ * the bin emptied and took them with it.
+ *
+ * Checking the parent is enough to catch the whole chain: the workspace is
+ * resolved before its courses, so a trashed workspace is replaced first and
+ * every course folder then fails this check by pointing at the old one.
+ */
+async function folderIsUsable(folderId: string, expectedParentId?: string): Promise<boolean> {
   try {
-    const found = await driveJson<{ id: string; trashed?: boolean }>(
-      `${DRIVE_API}/files/${encodeURIComponent(folderId)}?fields=id,trashed`
+    const found = await driveJson<{ id: string; trashed?: boolean; parents?: string[] }>(
+      `${DRIVE_API}/files/${encodeURIComponent(folderId)}?fields=id,trashed,parents`
     );
-    return Boolean(found.id) && found.trashed !== true;
+    if (!found.id || found.trashed === true) return false;
+    if (expectedParentId && !(found.parents ?? []).includes(expectedParentId)) return false;
+    return true;
   } catch (caught) {
     if (caught instanceof DriveError && (caught.status === 404 || caught.status === 403)) {
       return false;
@@ -432,7 +511,7 @@ export async function ensureFolder(
   parentId?: string
 ): Promise<string> {
   const remembered = await store.read();
-  if (remembered && (await folderIsUsable(remembered))) return remembered;
+  if (remembered && (await folderIsUsable(remembered, parentId))) return remembered;
 
   const escaped = name.replace(/'/g, "\\'");
   const query = [
@@ -444,7 +523,9 @@ export async function ensureFolder(
 
   try {
     const found = await driveJson<{ files?: { id: string }[] }>(
-      `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id)&pageSize=1&spaces=drive`
+      `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(id)&pageSize=1&spaces=drive`,
+      {},
+      { backoff: false }
     );
     const existing = found.files?.[0]?.id;
     if (existing) {
