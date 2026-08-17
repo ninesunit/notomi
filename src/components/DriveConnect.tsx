@@ -4,12 +4,13 @@ import { Icon } from '@/components/Icon';
 import { Button, Card, Notice } from '@/components/ui';
 import { feedback } from '@/lib/sound';
 import {
-  connectDrive,
   disconnectDrive,
   driveConfigHint,
   isDriveConfigured,
   isDriveConnected,
   isDriveLinked,
+  isDrivePermanent,
+  linkDrivePermanently,
   resumeDrive,
 } from '@/lib/driveUtils';
 
@@ -32,15 +33,18 @@ export function DriveConnect({
   // and renewable without being asked again. The live token underneath expires
   // hourly and is nobody's business.
   const [connected, setConnected] = useState(() => isDriveConnected() || isDriveLinked());
+  /** Whether the connection survives closing the tab, or only lasts the hour. */
+  const [permanent, setPermanent] = useState(isDrivePermanent);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void resumeDrive().then(() => setConnected(isDriveConnected() || isDriveLinked()));
-    const timer = setInterval(
-      () => setConnected(isDriveConnected() || isDriveLinked()),
-      30_000
-    );
+    const sync = () => {
+      setConnected(isDriveConnected() || isDriveLinked());
+      setPermanent(isDrivePermanent());
+    };
+    void resumeDrive().then(sync);
+    const timer = setInterval(sync, 30_000);
     return () => clearInterval(timer);
   }, []);
 
@@ -48,7 +52,10 @@ export function DriveConnect({
     setBusy(true);
     setError(null);
     try {
-      await connectDrive();
+      // Asks for a grant the Worker can renew. Falls back by itself to the
+      // one-hour browser flow where no Worker can hold one, and reports which
+      // it got so the card does not promise more than it delivered.
+      setPermanent(await linkDrivePermanently());
       setConnected(true);
       feedback('success');
       onConnected?.();
@@ -67,7 +74,7 @@ export function DriveConnect({
       <View className="gap-2">
         {error ? <Notice title="Drive did not connect" body={error} /> : null}
         <Button
-          label={connected ? 'Drive connected' : 'Connect Google Drive'}
+          label={connected ? (permanent ? 'Drive connected' : 'Connected this session') : 'Connect Google Drive'}
           icon={connected ? 'check' : 'upload-cloud'}
           variant={connected ? 'secondary' : 'primary'}
           size="sm"
@@ -88,7 +95,11 @@ export function DriveConnect({
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Your Google Drive</Text>
           <Text className="text-xs text-muted">
-            {connected ? 'Connected — your materials live here' : 'Keep your own copy of every file'}
+            {connected
+              ? permanent
+                ? 'Connected — stays connected next time'
+                : 'Connected for this session'
+              : 'Keep your own copy of every file'}
           </Text>
         </View>
         {connected ? <View className="h-2.5 w-2.5 rounded-full bg-pine" /> : null}
@@ -131,8 +142,9 @@ export function DriveConnect({
 
       {connected ? (
         <Text className="text-[11px] leading-4 text-subtle">
-          Disconnecting only forgets the connection on this device. Nothing is removed from your
-          Drive.
+          {permanent
+            ? 'Disconnecting withdraws Notomi’s access to your Drive everywhere, not just on this device. Nothing is removed from your Drive.'
+            : 'This connection lasts about an hour, then asks again. Nothing is removed from your Drive.'}
         </Text>
       ) : null}
     </Card>

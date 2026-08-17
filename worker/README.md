@@ -36,7 +36,81 @@ in `wrangler.toml`.
 | `/object` | PUT | `?key=` uploads an object |
 | `/object` | GET | `?key=` streams an object |
 | `/object` | DELETE | `?key=` removes an object |
+| `/user-data` | DELETE | Removes every object the caller owns |
+| `/drive/link` | POST | Trades an authorization code for a stored grant |
+| `/drive/token` | POST | Mints a fresh Drive access token |
+| `/drive/unlink` | POST | Revokes and forgets the stored grant |
 
 All but `/health` require `Authorization: Bearer <firebase-id-token>`. The
 Worker verifies the RS256 signature against Google's published keys and checks
 issuer, audience and expiry before honouring anything.
+
+
+## Keeping Google Drive connected
+
+A browser OAuth flow returns an access token that dies after an hour and no
+refresh token, which is why students had to reconnect Drive every time they
+opened Notomi. Only a *confidential* client may hold a refresh token, and only
+because its secret never reaches the browser — so the exchange happens on this
+Worker, the refresh token is stored here, and the browser only ever receives the
+short-lived access token it already knew how to use.
+
+This is optional. Until both steps below are done the `/drive/*` routes answer
+`501` and the app reconnects Drive by hand exactly as before — nothing breaks,
+the connection simply does not persist.
+
+### 1. A place to keep the tokens
+
+```bash
+cd worker
+npx wrangler kv namespace create DRIVE_TOKENS
+```
+
+It prints an id. Uncomment the `[[kv_namespaces]]` block in `wrangler.toml` and
+paste the id in.
+
+Workers KV's free tier is 100,000 reads and 1,000 writes a day; a student
+account uses roughly one read per session and one write per link, so this stays
+inside the free tier.
+
+### 2. The client secret
+
+In the Google Cloud console for project `notomii`: **APIs & Services →
+Credentials → OAuth 2.0 Client IDs**, open the Web application client already
+used for sign-in, and copy its **client secret**. Then:
+
+```bash
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+```
+
+Paste it when prompted. Deliberately a secret and not a `[vars]` entry: `[vars]`
+is readable from the dashboard and belongs in the repo, and this must be
+neither. It never appears in the app bundle.
+
+While you are in that console screen, check **Authorized JavaScript origins**
+includes `https://notomii.web.app` — the same list that fixed the earlier
+`origin_mismatch`. The popup code flow uses `postmessage` rather than a
+redirect, so no redirect URI needs adding.
+
+Then redeploy:
+
+```bash
+npx wrangler deploy
+```
+
+### What a student sees
+
+Connecting Drive shows the Google consent dialog once. After that the card
+reads "stays connected next time", and reloading, closing the tab, or signing in
+on another device reconnects without a prompt — the grant belongs to the
+account, not to the browser.
+
+"Disconnect" now revokes the grant with Google and deletes it here, so it means
+access is withdrawn everywhere rather than forgotten on one device. The card
+says so.
+
+### What it does not change
+
+The scope is still `drive.file` and nothing else: Notomi can see the files it
+created and the ones a student hands it through the picker, and no more. The
+Worker refuses a grant that came back wider than that.

@@ -3,11 +3,11 @@ import { getDocs, updateDoc } from 'firebase/firestore';
 import { paths } from '@/lib/paths';
 import type { SourceDocument, Subject } from '@/lib/schema';
 import {
-  connectDrive,
   driveKey,
   findInFolder,
   isDriveConfigured,
   isDriveConnected,
+  linkDrivePermanently,
   uploadToDrive,
 } from '@/lib/driveUtils';
 import { getDb } from '@/services/firebase';
@@ -152,11 +152,13 @@ export function useDriveMigration(uid: string) {
       return;
     }
 
-    // Consent before the first file rather than in the middle of the batch.
+    // Consent before the first file rather than in the middle of the batch —
+    // and the renewable kind, because a migration can outlast an hour and used
+    // to fail every remaining file the moment the token died.
     if (!isDriveConnected()) {
       patch({ phase: 'migrating', message: 'Waiting for Google…' });
       try {
-        await connectDrive();
+        await linkDrivePermanently();
       } catch (caught) {
         patch({
           phase: 'failed',

@@ -14,7 +14,7 @@ import { getDocs } from 'firebase/firestore';
 import { Copilot } from '@/components/Copilot';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
-import { resumeDrive } from '@/lib/driveUtils';
+import { resumeDrive, setDriveIdentity } from '@/lib/driveUtils';
 import { useSafeArea } from '@/hooks/useSafeArea';
 import { Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,7 +25,7 @@ import { useWorkspaceChrome, WorkspaceChromeProvider } from '@/hooks/useWorkspac
 import { Icon } from '@/components/Icon';
 import { paths } from '@/lib/paths';
 import type { ClassBlock } from '@/lib/schema';
-import { getDb } from '@/services/firebase';
+import { getDb, getFirebaseAuth } from '@/services/firebase';
 import { canSharePresence, setPresence } from '@/services/social';
 
 /** Below this the rail becomes a swipeable drawer (iPhone portrait, split-view iPad). */
@@ -135,10 +135,19 @@ function WorkspaceShell() {
 
   /**
    * A student who linked Drive should not be asked again on every reload.
-   * Google reissues a token without a prompt while their session is alive, so
-   * this runs once on open and stays silent when it cannot.
+   *
+   * The identity has to be handed over first: a grant held by the Worker is
+   * keyed by the signed-in account, so resuming means proving who is asking.
+   * Where no grant exists this falls back to Google's silent reissue, and
+   * where that fails too it stays quiet rather than showing an error nobody
+   * asked for.
    */
   useEffect(() => {
+    setDriveIdentity(async () => {
+      const current = getFirebaseAuth().currentUser;
+      if (!current) throw new Error('Not signed in.');
+      return current.getIdToken();
+    });
     void resumeDrive();
   }, []);
 

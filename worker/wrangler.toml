@@ -13,6 +13,24 @@ R2_BUCKET = "notomi-materials"
 FIREBASE_PROJECT_ID = "notomii"
 # Origins allowed to call this Worker. Add your dev origin while developing.
 ALLOWED_ORIGINS = "https://notomii.web.app,https://notomii.firebaseapp.com,http://localhost:8081"
+# The public half of the OAuth client. Safe here; the secret half is not.
+GOOGLE_CLIENT_ID = "666272925159-qkidb4n2nv4a376qksdnt6vjk4dne6ih.apps.googleusercontent.com"
+
+# Google Drive linking. Both are optional: without them the /drive/* routes
+# answer 501 and the app falls back to reconnecting Drive by hand.
+#
+#   1. Create the namespace:  npx wrangler kv namespace create DRIVE_TOKENS
+#      then paste the id below and uncomment the block.
+#   2. Store the secret:      npx wrangler secret put GOOGLE_CLIENT_SECRET
+#      (OAuth 2.0 Client ID > Web application, in the Google Cloud console.)
+#
+# The client secret is a Worker secret, never a [vars] entry: anything in
+# [vars] is readable from the dashboard and belongs in the repo, and this
+# must be neither.
+#
+# [[kv_namespaces]]
+# binding = "DRIVE_TOKENS"
+# id = "<paste the id wrangler prints>"
 
 [observability]
 enabled = true

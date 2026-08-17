@@ -151,6 +151,205 @@ export function isDriveConnected(): boolean {
   return tokenIsLive();
 }
 
+/* ------------------------------------------------------------------ *
+ * The permanent link
+ * ------------------------------------------------------------------ */
+
+/**
+ * Where a refresh token can actually live.
+ *
+ * A browser OAuth flow hands back an access token that expires in an hour and
+ * no refresh token, which is why Drive kept asking to be reconnected. Only a
+ * confidential client may hold a refresh token, and only because its secret
+ * never reaches the browser — so the Worker that already brokers R2 does the
+ * exchange, keeps the refresh token, and hands this module a fresh access
+ * token whenever one is wanted.
+ *
+ * Everything below degrades: if the Worker is not configured for Drive it
+ * answers 501, and the app reconnects by hand exactly as it did before.
+ */
+const BROKER_URL = (process.env.EXPO_PUBLIC_R2_WORKER_URL ?? '').replace(/\/$/, '');
+
+/** Remembers that the *server* holds a grant, which outlives this device. */
+const BROKER_KEY = 'notomi.drive.broker';
+
+function brokerLinked(): boolean {
+  if (Platform.OS !== 'web' || !BROKER_URL) return false;
+  try {
+    return window.localStorage.getItem(BROKER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberBroker(linked: boolean): void {
+  if (Platform.OS !== 'web') return;
+  try {
+    if (linked) window.localStorage.setItem(BROKER_KEY, '1');
+    else window.localStorage.removeItem(BROKER_KEY);
+  } catch {
+    /* Private browsing: this session only, which still works. */
+  }
+}
+
+/** Supplied by the app so this module needs no Firebase import. */
+let identify: (() => Promise<string>) | null = null;
+
+export function setDriveIdentity(source: () => Promise<string>): void {
+  identify = source;
+}
+
+async function brokerFetch(path: string, body: unknown): Promise<Response> {
+  if (!BROKER_URL) throw new DriveError('No storage worker is configured.');
+  if (!identify) throw new DriveError('Notomi is still starting up. Try again in a moment.');
+
+  return fetch(`${BROKER_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${await identify()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+/**
+ * Whether a server-side grant exists, as far as this session has learnt.
+ *
+ * 'unknown' on every fresh load, because localStorage cannot answer it: the
+ * grant belongs to the account, not to the browser, so a student signing in on
+ * a new laptop is already linked and should never be asked again. One request
+ * settles it, and 'absent' stops that request repeating for a student who has
+ * no grant at all.
+ */
+let brokerState: 'unknown' | 'linked' | 'absent' = 'unknown';
+
+/**
+ * Asks the Worker for an access token minted from the stored refresh token.
+ *
+ * Returns false rather than throwing for every "not linked" case, because the
+ * caller's fallback — the ordinary browser consent flow — is a normal outcome
+ * and not an error worth showing anybody.
+ */
+async function tokenFromBroker(): Promise<boolean> {
+  if (!BROKER_URL || Platform.OS !== 'web') return false;
+  if (brokerState === 'absent') return false;
+
+  try {
+    const response = await brokerFetch('/drive/token', {});
+    if (!response.ok) {
+      // 404 is "no grant stored", 401 is "the student revoked it in their
+      // Google account", 501 is "this Worker cannot hold one". All three mean
+      // stop asking and offer the ordinary connect flow.
+      if ([404, 401, 501].includes(response.status)) {
+        brokerState = 'absent';
+        rememberBroker(false);
+      }
+      return false;
+    }
+
+    const body = (await response.json()) as { accessToken?: string; expiresIn?: number };
+    if (!body.accessToken) return false;
+
+    accessToken = body.accessToken;
+    expiresAt = Date.now() + (body.expiresIn ?? 3600) * 1000;
+    brokerState = 'linked';
+    rememberBroker(true);
+    return true;
+  } catch {
+    // Offline, or the Worker is down. Deliberately not recorded as 'absent':
+    // a flaky connection must not make a permanent link look revoked.
+    return false;
+  }
+}
+
+type CodeClient = { requestCode: () => void };
+
+/**
+ * The consent flow that yields a refresh token.
+ *
+ * Different from the ordinary one in two ways that matter: it asks for a code
+ * rather than a token, and it forces the dialog. Google only issues a refresh
+ * token when consent is granted afresh, so a student who has already said yes
+ * would otherwise get a link that still expires in an hour.
+ */
+async function requestAuthCode(): Promise<string> {
+  await loadScript(GIS_SRC);
+  const oauth2 = window.google?.accounts?.oauth2;
+  if (!oauth2) throw new DriveError('Google sign-in did not load.');
+
+  return new Promise<string>((resolve, reject) => {
+    const client = oauth2.initCodeClient({
+      client_id: DRIVE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      ux_mode: 'popup',
+      callback: (response: { code?: string; error?: string }) => {
+        if (response.code) resolve(response.code);
+        else {
+          reject(
+            new DriveError(
+              response.error === 'access_denied'
+                ? 'Notomi was not given access to your Drive.'
+                : (response.error ?? 'Google did not return access.')
+            )
+          );
+        }
+      },
+    }) as CodeClient;
+
+    try {
+      client.requestCode();
+    } catch (caught) {
+      reject(caught instanceof Error ? caught : new DriveError(String(caught)));
+    }
+  });
+}
+
+/**
+ * Connects Drive so it stays connected.
+ *
+ * Falls back to the one-hour browser flow whenever the Worker cannot hold a
+ * grant — an unconfigured deployment, or a student on a build without one.
+ * Returns whether the link is the permanent kind, which is the only thing the
+ * UI needs to say something honest about.
+ */
+export async function linkDrivePermanently(): Promise<boolean> {
+  if (!isDriveConfigured()) throw new DriveError(driveConfigHint());
+  if (!BROKER_URL) {
+    await getAccessToken(true);
+    return false;
+  }
+
+  const code = await requestAuthCode();
+  const response = await brokerFetch('/drive/link', { code, redirectUri: 'postmessage' });
+
+  if (!response.ok) {
+    if (response.status === 501) {
+      // The Worker has no client secret. Nothing is wrong; this deployment
+      // simply cannot hold a grant, so connect the way it always did.
+      await getAccessToken(true);
+      return false;
+    }
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new DriveError(body.error ?? 'Google Drive could not be connected.');
+  }
+
+  const body = (await response.json()) as { accessToken?: string; expiresIn?: number };
+  if (body.accessToken) {
+    accessToken = body.accessToken;
+    expiresAt = Date.now() + (body.expiresIn ?? 3600) * 1000;
+  }
+  brokerState = 'linked';
+  rememberBroker(true);
+  rememberLink(true);
+  return true;
+}
+
+/** Whether this student's Drive stays connected without asking again. */
+export function isDrivePermanent(): boolean {
+  return brokerState === 'linked' || brokerLinked();
+}
+
 /**
  * Whether this student has said yes to Drive before, on this device.
  *
@@ -190,7 +389,13 @@ function rememberLink(linked: boolean): void {
  * shown a Connect button rather than an error they did not ask for.
  */
 export async function resumeDrive(): Promise<boolean> {
-  if (!isDriveConfigured() || !isDriveLinked() || tokenIsLive()) return tokenIsLive();
+  if (!isDriveConfigured() || tokenIsLive()) return tokenIsLive();
+
+  // A grant held by the Worker does not depend on this browser remembering
+  // anything, so it is tried even when this device has no local record.
+  if (await tokenFromBroker()) return true;
+
+  if (!isDriveLinked()) return false;
   try {
     await getAccessToken(false);
     return true;
@@ -201,9 +406,18 @@ export async function resumeDrive(): Promise<boolean> {
 
 export function disconnectDrive(): void {
   const token = accessToken;
+  const hadBroker = brokerState === 'linked' || brokerLinked();
   accessToken = null;
   expiresAt = 0;
+  brokerState = 'absent';
   rememberLink(false);
+  rememberBroker(false);
+
+  // Disconnecting has to reach the stored grant too, or "disconnect" would
+  // only clear this tab while the Worker quietly kept the keys.
+  if (hadBroker) {
+    void brokerFetch('/drive/unlink', {}).catch(() => undefined);
+  }
   // Best effort: revoking is a courtesy to the student, and a failure here
   // must not stop the local session being forgotten.
   if (token && Platform.OS === 'web') {
@@ -245,6 +459,11 @@ export async function getAccessToken(interactive = false): Promise<string> {
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
+    // A stored grant renews without a popup, without a Google session cookie,
+    // and on browsers that block third-party frames outright — which is what
+    // makes the connection survive a reload, a new device and Safari.
+    if (await tokenFromBroker()) return accessToken as string;
+
     const client = await ensureTokenClient();
 
     const request = (prompt: string) =>
