@@ -306,7 +306,9 @@ service cloud.firestore {
           && (!('shareCourses' in request.resource.data)
             || request.resource.data.shareCourses is bool)
           && (!('sharePresence' in request.resource.data)
-            || request.resource.data.sharePresence is bool);
+            || request.resource.data.sharePresence is bool)
+          && (!('shareSchedule' in request.resource.data)
+            || request.resource.data.shareSchedule is bool);
       allow delete: if isOwner(userId);
     }
 
@@ -316,7 +318,12 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAcceptedFriend(userId);
       allow create, update: if isOwner(userId)
         && request.resource.data.intervals is list
-        && request.resource.data.intervals.size() <= 300;
+        && request.resource.data.intervals.size() <= 300
+        // The labelled week, when the owner has opted into sharing one. Bounded
+        // so this document cannot become a channel for arbitrary text.
+        && (!('blocks' in request.resource.data)
+          || (request.resource.data.blocks is list
+            && request.resource.data.blocks.size() <= 60));
       allow delete: if isOwner(userId);
     }
 

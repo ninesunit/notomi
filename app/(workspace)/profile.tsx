@@ -222,6 +222,7 @@ function EditProfileModal({
   const [bio, setBio] = useState('');
   const [shareCourses, setShareCourses] = useState(false);
   const [sharePresence, setSharePresence] = useState(false);
+  const [shareSchedule, setShareSchedule] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -241,6 +242,7 @@ function EditProfileModal({
     setBio(profile?.bio ?? '');
     setShareCourses(profile?.shareCourses === true);
     setSharePresence(profile?.sharePresence === true);
+    setShareSchedule(profile?.shareSchedule === true);
     setError(null);
   }, [visible, profile, fallbackName]);
 
@@ -331,6 +333,7 @@ function EditProfileModal({
         courseCodes: profile?.courseCodes ?? [],
         shareCourses,
         sharePresence,
+        shareSchedule,
         stats: profile?.stats,
       });
       if (profile?.avatarKey && profile.avatarKey !== nextAvatarKey) {
@@ -492,6 +495,13 @@ function EditProfileModal({
           value={sharePresence}
           onChange={setSharePresence}
         />
+        <PrivacyToggle
+          icon="calendar"
+          title="Let friends see your weekly schedule"
+          detail="Accepted friends may open your week and see class names and times. Finding time you are both free never needs this — that works from the shape of your week alone."
+          value={shareSchedule}
+          onChange={setShareSchedule}
+        />
       </View>
     </Sheet>
   );
@@ -523,7 +533,7 @@ function PrivacyToggle({
   value,
   onChange,
 }: {
-  icon: 'book-open' | 'activity';
+  icon: 'book-open' | 'activity' | 'calendar';
   title: string;
   detail: string;
   value: boolean;

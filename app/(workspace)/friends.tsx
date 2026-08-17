@@ -3,6 +3,7 @@ import { Image, Pressable, Text, TextInput, useWindowDimensions, View } from 're
 import { useRouter } from 'expo-router';
 import { Icon } from '@/components/Icon';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { Sheet } from '@/components/Sheet';
 import { ShareMaterial } from '@/components/social/ShareMaterial';
 import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
@@ -24,11 +25,14 @@ import {
   removeFriend,
   requestFriend,
   searchProfiles,
+  loadSharedWeek,
   stopSharing,
   syncPublicCourses,
   toBusyIntervals,
+  toSharedBlocks,
   usernameOf,
   type BusyInterval,
+  type SharedBlock,
   type Friend,
   type Gap,
   type Presence,
@@ -83,6 +87,8 @@ export default function Friends() {
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The friend whose labelled week is open, if any. */
+  const [viewingWeek, setViewingWeek] = useState<Friend | null>(null);
 
   useEffect(() => {
     void myProfile(uid).catch((caught) => console.warn('[social] Profile migration failed.', caught));
@@ -108,8 +114,23 @@ export default function Friends() {
       void stopSharing(uid);
       return;
     }
-    void publishBusy(uid, toBusyIntervals(classes.data, routines.data));
-  }, [uid, accepted.length, classes.data, classes.loading, routines.data, routines.loading, friends.loading]);
+    void publishBusy(
+      uid,
+      toBusyIntervals(classes.data, routines.data),
+      // Labels only when the student has asked for them; the shape of the week
+      // goes out either way, because the free-time matcher runs on that alone.
+      profile.data?.shareSchedule === true ? toSharedBlocks(classes.data, routines.data) : []
+    );
+  }, [
+    uid,
+    accepted.length,
+    classes.data,
+    classes.loading,
+    routines.data,
+    routines.loading,
+    friends.loading,
+    profile.data?.shareSchedule,
+  ]);
 
   useEffect(() => {
     if (profile.loading || subjects.loading) return;
@@ -380,6 +401,13 @@ export default function Friends() {
                         onPress={() => chooseForMatch(friend.id)}
                       />
                       <Button
+                        label="Their week"
+                        icon="calendar"
+                        variant="secondary"
+                        size="sm"
+                        onPress={() => setViewingWeek(friend)}
+                      />
+                      <Button
                         label="Challenge"
                         icon="swords"
                         size="sm"
@@ -414,7 +442,86 @@ export default function Friends() {
           />
         </View>
       </View>
+
+      <FriendWeek friend={viewingWeek} onClose={() => setViewingWeek(null)} />
     </ScreenScroll>
+  );
+}
+
+/**
+ * A friend's week, when they have chosen to publish it with its labels.
+ *
+ * Deliberately a read of one document rather than anything live: a timetable
+ * changes a handful of times a semester, and the alternative — a listener per
+ * friend — costs a connection each to watch something that does not move.
+ */
+function FriendWeek({ friend, onClose }: { friend: Friend | null; onClose: () => void }) {
+  const [blocks, setBlocks] = useState<SharedBlock[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!friend) return;
+    let live = true;
+    setBlocks(null);
+    setFailed(false);
+    void loadSharedWeek(friend.id)
+      .then((found) => live && setBlocks(found))
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [friend?.id]);
+
+  const byDay = useMemo(() => {
+    const days: SharedBlock[][] = Array.from({ length: 7 }, () => []);
+    for (const block of blocks ?? []) days[block.day]?.push(block);
+    return days;
+  }, [blocks]);
+
+  return (
+    <Sheet
+      visible={friend !== null}
+      onClose={onClose}
+      title={friend ? `${friend.displayName}’s week` : 'Their week'}
+      icon="calendar"
+    >
+      {failed ? (
+        <Notice title="Could not open their week" body="Try again in a moment." />
+      ) : blocks === null ? (
+        <Loading label="Opening their week…" />
+      ) : blocks.length === 0 ? (
+        <EmptyState
+          icon="calendar"
+          title="Not shared"
+          body={`${friend?.displayName ?? 'They'} has not turned on schedule sharing. You can still use Match Schedule to find time you are both free.`}
+        />
+      ) : (
+        <View className="gap-3">
+          {byDay.map((entries, day) =>
+            entries.length === 0 ? null : (
+              <View key={day} className="gap-1.5">
+                <Text className="text-[11px] font-bold uppercase tracking-wider text-muted">
+                  {DAY_FULL[day]}
+                </Text>
+                {entries.map((block, index) => (
+                  <View
+                    key={`${day}-${index}`}
+                    className="flex-row items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5"
+                  >
+                    <Text className="w-28 shrink-0 text-xs font-semibold tabular-nums text-muted">
+                      {minutesToLabel(block.start)}–{minutesToLabel(block.end)}
+                    </Text>
+                    <Text className="flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
+                      {block.title}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )
+          )}
+        </View>
+      )}
+    </Sheet>
   );
 }
 
