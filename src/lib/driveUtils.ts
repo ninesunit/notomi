@@ -583,6 +583,30 @@ export async function fetchDriveBlob(fileId: string): Promise<Blob> {
   return response.blob();
 }
 
+/**
+ * Looks for a file this app already put in a folder.
+ *
+ * Search is normally useless under drive.file, but not here: these are files
+ * Notomi created, so it can see them. That makes it the resume point for a
+ * migration interrupted between the upload and the record of it — without this
+ * check, closing the tab at the wrong moment leaves a second copy behind.
+ */
+export async function findInFolder(folderId: string, name: string): Promise<DriveFile | null> {
+  const escaped = name.replace(/'/g, "\\'");
+  const query = `name='${escaped}' and '${folderId}' in parents and trashed=false`;
+
+  try {
+    const found = await driveJson<{ files?: { id: string }[] }>(
+      `${DRIVE_API}/files?q=${encodeURIComponent(query)}&fields=files(${UPLOAD_FIELDS})&pageSize=1&spaces=drive`
+    );
+    const first = found.files?.[0];
+    return first ? toDriveFile(first as Parameters<typeof toDriveFile>[0]) : null;
+  } catch {
+    // Treated as "not there": re-uploading is recoverable, refusing is not.
+    return null;
+  }
+}
+
 export async function getDriveFileMeta(fileId: string): Promise<DriveFile | null> {
   try {
     return toDriveFile(

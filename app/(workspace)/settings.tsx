@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import { DriveConnect } from '@/components/DriveConnect';
+import { DriveMigrationModal } from '@/components/DriveMigrationModal';
 import { Icon } from '@/components/Icon';
 import { RemindersCard } from '@/components/Reminders';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Button, Card, PageHeader } from '@/components/ui';
 import { useAuth } from '@/hooks/useAuth';
+import { isDriveConfigured } from '@/lib/driveUtils';
 import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
 
 /**
@@ -18,6 +20,7 @@ import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
 export default function Settings() {
   const { user, logOut } = useAuth();
   const [sound, setSound] = useState(isSoundEnabled);
+  const [migrating, setMigrating] = useState(false);
 
   const displayName = user?.displayName || (user?.isAnonymous ? 'Guest' : user?.email) || 'You';
 
@@ -27,9 +30,19 @@ export default function Settings() {
 
       <RemindersCard />
 
-      <View className="mb-8">
+      <View className="mb-8 gap-2">
         <DriveConnect />
+        {isDriveConfigured() ? (
+          <Button
+            label="Move existing files to my Drive"
+            icon="upload-cloud"
+            variant="secondary"
+            size="sm"
+            onPress={() => setMigrating(true)}
+          />
+        ) : null}
       </View>
+      <DriveMigrationModal visible={migrating} onClose={() => setMigrating(false)} />
 
       <Card className="mb-8 gap-4">
         <View className="flex-row items-center gap-3">
