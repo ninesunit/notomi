@@ -98,6 +98,24 @@ Then redeploy:
 npx wrangler deploy
 ```
 
+### Checking it worked
+
+```bash
+node check-drive.mjs
+```
+
+Signs up a throwaway account, calls the routes as that account, and deletes it
+again. No Google consent, no client secret, nothing written to Drive.
+
+`404` from `/drive/token` is the answer you want: the Worker is configured and
+this brand-new account simply has no grant yet. `501` means the client secret or
+the KV binding did not stick — re-running `./setup-drive.sh` is safe.
+
+It stops early if `/health` does not answer, because that route takes no
+authentication: a failure there is the network in the way rather than anything
+about the configuration, and every check after it would be measuring the wrong
+thing.
+
 ### What a student sees
 
 Connecting Drive shows the Google consent dialog once. After that the card
