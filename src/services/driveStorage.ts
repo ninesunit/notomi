@@ -4,6 +4,7 @@ import type { Subject } from '@/lib/schema';
 import {
   DriveError,
   WORKSPACE_FOLDER_NAME,
+  deleteDriveFile,
   driveKey,
   ensureFolder,
   fetchDriveBlob,
@@ -183,6 +184,47 @@ export async function originalBytes(document: {
 
   const response = await fetch(url).catch(() => null);
   return response?.ok ? response.blob() : null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Removing what Notomi put there
+ * ------------------------------------------------------------------ */
+
+/**
+ * Deletes a document's original from Drive, if that is where it lives.
+ *
+ * Best effort on purpose: a student deleting a file in Notomi is telling us
+ * their intent, and a Drive that is offline, full or disconnected must not
+ * block the Firestore records they actually asked to remove. The worst case is
+ * a file left in their own Drive, which they can see and delete themselves —
+ * the reverse, refusing the delete, would be a bug they cannot work around.
+ */
+export async function removeOriginalFromDrive(document: {
+  driveFileId?: string | null;
+}): Promise<void> {
+  if (!document.driveFileId || !canUseDrive()) return;
+  await deleteDriveFile(document.driveFileId).catch(() => undefined);
+}
+
+/**
+ * Removes a subject's whole course folder.
+ *
+ * Deleting the folder is what a student means by deleting the course: leaving
+ * an empty "CPT6123" behind in their Drive after they removed the subject is
+ * litter Notomi made and did not clean up. Only ever the folder this app
+ * created and recorded — never one it merely found.
+ */
+export async function removeCourseFolder(uid: string, subjectId: string): Promise<void> {
+  if (!canUseDrive()) return;
+
+  try {
+    const snapshot = await getDoc(paths.subject(getDb(), uid, subjectId));
+    const folderId = (snapshot.data() as Subject | undefined)?.driveFolderId;
+    if (!folderId) return;
+    await deleteDriveFile(folderId).catch(() => undefined);
+  } catch {
+    /* The subject is going away regardless; this is tidying, not the task. */
+  }
 }
 
 /* ------------------------------------------------------------------ *

@@ -46,7 +46,12 @@ import {
   SIZE_LIMITS,
   type ParsedFile,
 } from './fileProcessor';
-import { canUseDrive, storeOriginalInDrive } from './driveStorage';
+import {
+  canUseDrive,
+  removeCourseFolder,
+  removeOriginalFromDrive,
+  storeOriginalInDrive,
+} from './driveStorage';
 import { deleteR2File, isR2Configured, r2ConfigHint, R2Error, uploadFileToR2 } from './r2Storage';
 
 /**
@@ -1069,9 +1074,19 @@ export async function deleteMaterial(
 ): Promise<void> {
   const db = getDb();
 
-  // The object store is best-effort: a missing or unreachable R2 must not
-  // strand the Firestore records the student is actually trying to remove.
-  if (r2FileKey) await deleteR2File(r2FileKey).catch(() => undefined);
+  // The original is read before the record goes, because the caller only knows
+  // the R2 key and the file may well be in the student's Drive instead —
+  // deleting in Notomi has to mean deleting in both places.
+  const record = await getDoc(paths.document(db, uid, subjectId, documentId))
+    .then((snapshot) => snapshot.data() as SourceDocument | undefined)
+    .catch(() => undefined);
+
+  // Both stores are best-effort: one that is offline, full or disconnected
+  // must not strand the records the student is actually trying to remove.
+  if (r2FileKey || record?.r2FileKey) {
+    await deleteR2File((r2FileKey || record?.r2FileKey) as string).catch(() => undefined);
+  }
+  if (record?.driveFileId) await removeOriginalFromDrive(record);
 
   const [derivedTodos, derivedChats, flashcards] = await Promise.all([
     getDocs(query(paths.todos(db, uid), where('sourceDocumentId', '==', documentId))),
@@ -1128,6 +1143,15 @@ export async function deleteSubject(uid: string, subjectId: string): Promise<voi
       .filter(Boolean)
       .map((key) => deleteR2File(key).catch(() => undefined))
   );
+
+  // The same for anything held in the student's Drive, then the course folder
+  // itself — an empty "CPT6123" left behind is litter Notomi made.
+  await Promise.all(
+    documents.docs.map((document) =>
+      removeOriginalFromDrive(document.data() as SourceDocument)
+    )
+  );
+  await removeCourseFolder(uid, subjectId);
 
   const messageRefs = (
     await Promise.all(

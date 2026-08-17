@@ -4,6 +4,7 @@ import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { AddMaterialModal } from '@/components/AddMaterialModal';
+import { DriveDropZone } from '@/components/DriveDropZone';
 import { AttendanceGuard } from '@/components/AcademicInsights';
 import { AssignmentsPanel } from '@/components/Assignments';
 import { LectureLogPanel } from '@/components/LectureLog';
@@ -26,6 +27,14 @@ import { formatDateTime } from '@/lib/dates';
 import { formatChars } from '@/lib/format';
 import { getDb } from '@/services/firebase';
 import { UNGROUPED, groupMaterials, renameChapter } from '@/services/materials';
+import { isDriveConfigured, pickFromDrive } from '@/lib/driveUtils';
+import { rememberPickedFiles } from '@/services/driveStorage';
+import {
+  materialFilesFromWeb,
+  processUploadedMaterial,
+  validateMaterialBatch,
+} from '@/services/ingestion';
+import { feedback } from '@/lib/sound';
 import { paths } from '@/lib/paths';
 import type {
   Assignment,
@@ -63,6 +72,7 @@ export default function SubjectFolder({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [tab, setTab] = useState<TabId>('sources');
+  const [driveBusy, setDriveBusy] = useState<string | null>(null);
 
   const subject = useDocument<Subject>(paths.subject(db, uid, subjectId), [uid, subjectId]);
   const documents = useCollection<SourceDocument>(
@@ -104,6 +114,51 @@ export default function SubjectFolder({
     () => documents.data.reduce((total, document) => total + (document.charCount ?? 0), 0),
     [documents.data]
   );
+
+  /**
+   * Files the student already has in Drive.
+   *
+   * The picker is the only way a drive.file app can reach a file it did not
+   * create — choosing one *is* the permission grant — so this is how material
+   * added to Drive outside Notomi gets in.
+   */
+  async function syncFromDrive() {
+    setError(null);
+    setDriveBusy('Opening your Drive…');
+    try {
+      const picked = await pickFromDrive();
+      if (picked.length === 0) return;
+      setDriveBusy(`Linking ${picked.length} file${picked.length === 1 ? '' : 's'}…`);
+      await rememberPickedFiles(uid, subjectId, picked);
+      feedback('success');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      feedback('error');
+    } finally {
+      setDriveBusy(null);
+    }
+  }
+
+  /** Dropped files take the ordinary ingest route, so nothing about them is special. */
+  async function acceptDropped(files: File[]) {
+    setError(null);
+    try {
+      const materials = materialFilesFromWeb(files);
+      validateMaterialBatch(materials);
+      for (let index = 0; index < materials.length; index += 1) {
+        setDriveBusy(
+          `Uploading ${materials[index].name} (${index + 1} of ${materials.length})…`
+        );
+        await processUploadedMaterial(materials[index], subjectId, uid);
+      }
+      feedback('success');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      feedback('error');
+    } finally {
+      setDriveBusy(null);
+    }
+  }
 
   async function removeDocument(document: SourceDocument) {
     setError(null);
@@ -296,6 +351,13 @@ export default function SubjectFolder({
         </Text>
       </View>
 
+      {driveBusy ? (
+        <View className="mb-3 flex-row items-center gap-2 rounded-xl bg-sand px-3 py-2.5">
+          <Icon name="upload-cloud" size={13} color="#6F6A5F" />
+          <Text className="flex-1 text-xs font-medium text-ink">{driveBusy}</Text>
+        </View>
+      ) : null}
+
       <View className="mb-8 flex-row flex-wrap gap-2">
         <Button
           label="Add material"
@@ -304,6 +366,17 @@ export default function SubjectFolder({
           size="sm"
           onPress={() => setAddOpen(true)}
         />
+        {isDriveConfigured() ? (
+          <Button
+            label="Sync from Drive"
+            icon="refresh-cw"
+            variant="secondary"
+            size="sm"
+            loading={Boolean(driveBusy)}
+            disabled={Boolean(driveBusy)}
+            onPress={() => void syncFromDrive()}
+          />
+        ) : null}
         <Link href={`/tasks?tab=focus&subjectId=${subjectId}`} asChild>
           <Button label="Study this" icon="target" variant="secondary" size="sm" />
         </Link>
@@ -470,6 +543,11 @@ export default function SubjectFolder({
           <LectureLogPanel uid={uid} subjectId={subjectId} subjectName={subject.data.name} />
         </TabPanel>
       )}
+
+      <DriveDropZone
+        onFiles={acceptDropped}
+        label={`Drop files to add them to ${subject.data.name}`}
+      />
 
       <AddMaterialModal
         subjectId={subjectId}
