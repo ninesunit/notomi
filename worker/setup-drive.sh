@@ -77,18 +77,40 @@ step "Creating the DRIVE_TOKENS namespace"
 if grep -qE '^\[\[kv_namespaces\]\]' wrangler.toml; then
   note "wrangler.toml already declares a namespace — leaving it alone."
 else
-  # wrangler prints the binding block on success; the id is what we need out
-  # of it. Captured rather than shown, because the raw output also suggests a
-  # config edit that this script is about to make itself.
-  created=$(npx wrangler kv namespace create DRIVE_TOKENS 2>&1) || {
-    printf '%s\n' "$created" >&2
-    die "could not create the namespace (see above)"
-  }
+  # Look before creating. A previous run may have made the namespace and then
+  # had its config edit lost — to a failed pull, a clean clone, a discarded
+  # branch — and `create` would fail on the duplicate title, leaving the script
+  # stuck on a namespace that already exists.
+  existing=$(npx wrangler kv namespace list 2>/dev/null || true)
+  kv_id=$(printf '%s' "$existing" | python3 -c '
+import json, sys
+try:
+    entries = json.loads(sys.stdin.read() or "[]")
+except Exception:
+    entries = []
+for entry in entries:
+    if "DRIVE_TOKENS" in entry.get("title", ""):
+        print(entry["id"])
+        break
+' 2>/dev/null || true)
 
-  kv_id=$(printf '%s' "$created" | grep -oE '"[0-9a-f]{32}"' | head -1 | tr -d '"')
+  if [ -n "$kv_id" ]; then
+    note "reusing the DRIVE_TOKENS namespace that already exists"
+  else
+    # wrangler prints the binding block on success; the id is what we need out
+    # of it. Captured rather than shown, because the raw output also suggests a
+    # config edit that this script is about to make itself.
+    created=$(npx wrangler kv namespace create DRIVE_TOKENS 2>&1) || {
+      printf '%s\n' "$created" >&2
+      die "could not create the namespace (see above)"
+    }
+
+    kv_id=$(printf '%s' "$created" | grep -oE '"[0-9a-f]{32}"' | head -1 | tr -d '"' || true)
+  fi
+
   [ -n "$kv_id" ] || {
-    printf '%s\n' "$created" >&2
-    die "created the namespace but could not read its id from the output above"
+    printf '%s\n' "${created:-$existing}" >&2
+    die "could not determine the namespace id from the output above"
   }
 
   note "id: $kv_id"
@@ -121,7 +143,7 @@ fi
 # 2. The client secret
 # ---------------------------------------------------------------------------
 
-step "Storing the Google client secret"
+step "Storing the Google client secret on \"$worker_name\""
 note "Google Cloud console > APIs & Services > Credentials > your Web"
 note "application OAuth client > Client secret."
 note ""
@@ -142,11 +164,18 @@ esac
 printf '%s' "$client_secret" | npx wrangler secret put GOOGLE_CLIENT_SECRET
 unset client_secret
 
+# Secrets belong to one worker and do not follow a rename, so confirm it landed
+# on the one the app calls rather than trusting the upload message.
+if ! npx wrangler secret list 2>/dev/null | grep -q GOOGLE_CLIENT_SECRET; then
+  die "the secret did not appear on \"$worker_name\" — check the output above"
+fi
+note "confirmed on \"$worker_name\""
+
 # ---------------------------------------------------------------------------
 # 3. Ship it
 # ---------------------------------------------------------------------------
 
-step "Deploying the Worker"
+step "Deploying \"$worker_name\""
 npx wrangler deploy
 
 worker_url=$(grep -hoE '^EXPO_PUBLIC_R2_WORKER_URL=.*' ../.env.production ../.env 2>/dev/null | head -1 | cut -d= -f2- || true)
