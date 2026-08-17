@@ -29,6 +29,7 @@ import {
 import { getDb } from '@/services/firebase';
 import { academicClasses, type ResolvedClass } from '@/services/timetable';
 import { buildBurnoutWeeks, findActiveSemester } from '@/services/academicPlanner';
+import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
 
 /**
  * The dashboard.
@@ -137,6 +138,7 @@ export default function Dashboard() {
         loading={classes.loading || todos.loading}
         configured={setUp}
         compact={compact}
+        semester={activeSemester}
       />
 
       <CompactBurnout
@@ -172,10 +174,11 @@ function MissionStatus({ semester, todos }: { semester: Semester | null; todos: 
     );
   }
 
-  const start = toDate(semester.startDate);
-  const week = start
-    ? Math.max(1, Math.min(semester.teachingWeeks ?? 52, Math.floor((Date.now() - start.getTime()) / 604_800_000) + 1))
-    : null;
+  // One definition of "which week is it", shared with the teaching plan and the
+  // timetable. Counting 7-day slices from the term's start date drifts out of
+  // step with a Monday-aligned plan the moment a term begins mid-week.
+  const week = weekOf(semester);
+  const dates = week ? weekRangeLabel(semester, week) : null;
   const weeks = buildBurnoutWeeks(semester, todos);
   const current = week ? weeks[week - 1] : weeks[0];
   const peak = Math.max(1, ...weeks.map((entry) => entry.workload));
@@ -187,6 +190,7 @@ function MissionStatus({ semester, todos }: { semester: Semester | null; todos: 
     <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-surface px-4 py-3">
       <Icon name="layout-dashboard" size={16} color="#18181B" />
       <Badge label={`${semester.name}${week ? ` • Week ${week}` : ''}`} />
+      {dates ? <Text className="text-xs font-medium text-muted">{dates}</Text> : null}
       <View className="flex-1" />
       <Badge label={`Burnout: ${status}`} tone={tone} />
     </View>
@@ -247,6 +251,7 @@ function ThisWeek({
   loading,
   configured,
   compact,
+  semester,
 }: {
   classes: ResolvedClass[];
   routines: RoutineBlock[];
@@ -255,9 +260,17 @@ function ThisWeek({
   configured: boolean;
   /** Drops the section heading; the week is self-evident and space is short. */
   compact: boolean;
+  /** Dates the repeating week against the term, when one is running. */
+  semester: Semester | null;
 }) {
   const now = new Date();
   const [selectedClass, setSelectedClass] = useState<ResolvedClass | null>(null);
+
+  /** The dates this repeating week actually falls on, when a term is running. */
+  const weekDates = useMemo(() => {
+    const week = weekOf(semester);
+    return week ? weekDays(semester, week) : null;
+  }, [semester]);
 
   const due = useMemo(() => {
     const rows: Entry[] = [];
@@ -299,7 +312,12 @@ function ThisWeek({
           </Text>
         </Card>
       ) : (
-        <WeekOverview classes={classes} routines={routines} onSelect={setSelectedClass} />
+        <WeekOverview
+          classes={classes}
+          routines={routines}
+          onSelect={setSelectedClass}
+          dates={weekDates}
+        />
       )}
 
       {due.length > 0 ? (

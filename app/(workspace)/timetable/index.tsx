@@ -53,6 +53,8 @@ import {
   type ClassInput,
   type ResolvedClass,
 } from '@/services/timetable';
+import { findActiveSemester } from '@/services/academicPlanner';
+import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
 
 /**
  * The timetable.
@@ -205,6 +207,23 @@ export default function Timetable() {
   const importer = useScheduleImport(subjects.data, allClasses.data, routines.data);
   const loading = classes.loading || subjects.loading;
 
+  /**
+   * The term the week is being counted against — the one being filtered to if a
+   * term is selected, otherwise whichever is running now. A timetable is a
+   * repeating shape; the week number and its dates are what tie it to a date.
+   */
+  const termInView = useMemo(
+    () =>
+      semesters.data.find((semester) => semester.id === activeScope) ??
+      findActiveSemester(semesters.data),
+    [semesters.data, activeScope]
+  );
+  const week = useMemo(() => weekOf(termInView), [termInView]);
+  const weekDates = useMemo(
+    () => (week ? (weekDays(termInView, week) ?? null) : null),
+    [termInView, week]
+  );
+
   return (
     <ScreenScroll>
       <PageHeader
@@ -263,6 +282,16 @@ export default function Timetable() {
           scope={activeScope}
           onScope={setScope}
         />
+      ) : null}
+
+      {/* A timetable is the same seven days every week; this is the line that
+          says which week they are. */}
+      {week && termInView ? (
+        <View className="mb-4 flex-row items-center gap-2 self-start rounded-full border border-line bg-sand px-3 py-1.5">
+          <Icon name="calendar" size={13} color="#6F6A5F" />
+          <Text className="text-xs font-semibold text-ink">Week {week}</Text>
+          <Text className="text-xs text-muted">{weekRangeLabel(termInView, week)}</Text>
+        </View>
       ) : null}
 
       {loading ? (
@@ -356,17 +385,24 @@ export default function Timetable() {
               lastHour={lastHour}
               onSelect={(block) => setEditing(block)}
               onSelectRoutine={(block) => setEditingRoutine(block)}
+              dates={weekDates}
             />
           ) : view === 'week' ? (
             <WeekOverview
               classes={classes.data}
               routines={showRoutines ? routines.data : []}
+              dates={weekDates}
               onSelect={(block) => setEditing(block)}
               onSelectRoutine={(block) => setEditingRoutine(block)}
             />
           ) : (
             <View className="gap-3">
-              <WeekStrip day={selectedDay} onDay={setSelectedDay} counts={perDay} />
+              <WeekStrip
+                day={selectedDay}
+                onDay={setSelectedDay}
+                counts={perDay}
+                dates={weekDates}
+              />
               <DayTimeline
                 day={selectedDay}
                 classes={classes.data}
@@ -553,11 +589,14 @@ function WeekStrip({
   day,
   onDay,
   counts,
+  dates,
 }: {
   day: number;
   onDay: (day: number) => void;
   /** Blocks per weekday, so an empty day is visible before it is opened. */
   counts: number[];
+  /** The seven dates of the current teaching week, when a term is running. */
+  dates?: Date[] | null;
 }) {
   const today = todayIndex();
 
@@ -573,9 +612,9 @@ function WeekStrip({
               key={label}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={`${DAY_FULL[index]}, ${count} ${
-                count === 1 ? 'class' : 'classes'
-              }`}
+              accessibilityLabel={`${DAY_FULL[index]}${
+                dates?.[index] ? ` ${dates[index].getDate()}` : ''
+              }, ${count} ${count === 1 ? 'class' : 'classes'}`}
               onPress={() => {
                 feedback('toggle');
                 onDay(index);
@@ -595,6 +634,17 @@ function WeekStrip({
               >
                 {label}
               </Text>
+              {/* The date, when a term is running: "Tue" is which slot, "10" is
+                  which day, and a student checking a deadline needs both. */}
+              {dates?.[index] ? (
+                <Text
+                  className={`text-[13px] font-semibold tabular-nums ${
+                    active ? 'text-paper' : index === today ? 'text-accent' : 'text-ink'
+                  }`}
+                >
+                  {dates[index].getDate()}
+                </Text>
+              ) : null}
               {/* A dot, not a number: at seven across a phone there is room for
                   presence but not for a count, and presence is the question. */}
               <View
@@ -841,6 +891,7 @@ function WeekGrid({
   lastHour,
   onSelect,
   onSelectRoutine,
+  dates,
 }: {
   classes: ResolvedClass[];
   routines: RoutineBlock[];
@@ -848,6 +899,8 @@ function WeekGrid({
   lastHour: number;
   onSelect: (block: ClassBlock) => void;
   onSelectRoutine: (block: RoutineBlock) => void;
+  /** The seven dates of the current teaching week, when a term is running. */
+  dates?: Date[] | null;
 }) {
   const hours = Array.from({ length: lastHour - firstHour }, (_, index) => firstHour + index);
   const height = hours.length * HOUR_HEIGHT;
@@ -885,7 +938,7 @@ function WeekGrid({
                 <View
                   key={label}
                   style={{ height: HEADER_HEIGHT }}
-                  className={`flex-1 items-center justify-center ${
+                  className={`flex-1 flex-row items-center justify-center gap-1.5 ${
                     index === today ? 'bg-accent-soft' : ''
                   }`}
                 >
@@ -896,6 +949,15 @@ function WeekGrid({
                   >
                     {label}
                   </Text>
+                  {dates?.[index] ? (
+                    <Text
+                      className={`text-xs font-semibold tabular-nums ${
+                        index === today ? 'text-accent' : 'text-ink'
+                      }`}
+                    >
+                      {dates[index].getDate()}
+                    </Text>
+                  ) : null}
                 </View>
               ))}
             </View>

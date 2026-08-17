@@ -47,6 +47,31 @@ export function weekOf(semester: Semester | null, when: Date = new Date()): numb
   return elapsed;
 }
 
+/** The seven dates of a teaching week, Monday first. */
+export function weekDays(semester: Semester | null, week: number): Date[] | null {
+  const monday = weekStart(semester, week);
+  if (!monday) return null;
+  return Array.from({ length: 7 }, (_, index) => new Date(monday.getTime() + index * DAY_MS));
+}
+
+/**
+ * "9–15 March", or "30 March – 5 April" when a week straddles two months.
+ *
+ * A week number on its own is not a date, and a student checking whether a
+ * deadline is this week or next needs the days, not the ordinal.
+ */
+export function weekRangeLabel(semester: Semester | null, week: number): string | null {
+  const monday = weekStart(semester, week);
+  if (!monday) return null;
+
+  const sunday = new Date(monday.getTime() + 6 * DAY_MS);
+  const month = (date: Date) => date.toLocaleDateString(undefined, { month: 'short' });
+
+  return monday.getMonth() === sunday.getMonth()
+    ? `${monday.getDate()}–${sunday.getDate()} ${month(sunday)}`
+    : `${monday.getDate()} ${month(monday)} – ${sunday.getDate()} ${month(sunday)}`;
+}
+
 /** The Friday of a teaching week — where an undated weekly deadline lands. */
 function weekDeadline(semester: Semester | null, week: number): Date | null {
   const monday = weekStart(semester, week);

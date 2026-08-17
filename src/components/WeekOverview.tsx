@@ -29,11 +29,14 @@ export function WeekOverview({
   routines = [],
   onSelect,
   onSelectRoutine,
+  dates,
 }: {
   classes: ResolvedClass[];
   routines?: RoutineBlock[];
   onSelect?: (block: ResolvedClass) => void;
   onSelectRoutine?: (block: RoutineBlock) => void;
+  /** The seven dates of the current teaching week, when a term is running. */
+  dates?: Date[] | null;
 }) {
   const today = todayIndex();
 
@@ -63,6 +66,17 @@ export function WeekOverview({
               >
                 {label}
               </Text>
+              {/* The date under the day, so a repeating week reads as this
+                  particular week rather than any week. */}
+              {dates?.[day] ? (
+                <Text
+                  className={`text-[11px] font-semibold tabular-nums ${
+                    day === today ? 'text-accent' : 'text-subtle'
+                  }`}
+                >
+                  {dates[day].getDate()}
+                </Text>
+              ) : null}
             </View>
 
             <View className="flex-1 gap-1">
