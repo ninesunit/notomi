@@ -155,10 +155,20 @@ PY
 fi
 
 # ---------------------------------------------------------------------------
-# 2. The client secret
+# 2. Ship it, so the worker exists
+# ---------------------------------------------------------------------------
+
+step "Deploying \"$worker_name\""
+npx wrangler deploy
+
+# ---------------------------------------------------------------------------
+# 3. The client secret, onto a worker that is now certainly there
 # ---------------------------------------------------------------------------
 
 step "Storing the Google client secret on \"$worker_name\""
+note "Deployed first on purpose: setting a secret on a worker that does not"
+note "exist yet makes wrangler create a placeholder to hold it, which the"
+note "next deploy then replaces — taking the secret with it."
 note "Google Cloud console > APIs & Services > Credentials > your Web"
 note "application OAuth client > Client secret."
 note ""
@@ -185,13 +195,6 @@ if ! npx wrangler secret list 2>/dev/null | grep -q GOOGLE_CLIENT_SECRET; then
   die "the secret did not appear on \"$worker_name\" — check the output above"
 fi
 note "confirmed on \"$worker_name\""
-
-# ---------------------------------------------------------------------------
-# 3. Ship it
-# ---------------------------------------------------------------------------
-
-step "Deploying \"$worker_name\""
-npx wrangler deploy
 
 worker_url=$(grep -hoE '^EXPO_PUBLIC_R2_WORKER_URL=.*' ../.env.production ../.env 2>/dev/null | head -1 | cut -d= -f2- || true)
 
