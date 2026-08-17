@@ -99,7 +99,28 @@ if (!health.ok) {
   console.log('\nEverything below would be measuring that instead, so this stops here.');
   process.exit(1);
 }
-check(true, 'the worker is up', JSON.stringify(healthBody));
+check(true, 'the worker is up', `bucket ${healthBody.bucket ?? '(none)'}`);
+
+// The worker reports which of the three requirements it can actually see, so a
+// 501 below names the missing one instead of listing suspects.
+const drive = healthBody.drive;
+if (drive) {
+  check(drive.clientId, 'GOOGLE_CLIENT_ID is set', drive.clientId ? '' : 'missing from [vars]');
+  check(
+    drive.clientSecret,
+    'GOOGLE_CLIENT_SECRET is set',
+    drive.clientSecret ? '' : 'missing — add it under Settings > Variables and Secrets, type Secret'
+  );
+  check(
+    drive.tokenStore,
+    'the DRIVE_TOKENS namespace is bound',
+    drive.tokenStore ? '' : 'missing — check [[kv_namespaces]] in wrangler.toml'
+  );
+} else {
+  console.log(
+    '      (this worker predates the per-requirement report; deploy again to see which is missing)'
+  );
+}
 
 /* --------------------------- a real caller ---------------------------- */
 

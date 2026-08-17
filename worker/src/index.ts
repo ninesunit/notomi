@@ -296,7 +296,27 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
-    if (url.pathname === '/health') return json({ ok: true, bucket: env.R2_BUCKET }, 200, cors);
+    if (url.pathname === '/health') {
+      // Which of driveEnabled()'s three requirements are actually present at
+      // runtime. Booleans only — never the values — because this route takes
+      // no authentication. Without it a 501 says "one of three things is
+      // missing" and leaves you checking two dashboard pages and a CLI to
+      // find out which, when the worker knew all along.
+      return json(
+        {
+          ok: true,
+          bucket: env.R2_BUCKET,
+          drive: {
+            clientId: Boolean(env.GOOGLE_CLIENT_ID),
+            clientSecret: Boolean(env.GOOGLE_CLIENT_SECRET),
+            tokenStore: Boolean(env.DRIVE_TOKENS),
+            enabled: driveEnabled(env),
+          },
+        },
+        200,
+        cors
+      );
+    }
 
     // Profile images are deliberately public, but only objects in the narrow
     // users/{uid}/profile/ namespace can pass this route. Course materials,
