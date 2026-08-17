@@ -131,6 +131,38 @@ authentication: a failure there is the network in the way rather than anything
 about the configuration, and every check after it would be measuring the wrong
 thing.
 
+### Do not connect this worker to Cloudflare Workers Builds
+
+Not without more care than it is worth, anyway.
+
+Cloudflare deploys workers as *versions*, and a version captures its secrets
+along with its code. A build deploys a new version **from the repository** —
+which correctly contains no client secret, because a client secret must never
+be committed. So the new version ships without one, goes live at 100%, and
+`GOOGLE_CLIENT_SECRET` is simply gone.
+
+Nothing reports this. The build succeeds, the dashboard still lists the secret
+against the older version, `/health` still answers, R2 uploads still work, and
+only the Drive routes start returning 501 — which the app treats as "this
+deployment cannot hold a grant" and quietly downgrades to the hourly browser
+login. The visible symptom is a card that says "Connected for this session"
+when it said "stays connected next time" an hour earlier.
+
+Deploy this worker by hand:
+
+```bash
+npx wrangler deploy                       # code, vars, bindings, route
+npx wrangler secret put GOOGLE_CLIENT_SECRET   # always last
+node check-drive.mjs
+```
+
+The secret goes last because every deploy creates a version, and only the
+version current when the secret was set carries it.
+
+If you do want builds, give the build environment the secret too, so each
+version it creates ships with one — and verify with `check-drive.mjs` after
+every build rather than trusting the green tick.
+
 ### What a student sees
 
 Connecting Drive shows the Google consent dialog once. After that the card
