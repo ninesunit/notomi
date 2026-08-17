@@ -32,7 +32,9 @@ yarn-error.*
 
 # local env files
 .env*.local
-.env.production
+# .env.production is deliberately committed — it holds only EXPO_PUBLIC_*
+# values, which are already inlined into the public bundle. See the file's own
+# header. Without it a clean clone builds an unconfigured app.
 
 # typescript
 *.tsbuildinfo
