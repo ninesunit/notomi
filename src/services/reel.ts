@@ -17,7 +17,7 @@ import type {
 } from '@/lib/schema';
 import { getDb } from './firebase';
 import { extractText } from './fileProcessor';
-import { getR2FileUrl } from './r2Storage';
+import { originalBytes } from './driveStorage';
 
 export type ReelFilter = 'all' | 'courses' | 'tech' | 'science' | 'business' | string;
 
@@ -276,20 +276,18 @@ async function pageAwareText(uid: string, source: MaterialSource): Promise<strin
   if (
     document.sourceKind !== 'pdf' ||
     /\[Page\s+\d+\]/i.test(document.rawText) ||
-    (!document.r2FileKey && !document.r2FileUrl)
+    (!document.r2FileKey && !document.r2FileUrl && !document.driveFileId)
   ) {
     return document.rawText;
   }
 
   try {
-    const url = document.r2FileKey
-      ? await getR2FileUrl(document.r2FileKey)
-      : document.r2FileUrl;
-    if (!url) return document.rawText;
-    const response = await fetch(url);
-    if (!response.ok) return document.rawText;
+    // Originals may live in the student's Drive, whose stored url is a view
+    // page rather than the file — asking for the bytes covers both stores.
+    const blob = await originalBytes(document);
+    if (!blob) return document.rawText;
     const parsed = await extractText(
-      await response.arrayBuffer(),
+      await blob.arrayBuffer(),
       document.fileName || document.title,
       document.mimeType || 'application/pdf'
     );

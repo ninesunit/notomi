@@ -9,6 +9,8 @@ import {
   driveConfigHint,
   isDriveConfigured,
   isDriveConnected,
+  isDriveLinked,
+  resumeDrive,
 } from '@/lib/driveUtils';
 
 /**
@@ -26,14 +28,19 @@ export function DriveConnect({
   onConnected?: () => void;
   compact?: boolean;
 }) {
-  const [connected, setConnected] = useState(isDriveConnected);
+  // Linked is the state a student recognises as "connected": consent given,
+  // and renewable without being asked again. The live token underneath expires
+  // hourly and is nobody's business.
+  const [connected, setConnected] = useState(() => isDriveConnected() || isDriveLinked());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The token lives in memory for its hour; a tab left open overnight comes
-  // back disconnected, and the card should say so rather than fail on tap.
   useEffect(() => {
-    const timer = setInterval(() => setConnected(isDriveConnected()), 30_000);
+    void resumeDrive().then(() => setConnected(isDriveConnected() || isDriveLinked()));
+    const timer = setInterval(
+      () => setConnected(isDriveConnected() || isDriveLinked()),
+      30_000
+    );
     return () => clearInterval(timer);
   }, []);
 
@@ -81,7 +88,7 @@ export function DriveConnect({
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Your Google Drive</Text>
           <Text className="text-xs text-muted">
-            {connected ? 'Connected on this device' : 'Keep your own copy of every file'}
+            {connected ? 'Connected — your materials live here' : 'Keep your own copy of every file'}
           </Text>
         </View>
         {connected ? <View className="h-2.5 w-2.5 rounded-full bg-pine" /> : null}

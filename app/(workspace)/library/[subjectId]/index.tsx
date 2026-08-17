@@ -362,6 +362,10 @@ export default function SubjectFolder({
                               </Text>
                               <Text className="text-xs text-subtle">
                                 {[
+                                  // Where the original actually lives, so a
+                                  // student can tell at a glance that Drive is
+                                  // holding their work rather than guess.
+                                  document.driveFileId ? 'In your Drive' : null,
                                   formatDateTime(document.createdAt),
                                   document.charCount ? formatChars(document.charCount) : null,
                                   document.sizeBytes

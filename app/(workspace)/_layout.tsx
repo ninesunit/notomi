@@ -14,6 +14,7 @@ import { getDocs } from 'firebase/firestore';
 import { Copilot } from '@/components/Copilot';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
+import { resumeDrive } from '@/lib/driveUtils';
 import { useSafeArea } from '@/hooks/useSafeArea';
 import { Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/hooks/useAuth';
@@ -131,6 +132,15 @@ function WorkspaceShell() {
    * expo-router's and stop the link navigating at all.
    */
   useEffect(() => setDrawer(false), [pathname]);
+
+  /**
+   * A student who linked Drive should not be asked again on every reload.
+   * Google reissues a token without a prompt while their session is alive, so
+   * this runs once on open and stays silent when it cannot.
+   */
+  useEffect(() => {
+    void resumeDrive();
+  }, []);
 
   // The rail and the drawer are the same navigation in two shapes; only one can
   // be on screen, so a resize past the breakpoint has to dismiss the drawer.

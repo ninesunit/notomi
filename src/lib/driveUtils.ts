@@ -148,10 +148,59 @@ export function isDriveConnected(): boolean {
   return tokenIsLive();
 }
 
+/**
+ * Whether this student has said yes to Drive before, on this device.
+ *
+ * The token itself is never written down — an hour-old key to somebody's Drive
+ * sitting in a shared browser is not a trade worth making. What is remembered
+ * is only the fact of consent, which is what lets the next page load ask Google
+ * for a fresh token silently instead of showing a button that reads as though
+ * the connection was lost.
+ */
+const LINKED_KEY = 'notomi.drive.linked';
+
+export function isDriveLinked(): boolean {
+  if (Platform.OS !== 'web') return false;
+  try {
+    return window.localStorage.getItem(LINKED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberLink(linked: boolean): void {
+  if (Platform.OS !== 'web') return;
+  try {
+    if (linked) window.localStorage.setItem(LINKED_KEY, '1');
+    else window.localStorage.removeItem(LINKED_KEY);
+  } catch {
+    /* Private browsing: the connection lasts the session and no longer. */
+  }
+}
+
+/**
+ * Reconnects without a prompt, for a student who already agreed.
+ *
+ * Google issues a token silently when the browser still has a Google session
+ * and the scope is already granted, which is the ordinary case — so a refresh
+ * looks like nothing happened. When it cannot, this stays quiet: the student is
+ * shown a Connect button rather than an error they did not ask for.
+ */
+export async function resumeDrive(): Promise<boolean> {
+  if (!isDriveConfigured() || !isDriveLinked() || tokenIsLive()) return tokenIsLive();
+  try {
+    await getAccessToken(false);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function disconnectDrive(): void {
   const token = accessToken;
   accessToken = null;
   expiresAt = 0;
+  rememberLink(false);
   // Best effort: revoking is a courtesy to the student, and a failure here
   // must not stop the local session being forgotten.
   if (token && Platform.OS === 'web') {
@@ -201,6 +250,8 @@ export async function getAccessToken(interactive = false): Promise<string> {
           if (response.access_token) {
             accessToken = response.access_token;
             expiresAt = Date.now() + (response.expires_in ?? 3600) * 1000;
+            // Consent granted: later page loads may renew without a prompt.
+            rememberLink(true);
             resolve(response.access_token);
             return;
           }

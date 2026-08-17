@@ -9,12 +9,14 @@ import {
   fetchDriveBlob,
   isDriveConfigured,
   isDriveConnected,
+  isDriveLinked,
   parseDriveKey,
   uploadToDrive,
   type DriveFile,
   type DriveFolderStore,
 } from '@/lib/driveUtils';
 import { getDb } from '@/services/firebase';
+import { getR2FileUrl } from '@/services/r2Storage';
 
 /**
  * Where Drive meets Notomi's own records.
@@ -96,9 +98,18 @@ export type StoredOriginal = {
   webViewLink: string | null;
 };
 
-/** Drive is worth attempting only when it is set up and already authorised. */
+/**
+ * Whether an upload should go to Drive.
+ *
+ * Deliberately asks whether the student has *linked* Drive, not whether a token
+ * happens to be live this second. Tokens last an hour and are never written
+ * down, so a check for a live one would quietly send a student's afternoon
+ * uploads to the shared bucket instead — which is exactly the outcome linking
+ * Drive was meant to prevent. A stale token is a thing to renew, not a reason
+ * to store their files somewhere else.
+ */
 export function canUseDrive(): boolean {
-  return isDriveConfigured() && isDriveConnected();
+  return isDriveConfigured() && (isDriveConnected() || isDriveLinked());
 }
 
 /**
@@ -146,6 +157,32 @@ export function sourceKeyOf(document: {
   r2FileKey?: string | null;
 }): string {
   return document.driveFileId ? driveKey(document.driveFileId) : (document.r2FileKey ?? '');
+}
+
+/**
+ * The bytes of a stored original, from wherever it lives.
+ *
+ * A Drive document's `r2FileUrl` holds its *view* link — a Google web page, not
+ * the file — so anything that needs the actual bytes has to ask Drive for them
+ * rather than fetch that url and get HTML back. Returns null when nothing kept
+ * the original, which every caller already has to handle.
+ */
+export async function originalBytes(document: {
+  driveFileId?: string | null;
+  r2FileKey?: string | null;
+  r2FileUrl?: string | null;
+}): Promise<Blob | null> {
+  if (document.driveFileId) {
+    return fetchDriveBlob(document.driveFileId).catch(() => null);
+  }
+
+  const url = document.r2FileKey
+    ? await getR2FileUrl(document.r2FileKey).catch(() => '')
+    : (document.r2FileUrl ?? '');
+  if (!url) return null;
+
+  const response = await fetch(url).catch(() => null);
+  return response?.ok ? response.blob() : null;
 }
 
 /* ------------------------------------------------------------------ *
