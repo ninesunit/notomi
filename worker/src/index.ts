@@ -46,7 +46,12 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
     'Access-Control-Allow-Origin': ok ? origin || '*' : allowed[0] ?? '',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization,Content-Type',
-    'Access-Control-Max-Age': '86400',
+    // Ten minutes, not a day. A browser caches the preflight answer for this
+    // long and will refuse a method the cached copy did not list — so when the
+    // worker learned to accept POST, every browser that had talked to it for
+    // R2 uploads kept rejecting /drive/* for a day, before the request ever
+    // left the machine. Long caches are a false economy on an API that grows.
+    'Access-Control-Max-Age': '600',
     Vary: 'Origin',
   };
 }

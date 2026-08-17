@@ -78,10 +78,13 @@ export function driveConfigHint(): string {
 
 export class DriveError extends Error {
   readonly status: number;
-  constructor(message: string, status = 0) {
+  constructor(message: string, status = 0, cause?: unknown) {
     super(message);
     this.name = 'DriveError';
     this.status = status;
+    // Kept so a console log still shows the browser's own wording, which is
+    // the only clue when the real reason is a refusal before the network.
+    if (cause !== undefined) this.cause = cause;
   }
 }
 
@@ -203,14 +206,28 @@ async function brokerFetch(path: string, body: unknown): Promise<Response> {
   if (!BROKER_URL) throw new DriveError('No storage worker is configured.');
   if (!identify) throw new DriveError('Notomi is still starting up. Try again in a moment.');
 
-  return fetch(`${BROKER_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${await identify()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body ?? {}),
-  });
+  try {
+    return await fetch(`${BROKER_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await identify()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+  } catch (caught) {
+    // A browser reports every pre-network refusal as the same bare "Failed to
+    // fetch": offline, blocked, and — the one that actually happened — a
+    // cached CORS preflight that predates the route being allowed. The message
+    // is useless on its own, so say what it usually means and what fixes it.
+    throw new DriveError(
+      'Could not reach Notomi’s storage service. If you are online, your browser may ' +
+        'be holding an old copy of its permissions — open Notomi in a private window, ' +
+        'or reload with Ctrl+Shift+R, and try again.',
+      0,
+      caught
+    );
+  }
 }
 
 /**

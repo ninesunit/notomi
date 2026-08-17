@@ -160,6 +160,46 @@ const badLink = await fetch(`${WORKER}/drive/link`, {
 });
 check(badLink.status === 400, 'linking without a code is refused', `${badLink.status}`);
 
+/* --------------------------- the preflight ---------------------------- */
+
+// Node's fetch ignores CORS entirely, so every check above would pass against
+// a worker no browser can call. The preflight is what a browser sends first,
+// and what it answers decides whether the request is ever made — which is why
+// "Failed to fetch" in the app looked like nothing at all from here.
+console.log('\n— cross-origin —');
+
+const preflight = await fetch(`${WORKER}/drive/link`, {
+  method: 'OPTIONS',
+  headers: {
+    Origin: 'https://notomii.web.app',
+    'Access-Control-Request-Method': 'POST',
+    'Access-Control-Request-Headers': 'authorization,content-type',
+  },
+});
+
+const allowOrigin = preflight.headers.get('access-control-allow-origin');
+const allowMethods = preflight.headers.get('access-control-allow-methods') ?? '';
+const allowHeaders = (preflight.headers.get('access-control-allow-headers') ?? '').toLowerCase();
+const maxAge = Number(preflight.headers.get('access-control-max-age') ?? '0');
+
+check(preflight.status === 204 || preflight.ok, 'the preflight is answered', `${preflight.status}`);
+check(
+  allowOrigin === 'https://notomii.web.app',
+  'the app origin is allowed',
+  allowOrigin ?? '(none)'
+);
+check(allowMethods.includes('POST'), 'POST is allowed', allowMethods || '(none)');
+check(
+  allowHeaders.includes('authorization') && allowHeaders.includes('content-type'),
+  'the headers the app sends are allowed',
+  allowHeaders || '(none)'
+);
+check(
+  maxAge <= 3600,
+  'the preflight is not cached for long',
+  `${maxAge}s — a browser refuses methods the cached copy omitted, so a long cache outlives the fix`
+);
+
 /* ------------------------ and only for you ---------------------------- */
 
 console.log('\n— scoping —');
