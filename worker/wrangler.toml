@@ -34,9 +34,9 @@ GOOGLE_CLIENT_ID = "666272925159-qkidb4n2nv4a376qksdnt6vjk4dne6ih.apps.googleuse
 # [vars] is readable from the dashboard and belongs in the repo, and this
 # must be neither.
 #
-# [[kv_namespaces]]
-# binding = "DRIVE_TOKENS"
-# id = "<paste the id wrangler prints>"
+ [[kv_namespaces]]
+ binding = "DRIVE_TOKENS"
+ id = "2c94f525b58348248f879c69871da8ae"
 
 [observability]
 enabled = true
