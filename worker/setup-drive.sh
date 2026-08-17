@@ -29,6 +29,38 @@ die() { printf '\nerror: %s\n' "$1" >&2; exit 1; }
 
 command -v npx >/dev/null || die "npx not found. Install Node.js first."
 
+# ---------------------------------------------------------------------------
+# 0. The name has to match the hostname the app calls
+# ---------------------------------------------------------------------------
+
+step "Checking the worker name"
+
+# `|| true` on every one of these: under `set -e` a command substitution that
+# fails takes the whole script with it, and grep "fails" whenever a file is
+# absent or a pattern does not match — both of which are ordinary here. With
+# `pipefail`, `head -1` closing the pipe early can do the same to grep.
+worker_name=$(grep -oE '^name = "[^"]+"' wrangler.toml 2>/dev/null | head -1 | cut -d'"' -f2 || true)
+app_url=$(grep -hoE '^EXPO_PUBLIC_R2_WORKER_URL=.*' ../.env.production ../.env 2>/dev/null | head -1 | cut -d= -f2- || true)
+
+[ -n "$worker_name" ] || die "could not read the worker name from wrangler.toml"
+
+if [ -n "$app_url" ]; then
+  app_host=${app_url#https://}
+  app_name=${app_host%%.*}
+
+  if [ "$worker_name" != "$app_name" ]; then
+    printf '\nwrangler.toml deploys a worker named "%s",\n' "$worker_name"
+    printf 'but the app calls "%s" (%s).\n\n' "$app_name" "$app_url"
+    printf 'Deploying now would publish to a second worker nothing talks to —\n'
+    printf 'the namespace, the secret and the Drive routes would all land there.\n\n'
+    printf 'Fix wrangler.toml to read:  name = "%s"\n' "$app_name"
+    die "name mismatch; nothing was changed"
+  fi
+  note "\"$worker_name\" matches $app_url"
+else
+  note "could not read EXPO_PUBLIC_R2_WORKER_URL; skipping the name check"
+fi
+
 step "Checking your Cloudflare login"
 if ! npx wrangler whoami >/dev/null 2>&1; then
   note "Not logged in. A browser window will open."
@@ -117,7 +149,7 @@ unset client_secret
 step "Deploying the Worker"
 npx wrangler deploy
 
-worker_url=$(grep -oE 'EXPO_PUBLIC_R2_WORKER_URL=.*' ../.env.production 2>/dev/null | cut -d= -f2- || true)
+worker_url=$(grep -hoE '^EXPO_PUBLIC_R2_WORKER_URL=.*' ../.env.production ../.env 2>/dev/null | head -1 | cut -d= -f2- || true)
 
 step "Checking it came up"
 if [ -n "$worker_url" ]; then

@@ -11,7 +11,9 @@
  * the caller's uid, so this signs up a throwaway user and deletes it after.
  * No Google consent, no client secret, nothing written to Drive.
  */
-const WORKER = 'https://notomi.filazliakim.workers.dev';
+import { readFile } from 'node:fs/promises';
+
+const WORKER = process.env.WORKER_URL ?? 'https://notomi.filazliakim.workers.dev';
 const API_KEY = 'AIzaSyDKRIGm43ggmTOfi5rQ5g_wCmg3n8Cu2xU';
 const IDENTITY = 'https://identitytoolkit.googleapis.com/v1';
 
@@ -37,11 +39,45 @@ try {
 
 const healthBody = await health.json().catch(() => ({}));
 if (!health.ok) {
-  console.log(`FAIL  /health answered ${health.status} ${JSON.stringify(healthBody)}`);
-  console.log('\n/health takes no authentication, so a non-200 here means the request');
-  console.log('never reached the Worker — a proxy or network policy in the way, not a');
-  console.log('configuration problem. Everything below would be measuring that instead,');
-  console.log('so this stops here.');
+  console.log(`FAIL  /health answered ${health.status}`);
+
+  // A 404 on a route that needs no authentication almost always means the
+  // request reached Cloudflare and found no worker of that name — so the most
+  // useful next thing is to go and look for it. `wrangler.toml` names the
+  // worker this repo deploys; if that name is not the one in the URL, the
+  // deploy went somewhere nobody is calling.
+  if (health.status === 404) {
+    const configured = await readFile(new URL('./wrangler.toml', import.meta.url), 'utf8')
+      .then((toml) => /^name\s*=\s*"([^"]+)"/m.exec(toml)?.[1] ?? null)
+      .catch(() => null);
+
+    const host = new URL(WORKER).hostname;
+    const subdomain = host.split('.').slice(1).join('.');
+    const calling = host.split('.')[0];
+
+    console.log(`\n  the URL calls the worker named  "${calling}"`);
+    if (configured) console.log(`  wrangler.toml deploys one named "${configured}"`);
+
+    if (configured && configured !== calling) {
+      const other = `https://${configured}.${subdomain}`;
+      const probe = await fetch(`${other}/health`).catch(() => null);
+      console.log(`\n  probing ${other}/health → ${probe ? probe.status : 'unreachable'}`);
+      if (probe?.ok) {
+        console.log(`\n  Found it. Everything was deployed to "${configured}" while the app`);
+        console.log(`  calls "${calling}". Set name = "${calling}" in wrangler.toml, deploy`);
+        console.log('  again, and re-add the secret — Worker secrets do not follow a rename.');
+      }
+    } else {
+      console.log('\n  The names agree, so nothing was ever deployed under it. Run');
+      console.log('  `npx wrangler deployments list` to see what this account has.');
+    }
+  } else {
+    console.log('\n  /health takes no authentication, so a non-200 here means the request');
+    console.log('  never reached the Worker — a proxy or network policy in the way rather');
+    console.log('  than anything about the configuration.');
+  }
+
+  console.log('\nEverything below would be measuring that instead, so this stops here.');
   process.exit(1);
 }
 check(true, 'the worker is up', JSON.stringify(healthBody));

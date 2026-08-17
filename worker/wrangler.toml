@@ -1,4 +1,10 @@
-name = "notomi-r2"
+# Must match the hostname the app calls. A worker deploys to
+# https://<name>.<your-subdomain>.workers.dev, so a name that disagrees with
+# EXPO_PUBLIC_R2_WORKER_URL silently publishes to a second worker nobody talks
+# to — which is exactly what happened: the KV namespace, the client secret and
+# the Drive routes all landed on "notomi-r2" while the app kept calling
+# "notomi".
+name = "notomi"
 main = "src/index.ts"
 compatibility_date = "2026-08-14"
 compatibility_flags = ["nodejs_compat"]
