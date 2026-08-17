@@ -638,6 +638,28 @@ export async function ingestFiles(
         continue;
       }
 
+      // A teaching plan is filed against one subject, so it only routes when
+      // the student is already inside that subject's folder.
+      if (options.subjectId && isTeachingPlanName(file.name)) {
+        try {
+          const outcome = await importTeachingPlan(options.uid, options.subjectId, file);
+          results.push({
+            documentId: '',
+            subjectId: options.subjectId,
+            subjectName: 'Teaching plan',
+            fileName: file.name,
+            deadlinesCreated: outcome.deadlines,
+            route: 'SubjectMaterial',
+          });
+          continue;
+        } catch (planError) {
+          // Not a plan after all, or unreadable as one. Fall through and file it
+          // as ordinary material rather than losing the upload.
+          errors.push({ fileName: file.name, message: describeIngestError(planError) });
+          continue;
+        }
+      }
+
       const subjectId =
         options.subjectId ??
         (prepared.metadata?.documentType === 'GeneralNote'
@@ -1251,4 +1273,43 @@ export async function sweepOrphanedTodos(uid: string): Promise<number> {
 
   if (orphaned.length > 0) await commitDeletes(db, orphaned);
   return orphaned.length;
+}
+
+/** Filenames a university gives a teaching plan or course outline. */
+export function isTeachingPlanName(fileName: string): boolean {
+  return /teaching[-_ ]?plan|course[-_ ]?outline|lesson[-_ ]?plan|course[-_ ]?plan|subject[-_ ]?outline/i.test(
+    fileName
+  );
+}
+
+/**
+ * Reads a teaching plan and writes its weeks against the subject.
+ *
+ * The semester is looked up so the plan's week numbers can be anchored to real
+ * dates; without one the weeks are still stored and simply carry no date until
+ * an academic calendar is imported.
+ */
+async function importTeachingPlan(
+  uid: string,
+  subjectId: string,
+  file: MaterialFile
+): Promise<{ weeks: number; deadlines: number }> {
+  const { analyseTeachingPlan, commitTeachingPlan } = await import('./teachingPlan');
+  const { findActiveSemester } = await import('./academicPlanner');
+
+  const db = getDb();
+  const [plan, subjectSnap, semesterSnap] = await Promise.all([
+    analyseTeachingPlan(file),
+    getDoc(paths.subject(db, uid, subjectId)),
+    getDocs(paths.semesters(db, uid)),
+  ]);
+
+  const subject = { id: subjectId, ...subjectSnap.data() } as Subject;
+  const semesters = semesterSnap.docs.map(
+    (entry) => ({ id: entry.id, ...entry.data() }) as Semester
+  );
+  const semester =
+    semesters.find((entry) => entry.id === subject.semesterId) ?? findActiveSemester(semesters);
+
+  return commitTeachingPlan(uid, subject, semester, plan, file.name);
 }

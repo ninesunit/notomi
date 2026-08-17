@@ -35,6 +35,12 @@ export const paths = {
   lecture: (db: Firestore, uid: string, subjectId: string, lectureId: string) =>
     doc(db, 'users', uid, 'subjects', subjectId, 'lectures', lectureId),
 
+  /** Week-by-week teaching plan for a subject. */
+  teachingPlan: (db: Firestore, uid: string, subjectId: string) =>
+    collection(db, 'users', uid, 'subjects', subjectId, 'plan'),
+  teachingPlanWeek: (db: Firestore, uid: string, subjectId: string, weekId: string) =>
+    doc(db, 'users', uid, 'subjects', subjectId, 'plan', weekId),
+
   assignments: (db: Firestore, uid: string, subjectId: string) =>
     collection(db, 'users', uid, 'subjects', subjectId, 'assignments'),
   assignment: (db: Firestore, uid: string, subjectId: string, assignmentId: string) =>

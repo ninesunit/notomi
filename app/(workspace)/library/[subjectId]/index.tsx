@@ -28,6 +28,7 @@ import { formatDateTime } from '@/lib/dates';
 import { formatChars } from '@/lib/format';
 import { getDb } from '@/services/firebase';
 import { UNGROUPED, groupMaterials, moveMaterialToSubject, renameChapter } from '@/services/materials';
+import { weekOf } from '@/services/teachingPlan';
 import { isDriveConfigured, pickFromDrive } from '@/lib/driveUtils';
 import { rememberPickedFiles } from '@/services/driveStorage';
 import {
@@ -45,6 +46,7 @@ import type {
   SourceDocument,
   StudySession,
   Subject,
+  TeachingPlanWeek,
 } from '@/lib/schema';
 import { deleteMaterial, deleteSubject } from '@/services/ingestion';
 import { getR2FileUrl } from '@/services/r2Storage';
@@ -352,6 +354,12 @@ export default function SubjectFolder({
           {describeLastStudied(study?.lastStudied ?? null)}
         </Text>
       </View>
+
+      <ThisWeekPanel
+        uid={uid}
+        subjectId={subjectId}
+        semester={attendanceSemester ?? null}
+      />
 
       {driveBusy ? (
         <View className="mb-3 flex-row items-center gap-2 rounded-xl bg-sand px-3 py-2.5">
@@ -749,5 +757,70 @@ function FileIntoSubjectSheet({
         </View>
       )}
     </Sheet>
+  );
+}
+
+
+/**
+ * What this course is covering right now.
+ *
+ * A teaching plan is a table of week numbers; a student opening their subject
+ * on a Tuesday wants the one row that applies today. The week is computed from
+ * the term rather than stored, so correcting the academic calendar moves this
+ * without re-importing anything.
+ */
+function ThisWeekPanel({
+  uid,
+  subjectId,
+  semester,
+}: {
+  uid: string;
+  subjectId: string;
+  semester: Semester | null;
+}) {
+  const db = getDb();
+  const weeks = useCollection<TeachingPlanWeek>(paths.teachingPlan(db, uid, subjectId), [
+    uid,
+    subjectId,
+  ]);
+
+  const current = useMemo(() => weekOf(semester), [semester]);
+  const row = useMemo(
+    () => weeks.data.find((entry) => entry.week === current) ?? null,
+    [weeks.data, current]
+  );
+
+  if (weeks.loading || weeks.data.length === 0) return null;
+
+  return (
+    <Card className="mb-6 gap-2">
+      <View className="flex-row items-center gap-2">
+        <Icon name="calendar" size={14} color="#2E6F5E" />
+        <Text className="text-xs font-bold uppercase tracking-wider text-muted">
+          {current ? `Week ${current}` : 'Teaching plan'}
+        </Text>
+        <View className="h-px flex-1 bg-line" />
+        <Text className="text-xs text-subtle">{weeks.data.length} weeks</Text>
+      </View>
+
+      {row ? (
+        <>
+          <Text className="text-[15px] font-semibold leading-5 text-ink">{row.topic}</Text>
+          {row.activity ? <Text className="text-xs text-muted">{row.activity}</Text> : null}
+          {row.assessment ? (
+            <View className="mt-1 flex-row items-center gap-2 rounded-lg bg-accent-soft px-2.5 py-1.5">
+              <Icon name="alert-circle" size={12} color="#B4552D" />
+              <Text className="flex-1 text-xs font-medium text-accent">{row.assessment}</Text>
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <Text className="text-sm text-subtle">
+          {current
+            ? 'Nothing scheduled for this week.'
+            : 'Import an academic calendar to see which week you are in.'}
+        </Text>
+      )}
+    </Card>
   );
 }

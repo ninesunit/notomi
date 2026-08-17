@@ -70,6 +70,19 @@ service cloud.firestore {
             && request.resource.data.entry.size() <= 5000;
         }
 
+        // Week-by-week teaching plan. Rules do not cascade, so this needs its
+        // own block even though the parent subject already checks ownership.
+        match /plan/{weekId} {
+          allow read, delete: if isOwner(userId);
+          allow create, update: if isOwner(userId)
+            && request.resource.data.week is int
+            && request.resource.data.week > 0
+            && request.resource.data.week <= 60
+            && request.resource.data.topic is string
+            && request.resource.data.topic.size() > 0
+            && request.resource.data.topic.size() <= 500;
+        }
+
         match /assignments/{assignmentId} {
           allow read, delete: if isOwner(userId);
           allow create, update: if isOwner(userId)

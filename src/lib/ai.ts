@@ -2130,6 +2130,22 @@ export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
         }),
       },
       {
+        name: 'get_week_plan',
+        description:
+          'What a course is teaching this week, from its teaching plan: the topic, any lab or ' +
+          'tutorial, and anything assessed that week. Use for "what are we covering this week", ' +
+          '"what is the topic for week 5", "what is due this week in…".',
+        parameters: Schema.object({
+          properties: {
+            subjectId: Schema.string({ description: 'From find_subject. Empty for all subjects.' }),
+            week: Schema.number({
+              description: 'A specific teaching week. Omit for the current week.',
+            }),
+          },
+          optionalProperties: ['subjectId', 'week'],
+        }),
+      },
+      {
         name: 'get_assignments',
         description:
           'Read the coursework on the Tutorials & Assignments tab: briefs, the steps and ' +
@@ -2314,4 +2330,102 @@ ${input.brief}`,
   } catch (error) {
     throw new AiError(describe(error), error);
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Teaching plans
+ * ------------------------------------------------------------------ */
+
+/**
+ * A teaching plan is the week-by-week spine of a course: what is taught in
+ * week 5, and what is due in week 9. Universities publish them as a table, and
+ * the table is what a student actually wants their calendar to know.
+ */
+const teachingPlanSchema = Schema.object({
+  properties: {
+    courseCode: Schema.string({ description: 'Course code printed on the plan, or empty.' }),
+    courseName: Schema.string({ description: 'Course title, or empty.' }),
+    weeks: Schema.array({
+      items: Schema.object({
+        properties: {
+          week: Schema.number({ description: 'Teaching week number, 1-based.' }),
+          topic: Schema.string({ description: 'What is taught that week.' }),
+          activity: Schema.string({ description: 'Lab, tutorial or practical, or empty.' }),
+          assessment: Schema.string({
+            description: 'Assessment due that week, e.g. "Assignment 1 (20%)". Empty if none.',
+          }),
+          dueDate: Schema.string({
+            description: 'ISO YYYY-MM-DD if the plan prints a date. Empty otherwise.',
+          }),
+        },
+        optionalProperties: ['activity', 'assessment', 'dueDate'],
+      }),
+    }),
+  },
+  optionalProperties: ['courseCode', 'courseName'],
+});
+
+const TEACHING_PLAN_PROMPT = `You are reading a university teaching plan or course outline.
+
+Return the week-by-week schedule exactly as printed. Rules:
+- One entry per teaching week, numbered as the document numbers them.
+- "topic" is the lecture subject for that week, copied not paraphrased.
+- "assessment" only when something is submitted or sat that week. A reading or
+  a lab exercise is an activity, not an assessment.
+- "dueDate" only when the document prints an actual date. Never infer one from
+  a week number — the calendar anchors those separately.
+- Skip study breaks and revision weeks that teach nothing, rather than emitting
+  an entry with an empty topic.`;
+
+export type ExtractedTeachingPlan = {
+  courseCode: string;
+  courseName: string;
+  weeks: {
+    week: number;
+    topic: string;
+    activity: string;
+    assessment: string;
+    dueDate: string | null;
+  }[];
+};
+
+function normaliseTeachingPlan(raw: unknown): ExtractedTeachingPlan {
+  const source = (raw ?? {}) as Record<string, unknown>;
+  const weeks = Array.isArray(source.weeks) ? source.weeks : [];
+
+  return {
+    courseCode: typeof source.courseCode === 'string' ? source.courseCode.trim() : '',
+    courseName: typeof source.courseName === 'string' ? source.courseName.trim() : '',
+    weeks: weeks
+      .map((entry) => {
+        const week = entry as Record<string, unknown>;
+        const number = Number(week.week);
+        const date = typeof week.dueDate === 'string' ? week.dueDate.trim() : '';
+        return {
+          week: Number.isFinite(number) && number > 0 ? Math.round(number) : 0,
+          topic: typeof week.topic === 'string' ? week.topic.trim() : '',
+          activity: typeof week.activity === 'string' ? week.activity.trim() : '',
+          assessment: typeof week.assessment === 'string' ? week.assessment.trim() : '',
+          // An empty string is not a date; storing one would put an epoch entry
+          // on the calendar every time the model left the field blank.
+          dueDate: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
+        };
+      })
+      .filter((entry) => entry.week > 0 && entry.topic.length > 0)
+      .sort((a, b) => a.week - b.week),
+  };
+}
+
+export async function extractTeachingPlanFromText(text: string): Promise<ExtractedTeachingPlan> {
+  const raw = await generate(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: teachingPlanSchema,
+        temperature: 0.1,
+      },
+    },
+    `${TEACHING_PLAN_PROMPT}\n\nEXTRACTED DOCUMENT TEXT:\n${text.slice(0, MAX_CONTEXT_CHARS)}`
+  );
+  return normaliseTeachingPlan(raw);
 }

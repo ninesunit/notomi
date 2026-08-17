@@ -9,6 +9,8 @@ import {
   todayIndex,
   type Assignment,
   type ClassBlock,
+  type Semester,
+  type TeachingPlanWeek,
   type SourceDocument,
   type Subject,
   type Todo,
@@ -16,6 +18,8 @@ import {
 import { getDb } from '@/services/firebase';
 import { logLecture } from '@/services/lectureLog';
 import { resolveClasses } from '@/services/timetable';
+import { findActiveSemester } from '@/services/academicPlanner';
+import { weekOf } from '@/services/teachingPlan';
 
 /**
  * What the assistant is actually allowed to do.
@@ -209,6 +213,54 @@ export async function runCopilotTool(
             due: formatDue(toDate(todo.dueDate)),
             priority: todo.priority,
           })),
+      };
+    }
+
+    case 'get_week_plan': {
+      const db = getDb();
+      const [subjects, semesterSnap] = await Promise.all([
+        loadSubjects(uid),
+        getDocs(paths.semesters(db, uid)),
+      ]);
+      const semesters = semesterSnap.docs.map(
+        (entry) => ({ id: entry.id, ...entry.data() }) as Semester
+      );
+
+      const wanted = text('subjectId');
+      const scope = wanted ? subjects.filter((entry) => entry.id === wanted) : subjects;
+      const asked = Number(args.week);
+
+      const rows = await Promise.all(
+        scope.map(async (subject) => {
+          const semester =
+            semesters.find((entry) => entry.id === subject.semesterId) ??
+            findActiveSemester(semesters);
+          // The week is derived from the term, so a corrected calendar moves
+          // every answer without the plan being re-imported.
+          const week = Number.isFinite(asked) && asked > 0 ? Math.round(asked) : weekOf(semester);
+          if (!week) return null;
+
+          const snapshot = await getDocs(paths.teachingPlan(db, uid, subject.id));
+          const found = snapshot.docs
+            .map((entry) => ({ id: entry.id, ...entry.data() }) as TeachingPlanWeek)
+            .find((entry) => entry.week === week);
+          if (!found) return null;
+
+          return {
+            subject: subject.name,
+            week,
+            topic: found.topic,
+            activity: found.activity,
+            assessment: found.assessment,
+          };
+        })
+      );
+
+      const found = rows.filter(Boolean);
+      return {
+        result: found.length
+          ? found
+          : { note: 'No teaching plan has been imported for that subject yet.' },
       };
     }
 

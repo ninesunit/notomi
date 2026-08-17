@@ -939,3 +939,26 @@ export function colorForSubject(seed: string): string {
   }
   return SUBJECT_COLORS[hash % SUBJECT_COLORS.length];
 }
+
+/**
+ * users/{uid}/subjects/{subjectId}/plan/{weekId}
+ *
+ * One row per teaching week, holding the week number exactly as the plan
+ * printed it. The date is never stored as the source of truth — it is computed
+ * from the semester, so correcting the academic calendar moves the whole plan.
+ */
+export type TeachingPlanWeek = {
+  id: string;
+  week: number;
+  topic: string;
+  activity: string | null;
+  assessment: string | null;
+  /** A date printed on the plan itself, when there was one. */
+  printedDate: Timestamp | null;
+  /** Monday of this week, as computed at import time. */
+  startsOn: Timestamp | null;
+  subjectId: string;
+  subjectName: string | null;
+  sourceFileName: string | null;
+  updatedAt: Timestamp | null;
+};
