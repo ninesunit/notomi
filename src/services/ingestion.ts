@@ -825,7 +825,18 @@ async function subjectForFile(
   const named = prepared.metadata?.subjectName?.trim() ?? '';
   const code = prepared.metadata?.moduleCode ?? null;
 
-  if (named || code) return findOrCreateSubject(uid, named || (code as string), code);
+  if (named || code) {
+    // A course code is a fact printed on the document, so it may found a
+    // subject. A name alone is the model's reading of a title page and is
+    // wrong often enough that ten decks became ten folders — so a name that
+    // matches nothing already in the library files to the vault instead,
+    // where the student places it in one tap.
+    const matched = await findOrCreateSubject(uid, named || (code as string), code, {
+      createIfMissing: Boolean(code),
+    });
+    if (matched) return matched;
+    return generalVaultSubject(uid);
+  }
 
   const fallback = file.name
     .replace(/\.[^.]+$/, '')
@@ -864,7 +875,8 @@ async function readFileBytes(file: MaterialFile): Promise<ArrayBuffer> {
 export async function findOrCreateSubject(
   uid: string,
   subjectName: string,
-  moduleCode: string | null
+  moduleCode: string | null,
+  options: { createIfMissing?: boolean } = {}
 ): Promise<string> {
   const db = getDb();
   const subjects = paths.subjects(db, uid);
@@ -909,6 +921,11 @@ export async function findOrCreateSubject(
     }
     return matched.id;
   }
+
+  // Nothing matched. Whether that is allowed to create a folder is the
+  // caller's call, because a wrong guess here is what a student has to undo
+  // by hand, once per file.
+  if (options.createIfMissing === false) return '';
 
   const semesterId = await currentSemesterId(uid);
   const subjectId = stableId(uid, moduleCode || subjectName);

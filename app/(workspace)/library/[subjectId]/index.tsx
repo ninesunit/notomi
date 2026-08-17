@@ -5,6 +5,7 @@ import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { AddMaterialModal } from '@/components/AddMaterialModal';
 import { DriveDropZone } from '@/components/DriveDropZone';
+import { Sheet } from '@/components/Sheet';
 import { AttendanceGuard } from '@/components/AcademicInsights';
 import { AssignmentsPanel } from '@/components/Assignments';
 import { LectureLogPanel } from '@/components/LectureLog';
@@ -26,7 +27,7 @@ import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { formatDateTime } from '@/lib/dates';
 import { formatChars } from '@/lib/format';
 import { getDb } from '@/services/firebase';
-import { UNGROUPED, groupMaterials, renameChapter } from '@/services/materials';
+import { UNGROUPED, groupMaterials, moveMaterialToSubject, renameChapter } from '@/services/materials';
 import { isDriveConfigured, pickFromDrive } from '@/lib/driveUtils';
 import { rememberPickedFiles } from '@/services/driveStorage';
 import {
@@ -73,6 +74,7 @@ export default function SubjectFolder({
   const [deleting, setDeleting] = useState(false);
   const [tab, setTab] = useState<TabId>('sources');
   const [driveBusy, setDriveBusy] = useState<string | null>(null);
+  const [filing, setFiling] = useState<string | null>(null);
 
   const subject = useDocument<Subject>(paths.subject(db, uid, subjectId), [uid, subjectId]);
   const documents = useCollection<SourceDocument>(
@@ -452,6 +454,15 @@ export default function SubjectFolder({
                           </Link>
 
                           <View className="flex-row items-center">
+                            {/* Only in the vault: everywhere else the file is
+                                already where the student put it. */}
+                            {subject.data?.isVault ? (
+                              <IconButton
+                                icon={filing === document.id ? 'loader' : 'folder-plus'}
+                                label={`File ${document.fileName} into a subject`}
+                                onPress={() => setFiling(document.id)}
+                              />
+                            ) : null}
                             {document.notes ? (
                               <View className="mr-1">
                                 <Badge label="Notes" tone="pine" />
@@ -544,6 +555,14 @@ export default function SubjectFolder({
         </TabPanel>
       )}
 
+      <FileIntoSubjectSheet
+        uid={uid}
+        fromSubjectId={subjectId}
+        documentId={filing}
+        onClose={() => setFiling(null)}
+        onError={setError}
+      />
+
       <DriveDropZone
         onFiles={acceptDropped}
         label={`Drop files to add them to ${subject.data.name}`}
@@ -634,5 +653,101 @@ function ChapterHeading({
       <View className="h-px flex-1 bg-line" />
       <Text className="text-xs text-subtle">{count}</Text>
     </View>
+  );
+}
+
+/**
+ * Puts an unfiled document where it belongs.
+ *
+ * The dashboard no longer invents a subject from a title the model guessed, so
+ * anything it could not place waits in the vault instead. This is the one tap
+ * that ends that — which is the whole reason guessing was worth giving up.
+ */
+function FileIntoSubjectSheet({
+  uid,
+  fromSubjectId,
+  documentId,
+  onClose,
+  onError,
+}: {
+  uid: string;
+  fromSubjectId: string;
+  documentId: string | null;
+  onClose: () => void;
+  onError: (message: string) => void;
+}) {
+  const db = getDb();
+  const subjects = useCollection<Subject>(paths.subjects(db, uid), [uid]);
+  const [moving, setMoving] = useState<string | null>(null);
+
+  const choices = useMemo(
+    () => subjects.data.filter((entry) => !entry.isVault && entry.id !== fromSubjectId),
+    [subjects.data, fromSubjectId]
+  );
+
+  async function move(target: Subject) {
+    if (!documentId) return;
+    setMoving(target.id);
+    try {
+      await moveMaterialToSubject(uid, fromSubjectId, target.id, documentId);
+      feedback('success');
+      onClose();
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : String(caught));
+      feedback('error');
+    } finally {
+      setMoving(null);
+    }
+  }
+
+  return (
+    <Sheet
+      visible={Boolean(documentId)}
+      onClose={onClose}
+      title="File into a subject"
+      icon="folder-plus"
+      maxHeight={420}
+    >
+      <Text className="text-sm leading-5 text-muted">
+        Notomi could not tell which course this belongs to, so it kept it here rather than making a
+        folder up. Choose where it goes.
+      </Text>
+
+      {choices.length === 0 ? (
+        <Text className="text-sm text-subtle">
+          No subjects yet. Create one from your Library and it will appear here.
+        </Text>
+      ) : (
+        <View className="gap-1.5">
+          {choices.map((entry) => (
+            <Pressable
+              key={entry.id}
+              accessibilityRole="button"
+              disabled={Boolean(moving)}
+              onPress={() => void move(entry)}
+              className="flex-row items-center gap-3 rounded-xl border border-line bg-paper px-3.5 py-3"
+            >
+              <View
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: entry.color || '#B4552D' }}
+              />
+              <View className="flex-1">
+                <Text className="text-sm font-semibold text-ink" numberOfLines={1}>
+                  {entry.name}
+                </Text>
+                {entry.moduleCode ? (
+                  <Text className="text-xs text-subtle">{entry.moduleCode}</Text>
+                ) : null}
+              </View>
+              <Icon
+                name={moving === entry.id ? 'loader' : 'chevron-right'}
+                size={15}
+                color="#9A9488"
+              />
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </Sheet>
   );
 }

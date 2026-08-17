@@ -1,4 +1,4 @@
-import { updateDoc, writeBatch } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, increment, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { paths } from '@/lib/paths';
 import type { SourceDocument } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
@@ -177,4 +177,47 @@ export async function clearManualOrder(
     batch.update(paths.document(db, uid, subjectId, document.id), { order: null });
   }
   await batch.commit();
+}
+
+/**
+ * Files a document into a different subject.
+ *
+ * Documents live in a subcollection of their subject, so moving one is a copy
+ * and a delete rather than a field change. The Drive original is deliberately
+ * left where it is: re-parenting it would cost an extra round trip on a slow
+ * connection to fix something nobody is looking at, and the file resolves by
+ * id regardless of which folder holds it.
+ */
+export async function moveMaterialToSubject(
+  uid: string,
+  fromSubjectId: string,
+  toSubjectId: string,
+  documentId: string
+): Promise<string> {
+  if (fromSubjectId === toSubjectId) return documentId;
+
+  const db = getDb();
+  const source = paths.document(db, uid, fromSubjectId, documentId);
+  const snapshot = await getDoc(source);
+  if (!snapshot.exists()) throw new Error('That material is no longer there.');
+
+  const target = doc(paths.documents(db, uid, toSubjectId));
+  await setDoc(target, {
+    ...snapshot.data(),
+    // The chapter was a guess made in the old folder; the new subject regroups.
+    chapter: null,
+    order: null,
+  });
+  await deleteDoc(source);
+
+  await Promise.all([
+    updateDoc(paths.subject(db, uid, toSubjectId), { documentCount: increment(1) }).catch(
+      () => undefined
+    ),
+    updateDoc(paths.subject(db, uid, fromSubjectId), { documentCount: increment(-1) }).catch(
+      () => undefined
+    ),
+  ]);
+
+  return target.id;
 }
