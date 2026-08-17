@@ -46,7 +46,20 @@ if (!health.ok) {
   // useful next thing is to go and look for it. `wrangler.toml` names the
   // worker this repo deploys; if that name is not the one in the URL, the
   // deploy went somewhere nobody is calling.
-  if (health.status === 404) {
+  // Cloudflare stamps every response it serves, including its own 404s. If
+  // those headers are present the request reached Cloudflare and there is
+  // genuinely no worker on that hostname; if they are absent, something
+  // between here and Cloudflare answered instead and the worker is fine.
+  const ray = health.headers.get('cf-ray');
+  const server = health.headers.get('server');
+  console.log(`\n  server: ${server ?? '(none)'}   cf-ray: ${ray ?? '(none)'}`);
+  console.log(
+    ray
+      ? '  → reached Cloudflare, which has no worker answering on this hostname'
+      : '  → never reached Cloudflare; a proxy or network in between replied'
+  );
+
+  if (health.status === 404 && ray) {
     const configured = await readFile(new URL('./wrangler.toml', import.meta.url), 'utf8')
       .then((toml) => /^name\s*=\s*"([^"]+)"/m.exec(toml)?.[1] ?? null)
       .catch(() => null);
@@ -68,8 +81,14 @@ if (!health.ok) {
         console.log('  again, and re-add the secret — Worker secrets do not follow a rename.');
       }
     } else {
-      console.log('\n  The names agree, so nothing was ever deployed under it. Run');
-      console.log('  `npx wrangler deployments list` to see what this account has.');
+      console.log('\n  The names agree, so the worker exists but its workers.dev route');
+      console.log('  does not. A route is a per-worker setting that outlives a deploy —');
+      console.log('  turned off in the dashboard, or lost when a worker was deleted and');
+      console.log('  recreated — so deploying succeeds and the hostname still 404s.');
+      console.log('\n  wrangler.toml now sets workers_dev = true, so:');
+      console.log('    npx wrangler deploy');
+      console.log('\n  If it still 404s, check Workers & Pages > notomi > Settings >');
+      console.log('  Domains & Routes and enable the workers.dev route there.');
     }
   } else {
     console.log('\n  /health takes no authentication, so a non-200 here means the request');

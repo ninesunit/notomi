@@ -6,6 +6,13 @@
 # "notomi".
 name = "notomi"
 main = "src/index.ts"
+
+# Publish on <name>.<subdomain>.workers.dev. Wrangler defaults this to true,
+# but the route is a per-worker setting that survives in the dashboard: a
+# worker whose workers.dev route was turned off — or deleted and recreated —
+# deploys successfully and then answers 404 at the hostname the app calls.
+# Stating it here means every deploy puts the route back.
+workers_dev = true
 compatibility_date = "2026-08-14"
 compatibility_flags = ["nodejs_compat"]
 
