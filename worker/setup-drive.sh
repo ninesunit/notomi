@@ -73,6 +73,36 @@ note "one DRIVE_TOKENS binding"
 
 step "Checking your Cloudflare login"
 if ! npx wrangler whoami >/dev/null 2>&1; then
+  if [ -n "${CLOUDFLARE_API_TOKEN:-}" ]; then
+    die "CLOUDFLARE_API_TOKEN is set but was refused. Check the token's permissions."
+  fi
+
+  # `wrangler login` redirects to http://localhost:8976, which only works when
+  # the browser and wrangler are on the same machine. In a Codespace, a remote
+  # container or over SSH they are not, so the approval lands on the wrong
+  # localhost and the login hangs. A token avoids the round trip entirely and
+  # survives the container being rebuilt.
+  if [ -n "${CODESPACES:-}${SSH_CONNECTION:-}${REMOTE_CONTAINERS:-}" ] || ! command -v xdg-open >/dev/null; then
+    cat <<'TOKEN'
+
+Not logged in, and this looks like a remote environment where the browser
+login cannot complete — its callback goes to localhost on the machine
+running the browser, not this one.
+
+Use an API token instead:
+
+  1. https://dash.cloudflare.com/profile/api-tokens
+  2. Create Token > "Edit Cloudflare Workers" template > Continue > Create
+  3. export CLOUDFLARE_API_TOKEN=<the token>
+  4. re-run this script
+
+The token needs Workers Scripts:Edit, Workers KV Storage:Edit and
+Account Settings:Read, all of which that template includes.
+
+TOKEN
+    die "no Cloudflare credentials"
+  fi
+
   note "Not logged in. A browser window will open."
   npx wrangler login
 fi

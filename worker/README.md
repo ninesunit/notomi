@@ -9,7 +9,7 @@ Worker enforces that a user can only touch objects under
 ```bash
 cd worker
 npm install
-npx wrangler login          # or: export CLOUDFLARE_API_TOKEN=…
+npx wrangler login          # see below if this is a Codespace or over SSH
 
 npx wrangler deploy
 ```
@@ -58,6 +58,21 @@ short-lived access token it already knew how to use.
 This is optional. Until both steps below are done the `/drive/*` routes answer
 `501` and the app reconnects Drive by hand exactly as before — nothing breaks,
 the connection simply does not persist.
+
+### Signing in from a Codespace, a container or over SSH
+
+`wrangler login` redirects to `http://localhost:8976`, which only resolves when
+the browser and wrangler run on the same machine. Anywhere else the approval
+lands on the wrong localhost and the login never completes.
+
+Use a token instead — it also survives the container being rebuilt, which the
+OAuth session does not:
+
+1. https://dash.cloudflare.com/profile/api-tokens
+2. **Create Token → "Edit Cloudflare Workers" template → Continue → Create**
+3. `export CLOUDFLARE_API_TOKEN=<the token>`
+
+Add it to your Codespace secrets to avoid repeating this after every rebuild.
 
 ### 1. A place to keep the tokens
 
