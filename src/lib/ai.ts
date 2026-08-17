@@ -2130,6 +2130,25 @@ export const COPILOT_TOOLS: FunctionDeclarationsTool[] = [
         }),
       },
       {
+        name: 'get_assignments',
+        description:
+          'Read the coursework on the Tutorials & Assignments tab: briefs, the steps and ' +
+          'deliverables of each, marking notes and deadlines. Use for anything about an ' +
+          'assignment, tutorial, lab or project — "what do I have to hand in", "what is the ' +
+          'brief for…", "what are the steps for my assignment".',
+        parameters: Schema.object({
+          properties: {
+            subjectId: Schema.string({
+              description: 'Limit to one subject. Empty for all.',
+            }),
+            includeDone: Schema.string({
+              description: '"yes" to include finished work. Defaults to open work only.',
+            }),
+          },
+          optionalProperties: ['subjectId', 'includeDone'],
+        }),
+      },
+      {
         name: 'search_material',
         description:
           'Answer a question from the material the student has uploaded for one subject, ' +

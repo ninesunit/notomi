@@ -30,13 +30,18 @@ import type { MaterialFile } from './ingestion';
  */
 
 /** Steps need stable ids so ticking one does not re-key the rest. */
-function withIds(steps: { title: string; detail: string | null }[]): AssignmentStep[] {
-  return steps.map((step, index) => ({
-    id: `s${index}-${step.title.slice(0, 24).replace(/[^\w]+/g, '-').toLowerCase()}`,
-    title: step.title,
-    detail: step.detail,
-    isCompleted: false,
-  }));
+function withIds(steps: { title: string; detail?: string | null }[]): AssignmentStep[] {
+  // Every field is given a value here rather than trusted from the model:
+  // one `undefined` anywhere in this array makes the whole write fail.
+  return (steps ?? []).map((step, index) => {
+    const title = step?.title ?? '';
+    return {
+      id: `s${index}-${title.slice(0, 24).replace(/[^\w]+/g, '-').toLowerCase()}`,
+      title,
+      detail: step?.detail ?? null,
+      isCompleted: false,
+    };
+  });
 }
 
 async function readBrief(file: MaterialFile): Promise<{ text: string; name: string }> {
@@ -175,10 +180,14 @@ async function syncTodo(
       subjectId: input.subjectId,
       subjectName: input.subjectName,
       priority: 'high',
-      subTasks: input.steps.map((step) => ({
-        id: step.id,
-        title: step.title,
-        isCompleted: step.isCompleted,
+      // Coerced rather than copied. A step the model returned without a detail
+      // or a completion flag carries `undefined`, which Firestore rejects
+      // outright — and the throw lands after the assignment itself has saved,
+      // so the deadline appears on the tab while never reaching the calendar.
+      subTasks: input.steps.map((step, index) => ({
+        id: step.id || `s${index}`,
+        title: step.title ?? '',
+        isCompleted: step.isCompleted === true,
       })),
       source: 'syllabus',
       sourceDocumentId: assignmentId,

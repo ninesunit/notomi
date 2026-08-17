@@ -7,6 +7,7 @@ import {
   minutesToLabel,
   parseCourseCode,
   todayIndex,
+  type Assignment,
   type ClassBlock,
   type SourceDocument,
   type Subject,
@@ -209,6 +210,43 @@ export async function runCopilotTool(
             priority: todo.priority,
           })),
       };
+    }
+
+    case 'get_assignments': {
+      // Coursework lives per subject, so answering "what do I have to hand in"
+      // means reading every subject's tab rather than one collection.
+      const subjects = await loadSubjects(uid);
+      const wanted = text('subjectId');
+      const scope = wanted ? subjects.filter((entry) => entry.id === wanted) : subjects;
+      const includeDone = /^(yes|true)$/i.test(text('includeDone'));
+
+      const db = getDb();
+      const collected = await Promise.all(
+        scope.map(async (subject) => {
+          const snapshot = await getDocs(paths.assignments(db, uid, subject.id));
+          return snapshot.docs
+            .map((entry) => ({ id: entry.id, ...entry.data() }) as Assignment)
+            .filter((task) => includeDone || task.status !== 'done')
+            .map((task) => ({
+              title: task.title,
+              subject: subject.name,
+              type: task.kind,
+              status: task.status,
+              due: formatDue(toDate(task.dueDate)),
+              brief: task.brief ? task.brief.slice(0, 600) : null,
+              // The steps are the part a student actually asks about.
+              steps: (task.steps ?? []).map((step) => step.title).slice(0, 12),
+              deliverables: task.deliverables ?? [],
+              markingNotes: task.markingNotes ? task.markingNotes.slice(0, 400) : null,
+              estimatedHours: task.estimatedHours,
+            }));
+        })
+      );
+
+      const flat = collected.flat();
+      // Soonest first: an undated brief is not what "what is due" is asking.
+      flat.sort((a, b) => (a.due === 'No date' ? 1 : 0) - (b.due === 'No date' ? 1 : 0));
+      return { result: flat.slice(0, 25) };
     }
 
     case 'search_material': {

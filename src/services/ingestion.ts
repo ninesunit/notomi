@@ -27,11 +27,13 @@ import { stableId } from '@/lib/ids';
 import { paths } from '@/lib/paths';
 import {
   colorForSubject,
+  parseCourseCode,
   type ExtractedDeadline,
   type ExtractedMetadata,
   type FileKind,
   type Semester,
   type SourceDocument,
+  type Subject,
   type Todo,
 } from '@/lib/schema';
 import {
@@ -794,20 +796,44 @@ function localSummary(text: string): string | null {
  * Picks the folder a loose upload belongs in. Gemini names the subject when it
  * can; otherwise the filename does.
  */
+/**
+ * A filename that names a position in a series rather than a subject.
+ *
+ * "lect1", "week 3", "tutorial 2", "chapter 04" — dropping ten of these used
+ * to mint ten subjects, because each fell through to the filename fallback and
+ * no two filenames are equal. They are the single most common thing a student
+ * bulk-uploads, so they get their own rule.
+ */
+function isSeriesName(name: string): boolean {
+  const cleaned = name.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!cleaned) return true;
+  return /^(lect(ure)?|lec|wk|week|topic|chapter|chap|ch|part|unit|slides?|notes?|tut(orial)?|lab|session|class|assignment|doc(ument)?|scan|img|image|file)?\s*[-_ ]?\d{1,6}([-_ .]\d{1,6})*$/.test(
+    cleaned
+  );
+}
+
 async function subjectForFile(
   file: MaterialFile,
   prepared: PreparedFile,
   uid: string
 ): Promise<string> {
+  const named = prepared.metadata?.subjectName?.trim() ?? '';
+  const code = prepared.metadata?.moduleCode ?? null;
+
+  if (named || code) return findOrCreateSubject(uid, named || (code as string), code);
+
   const fallback = file.name
     .replace(/\.[^.]+$/, '')
     .replace(/[_-]+/g, ' ')
     .trim();
-  return findOrCreateSubject(
-    uid,
-    prepared.metadata?.subjectName || fallback || 'Untitled subject',
-    prepared.metadata?.moduleCode ?? null
-  );
+
+  // Nothing in the document said what course it belongs to, and the filename
+  // is just a number in a series. Filing it under the vault keeps it findable
+  // and lets the student move it, which beats inventing a subject called
+  // "lect1" that they then have to merge by hand ten times over.
+  if (!fallback || isSeriesName(fallback)) return generalVaultSubject(uid);
+
+  return findOrCreateSubject(uid, fallback, null);
 }
 
 export function describeIngestError(error: unknown): string {
@@ -838,32 +864,45 @@ export async function findOrCreateSubject(
   const db = getDb();
   const subjects = paths.subjects(db, uid);
 
-  if (moduleCode) {
-    const byCode = await getDocs(query(subjects, where('moduleCode', '==', moduleCode), limit(1)));
-    if (!byCode.empty) {
-      const existing = byCode.docs[0];
-      if (!existing.data().semesterId) {
-        const semesterId = await currentSemesterId(uid);
-        if (semesterId)
-          await updateDoc(existing.ref, {
-            semesterId,
-            updatedAt: serverTimestamp(),
-          });
-      }
-      return existing.id;
-    }
-  }
+  // The whole library, read once. Exact-equality queries were the reason ten
+  // lecture decks became ten subjects: a code printed as "LDCW6123 TC1L" never
+  // equals "LDCW6123", and "Digital Computing" never equals "DIGITAL
+  // COMPUTING". Matching in memory lets both be normalised first.
+  const everySubject = await getDocs(subjects);
+  const wantedCode = parseCourseCode(moduleCode).code.toUpperCase();
+  const wantedName = comparableName(subjectName);
 
-  const byName = await getDocs(query(subjects, where('name', '==', subjectName), limit(1)));
-  if (!byName.empty) {
-    const existing = byName.docs[0];
+  const matched = everySubject.docs.find((entry) => {
+    const data = entry.data() as Subject;
+    if (data.isVault) return false;
+
+    const theirCode = parseCourseCode(data.moduleCode).code.toUpperCase();
+    // A shared course code is decisive; two courses never share one.
+    if (wantedCode && theirCode) return wantedCode === theirCode;
+
+    const theirName = comparableName(data.name ?? '');
+    if (!wantedName || !theirName) return false;
+    // Containment, so "Digital Computing" finds "Fundamentals of Digital
+    // Computing" rather than sitting beside it as a second folder.
+    return (
+      theirName === wantedName ||
+      theirName.includes(wantedName) ||
+      wantedName.includes(theirName)
+    );
+  });
+
+  if (matched) {
+    const data = matched.data() as Subject;
     const patch: Record<string, unknown> = {};
-    if (moduleCode && !existing.data().moduleCode) patch.moduleCode = moduleCode;
-    if (!existing.data().semesterId) patch.semesterId = await currentSemesterId(uid);
-    if (Object.values(patch).some((value) => value !== null)) {
-      await updateDoc(existing.ref, { ...patch, updatedAt: serverTimestamp() });
+    if (moduleCode && !data.moduleCode) patch.moduleCode = moduleCode;
+    if (!data.semesterId) {
+      const semesterId = await currentSemesterId(uid);
+      if (semesterId) patch.semesterId = semesterId;
     }
-    return existing.id;
+    if (Object.keys(patch).length > 0) {
+      await updateDoc(matched.ref, { ...patch, updatedAt: serverTimestamp() });
+    }
+    return matched.id;
   }
 
   const semesterId = await currentSemesterId(uid);
@@ -890,6 +929,17 @@ export async function findOrCreateSubject(
   );
   return subjectId;
 }
+
+/** Case, punctuation and filler removed, so two spellings of one course meet. */
+function comparableName(raw: string | null | undefined): string {
+  return (raw ?? '')
+    .toLowerCase()
+    .replace(/\b(introduction|intro|fundamentals?|principles?|of|to|and|the|for|i{1,3})\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 
 async function currentSemesterId(uid: string): Promise<string | null> {
   const db = getDb();
