@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Linking, Platform, Pressable, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
@@ -25,6 +25,7 @@ import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { formatDateTime } from '@/lib/dates';
 import { formatChars } from '@/lib/format';
 import { getDb } from '@/services/firebase';
+import { UNGROUPED, groupMaterials, renameChapter } from '@/services/materials';
 import { paths } from '@/lib/paths';
 import type {
   Assignment,
@@ -92,20 +93,12 @@ export default function SubjectFolder({
     [semesters.data, subject.data?.semesterId]
   );
 
-  /** Task 3 asks for modules grouped inside the folder. */
-  const modules = useMemo(() => {
-    const groups = new Map<string, SourceDocument[]>();
-    for (const document of documents.data) {
-      const key = document.moduleCode?.trim() || 'Ungrouped';
-      const bucket = groups.get(key);
-      if (bucket) bucket.push(document);
-      else groups.set(key, [document]);
-    }
-    // "Ungrouped" always sorts last so real module codes lead.
-    return [...groups.entries()].sort(([a], [b]) =>
-      a === 'Ungrouped' ? 1 : b === 'Ungrouped' ? -1 : a.localeCompare(b)
-    );
-  }, [documents.data]);
+  /**
+   * Modules grouped inside the folder, ordered the way the lecturer numbered
+   * them. Both the grouping and the order can be overridden by the student —
+   * see services/materials.
+   */
+  const modules = useMemo(() => groupMaterials(documents.data), [documents.data]);
 
   const totalChars = useMemo(
     () => documents.data.reduce((total, document) => total + (document.charCount ?? 0), 0),
@@ -338,13 +331,15 @@ export default function SubjectFolder({
             <View className="gap-8">
               {modules.map(([moduleCode, moduleDocuments]) => (
                 <View key={moduleCode} className="gap-3">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-xs font-bold uppercase tracking-wider text-muted">
-                      {moduleCode}
-                    </Text>
-                    <View className="h-px flex-1 bg-line" />
-                    <Text className="text-xs text-subtle">{moduleDocuments.length}</Text>
-                  </View>
+                  <ChapterHeading
+                    name={moduleCode}
+                    count={moduleDocuments.length}
+                    onRename={(next) =>
+                      renameChapter(uid, subjectId, moduleDocuments, next).catch((caught) =>
+                        setError(caught instanceof Error ? caught.message : String(caught))
+                      )
+                    }
+                  />
 
                   <View className="gap-3">
                     {moduleDocuments.map((document) => (
@@ -486,5 +481,76 @@ export default function SubjectFolder({
         onClose={() => setEditOpen(false)}
       />
     </ScreenScroll>
+  );
+}
+
+/**
+ * A chapter title the student can correct.
+ *
+ * The model frequently cannot tell which chapter a bare slide deck belongs to,
+ * and "Ungrouped" is a label the app chose rather than one the student agreed
+ * to. Renaming edits every file in the group at once, because that is what a
+ * student means by renaming a chapter.
+ */
+function ChapterHeading({
+  name,
+  count,
+  onRename,
+}: {
+  name: string;
+  count: number;
+  onRename: (next: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name === UNGROUPED ? '' : name);
+
+  function commit() {
+    const next = draft.trim();
+    setEditing(false);
+    if (next && next !== name) onRename(next);
+  }
+
+  if (editing) {
+    return (
+      <View className="flex-row items-center gap-2">
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          autoFocus
+          placeholder="Chapter name"
+          placeholderTextColor="#9A9488"
+          onSubmitEditing={commit}
+          onBlur={commit}
+          className="flex-1 rounded-lg border border-line bg-paper px-3 py-1.5 text-sm text-ink"
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Save chapter name"
+          onPress={commit}
+          className="h-8 w-8 items-center justify-center rounded-lg bg-ink"
+        >
+          <Icon name="check" size={14} color="#F7F5EE" />
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <View className="flex-row items-center gap-2">
+      <Text className="text-xs font-bold uppercase tracking-wider text-muted">{name}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Rename ${name}`}
+        onPress={() => {
+          setDraft(name === UNGROUPED ? '' : name);
+          setEditing(true);
+        }}
+        className="h-6 w-6 items-center justify-center rounded"
+      >
+        <Icon name="pencil" size={12} color="#9A9488" />
+      </Pressable>
+      <View className="h-px flex-1 bg-line" />
+      <Text className="text-xs text-subtle">{count}</Text>
+    </View>
   );
 }
