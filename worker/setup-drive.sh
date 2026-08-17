@@ -61,6 +61,16 @@ else
   note "could not read EXPO_PUBLIC_R2_WORKER_URL; skipping the name check"
 fi
 
+bindings=$(grep -cE '^[[:space:]]*binding[[:space:]]*=[[:space:]]*"DRIVE_TOKENS"' wrangler.toml || true)
+if [ "${bindings:-0}" -gt 1 ]; then
+  printf '\nwrangler.toml binds DRIVE_TOKENS %s times. Wrangler refuses that,\n' "$bindings"
+  printf 'and this script cannot tell which one you meant to keep.\n\n'
+  printf 'Delete the extra [[kv_namespaces]] block so exactly one remains, or\n'
+  printf 'take the committed version:  git checkout -- wrangler.toml\n'
+  die "duplicate DRIVE_TOKENS binding; nothing was changed"
+fi
+note "one DRIVE_TOKENS binding"
+
 step "Checking your Cloudflare login"
 if ! npx wrangler whoami >/dev/null 2>&1; then
   note "Not logged in. A browser window will open."
@@ -74,8 +84,13 @@ npx wrangler whoami | sed -n '/Account Name/,+1p' || true
 
 step "Creating the DRIVE_TOKENS namespace"
 
-if grep -qE '^\[\[kv_namespaces\]\]' wrangler.toml; then
-  note "wrangler.toml already declares a namespace — leaving it alone."
+
+# Tolerant of leading whitespace and of the binding sitting in any block: an
+# anchored match missed an indented one, decided there was no namespace, and
+# appended a second — which wrangler refuses outright, because two bindings
+# cannot share a name.
+if grep -qE '^[[:space:]]*binding[[:space:]]*=[[:space:]]*"DRIVE_TOKENS"' wrangler.toml; then
+  note "wrangler.toml already binds DRIVE_TOKENS — leaving it alone."
 else
   # Look before creating. A previous run may have made the namespace and then
   # had its config edit lost — to a failed pull, a clean clone, a discarded
