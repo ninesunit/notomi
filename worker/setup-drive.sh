@@ -197,10 +197,26 @@ worker_url=$(grep -hoE '^EXPO_PUBLIC_R2_WORKER_URL=.*' ../.env.production ../.en
 
 step "Checking it came up"
 if [ -n "$worker_url" ]; then
-  if curl -fsS "$worker_url/health" >/dev/null 2>&1; then
+  # A deploy takes a moment to propagate, so one immediate request proves
+  # nothing. Curl also may not share the proxy settings the rest of the
+  # toolchain uses, which is why a failure here is reported as inconclusive
+  # rather than as a problem: the deploy output above is the real evidence.
+  reached=""
+  for attempt in 1 2 3 4 5; do
+    if curl -fsS --max-time 10 "$worker_url/health" >/dev/null 2>&1; then
+      reached="yes"
+      break
+    fi
+    sleep "$attempt"
+  done
+
+  if [ -n "$reached" ]; then
     note "$worker_url/health is answering"
   else
-    note "could not reach $worker_url/health — check the deploy output above"
+    note "could not reach $worker_url/health from here."
+    note "That is often just this shell's network, not the deploy — the"
+    note "bindings listed above are what actually matter. Confirm with:"
+    note "  node check-drive.mjs"
   fi
 fi
 
@@ -208,7 +224,14 @@ cat <<'DONE'
 
 Done.
 
-The /drive/* routes are live. Open Notomi, go to the Drive card and press
+Confirm it with:
+
+    node check-drive.mjs
+
+"the worker can hold a Drive grant" is the line that matters; 404 there means
+configured with no grant yet, which is exactly right for a fresh account.
+
+Then open Notomi, go to the Drive card and press
 Connect — you will see Google's consent screen once. After that the card should
 read "stays connected next time", and reloading should not ask again.
 
