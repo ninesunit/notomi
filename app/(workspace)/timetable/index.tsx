@@ -797,7 +797,10 @@ function DayTimeline({
               <Pressable
                 key={block.id}
                 accessibilityRole="button"
-                accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
+                // The joined subject name, not the stored copy — a renamed course
+                // must not keep announcing its old name to a screen reader while
+                // the block visibly shows the new one.
+                accessibilityLabel={`${block.subjectName || block.title}, ${DAY_FULL[day]} ${minutesToLabel(
                   block.startMinute
                 )} to ${minutesToLabel(block.endMinute)}`}
                 onPress={() => {
@@ -879,6 +882,38 @@ function DayTimeline({
 
 /** Pixels per hour in the week grid. Enough for a title and a room at 45 minutes. */
 const HOUR_HEIGHT = 56;
+
+/**
+ * Splits a day's classes into side-by-side lanes.
+ *
+ * Two classes at the same hour were drawn at the same place, one exactly on top
+ * of the other — so a 9–11 lecture hid a 9–10 seminar entirely, and the
+ * seminar could not be tapped at all. Each block now takes the leftmost lane
+ * that is free at its start, the way every calendar does it.
+ */
+function laneOut<T extends ClassBlock>(blocks: T[]): { block: T; lane: number; lanes: number }[] {
+  const ordered = [...blocks].sort(
+    (a, b) => a.startMinute - b.startMinute || b.endMinute - a.endMinute
+  );
+
+  // The end time currently occupying each lane.
+  const ends: number[] = [];
+  const placed = ordered.map((block) => {
+    let lane = ends.findIndex((end) => end <= block.startMinute);
+    if (lane === -1) {
+      lane = ends.length;
+      ends.push(block.endMinute);
+    } else {
+      ends[lane] = block.endMinute;
+    }
+    return { block, lane };
+  });
+
+  // One width for the whole day: columns that changed width partway down read
+  // as a rendering fault rather than as a busier morning.
+  const lanes = Math.max(1, ends.length);
+  return placed.map((entry) => ({ ...entry, lanes }));
+}
 /** Width of the hour ruler beside the grid. */
 const RULER_WIDTH = 46;
 /** Height of the day-name header, so the ruler can be offset to match. */
@@ -1020,7 +1055,7 @@ function WeekGrid({
                     );
                   })}
 
-                  {classesForDay(classes, day).map((block) => {
+                  {laneOut(classesForDay(classes, day)).map(({ block, lane, lanes }) => {
                     const top = ((block.startMinute - firstHour * 60) / 60) * HOUR_HEIGHT;
                     const blockHeight = Math.max(
                       22,
@@ -1031,17 +1066,21 @@ function WeekGrid({
                       <Pressable
                         key={block.id}
                         accessibilityRole="button"
-                        accessibilityLabel={`${block.title}, ${DAY_FULL[day]} ${minutesToLabel(
+                        accessibilityLabel={`${block.subjectName || block.title}, ${DAY_FULL[day]} ${minutesToLabel(
                           block.startMinute
                         )} to ${minutesToLabel(block.endMinute)}`}
                         onPress={() => {
                           feedback('tap');
                           onSelect(block);
                         }}
-                        className="absolute left-1 right-1 overflow-hidden rounded-lg px-1.5 py-1"
+                        className="absolute overflow-hidden rounded-lg px-1.5 py-1"
                         style={{
                           top: top + 1,
                           height: blockHeight,
+                          // Percentages rather than fixed insets, so the column
+                          // keeps working at every screen width.
+                          left: `${(lane / lanes) * 100}%`,
+                          width: `${(1 / lanes) * 100}%`,
                           backgroundColor: `${block.color}24`,
                           borderLeftWidth: 3,
                           borderLeftColor: block.color,
