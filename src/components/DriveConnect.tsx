@@ -1,0 +1,174 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Text, View } from 'react-native';
+import { Icon } from '@/components/Icon';
+import { Button, Card, Notice } from '@/components/ui';
+import { feedback } from '@/lib/sound';
+import {
+  connectDrive,
+  disconnectDrive,
+  driveConfigHint,
+  isDriveConfigured,
+  isDriveConnected,
+} from '@/lib/driveUtils';
+
+/**
+ * The one place a student says yes to Drive.
+ *
+ * Deliberately explicit about the bargain, because "sign in with Google" tells
+ * somebody nothing about what an app will do with their files. Notomi asks for
+ * the narrowest scope Google offers and this card says so in the words that
+ * scope actually means: what it made, and what you hand it.
+ */
+export function DriveConnect({
+  onConnected,
+  compact = false,
+}: {
+  onConnected?: () => void;
+  compact?: boolean;
+}) {
+  const [connected, setConnected] = useState(isDriveConnected);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // The token lives in memory for its hour; a tab left open overnight comes
+  // back disconnected, and the card should say so rather than fail on tap.
+  useEffect(() => {
+    const timer = setInterval(() => setConnected(isDriveConnected()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const connect = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await connectDrive();
+      setConnected(true);
+      feedback('success');
+      onConnected?.();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+      feedback('error');
+    } finally {
+      setBusy(false);
+    }
+  }, [onConnected]);
+
+  if (!isDriveConfigured()) return null;
+
+  if (compact) {
+    return (
+      <View className="gap-2">
+        {error ? <Notice title="Drive did not connect" body={error} /> : null}
+        <Button
+          label={connected ? 'Drive connected' : 'Connect Google Drive'}
+          icon={connected ? 'check' : 'upload-cloud'}
+          variant={connected ? 'secondary' : 'primary'}
+          size="sm"
+          loading={busy}
+          disabled={connected || busy}
+          onPress={() => void connect()}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <Card className="gap-3">
+      <View className="flex-row items-center gap-3">
+        <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
+          <Icon name="upload-cloud" size={16} color="#6F6A5F" />
+        </View>
+        <View className="flex-1">
+          <Text className="text-[15px] font-semibold text-ink">Your Google Drive</Text>
+          <Text className="text-xs text-muted">
+            {connected ? 'Connected on this device' : 'Keep your own copy of every file'}
+          </Text>
+        </View>
+        {connected ? <View className="h-2.5 w-2.5 rounded-full bg-pine" /> : null}
+      </View>
+
+      <Text className="text-xs leading-5 text-subtle">
+        Uploads go straight from this device into a “Notomi Workspace” folder in your Drive, sorted
+        by course code. Notomi can only ever see the files it puts there and the ones you choose
+        yourself — never the rest of your Drive.
+      </Text>
+
+      {error ? <Notice title="Drive did not connect" body={error} /> : null}
+      {driveConfigHint() && !error ? (
+        <Text className="text-xs text-subtle">{driveConfigHint()}</Text>
+      ) : null}
+
+      <View className="flex-row flex-wrap gap-2">
+        {connected ? (
+          <Button
+            label="Disconnect"
+            icon="log-out"
+            variant="secondary"
+            size="sm"
+            onPress={() => {
+              disconnectDrive();
+              setConnected(false);
+              feedback('toggle');
+            }}
+          />
+        ) : (
+          <Button
+            label="Connect Google Drive"
+            icon="upload-cloud"
+            size="sm"
+            loading={busy}
+            onPress={() => void connect()}
+          />
+        )}
+      </View>
+
+      {connected ? (
+        <Text className="text-[11px] leading-4 text-subtle">
+          Disconnecting only forgets the connection on this device. Nothing is removed from your
+          Drive.
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
+
+/**
+ * The line under a batch upload: "Uploading 2 of 5 files to Google Drive…".
+ *
+ * Its own component so the existing modal can render it without any of its
+ * layout being rethought.
+ */
+export function DriveUploadProgress({
+  index,
+  total,
+  name,
+}: {
+  index: number;
+  total: number;
+  name?: string;
+}) {
+  if (total === 0) return null;
+
+  return (
+    <View className="gap-1.5 rounded-xl bg-sand px-3 py-2.5">
+      <View className="flex-row items-center gap-2">
+        <Icon name="upload-cloud" size={13} color="#6F6A5F" />
+        <Text className="flex-1 text-xs font-medium text-ink">
+          Uploading {Math.min(index, total)} of {total}{' '}
+          {total === 1 ? 'file' : 'files'} to Google Drive…
+        </Text>
+      </View>
+      {name ? (
+        <Text className="text-[11px] text-subtle" numberOfLines={1}>
+          {name}
+        </Text>
+      ) : null}
+      <View className="h-1 overflow-hidden rounded-full bg-line">
+        <View
+          className="h-full rounded-full bg-pine"
+          style={{ width: `${Math.round((Math.min(index, total) / total) * 100)}%` }}
+        />
+      </View>
+    </View>
+  );
+}

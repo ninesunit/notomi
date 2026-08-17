@@ -20,6 +20,7 @@ import { Button, Loading, Notice } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { useWorkspaceChrome } from '@/hooks/useWorkspaceChrome';
+import { driveKey, fetchDriveBlob, isDriveConfigured, pickFromDrive } from '@/lib/driveUtils';
 import { paths } from '@/lib/paths';
 import type {
   NoteAssetNode,
@@ -1058,6 +1059,25 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
     }
   }, [importBlob]);
 
+  /**
+   * Files chosen through Google's own picker.
+   *
+   * The picked id is stored as the node's source key, so a board opened on
+   * another device rehydrates its pages straight from Drive — the same route
+   * course materials already take, with a different origin.
+   */
+  const pickDriveFiles = useCallback(async () => {
+    setImportError(null);
+    try {
+      const picked = await pickFromDrive();
+      for (const file of picked) {
+        await importBlob(await fetchDriveBlob(file.fileId), file.name, driveKey(file.fileId));
+      }
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : String(error));
+    }
+  }, [importBlob]);
+
   const openMaterials = useCallback(() => {
     setMaterialOpen(true);
     setImportError(null);
@@ -1452,6 +1472,15 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
           disabled={importing}
           onPress={() => void pickDeviceFiles()}
         />
+        {isDriveConfigured() ? (
+          <Button
+            label="Import from Google Drive"
+            icon="upload-cloud"
+            variant="secondary"
+            disabled={importing}
+            onPress={() => void pickDriveFiles()}
+          />
+        ) : null}
         {importing ? <Loading label={importProgress || 'Importing material…'} /> : null}
         {importError ? <Notice title="Material could not be imported" body={importError} /> : null}
         <View className="gap-2 border-t border-line pt-4">

@@ -44,6 +44,7 @@ import {
   SIZE_LIMITS,
   type ParsedFile,
 } from './fileProcessor';
+import { canUseDrive, storeOriginalInDrive } from './driveStorage';
 import { deleteR2File, isR2Configured, r2ConfigHint, R2Error, uploadFileToR2 } from './r2Storage';
 
 /**
@@ -222,7 +223,30 @@ export async function processUploadedMaterial(
   report('uploading');
   let r2FileKey = '';
   let r2FileUrl = '';
-  if (isR2Configured()) {
+  let driveFileId = '';
+
+  // The student's own Drive first, when they have connected it: their files
+  // stay theirs, and nothing counts against a shared bucket. R2 remains the
+  // fallback, so declining Drive costs nobody their originals.
+  if (canUseDrive()) {
+    try {
+      const stored = await storeOriginalInDrive(userId, subjectId, {
+        blob: new Blob([bytes], { type: contentType }),
+        name: file.name,
+        mimeType: contentType,
+      });
+      driveFileId = stored.driveFileId;
+      r2FileUrl = stored.webViewLink ?? '';
+    } catch (error) {
+      warnings.push(
+        `Drive upload failed, kept a copy elsewhere: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+
+  if (!driveFileId && isR2Configured()) {
     try {
       const uploaded = await uploadFileToR2(
         file.uri,
@@ -241,7 +265,8 @@ export async function processUploadedMaterial(
           : `Original not stored: ${error instanceof Error ? error.message : String(error)}`
       );
     }
-  } else {
+  } else if (!driveFileId) {
+    // Only when neither store took it. Drive succeeding is not "not stored".
     warnings.push(`Original not stored — ${r2ConfigHint()}`);
   }
 
@@ -269,6 +294,7 @@ export async function processUploadedMaterial(
     sourceKind: kind,
     r2FileKey,
     r2FileUrl,
+    driveFileId,
     moduleCode: metadata?.moduleCode ?? null,
     summary: metadata?.summary ?? fallbackSummary,
     // Notes are generated on demand from the reader — they are a much larger

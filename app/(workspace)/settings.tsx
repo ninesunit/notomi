@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
+import { DriveConnect } from '@/components/DriveConnect';
 import { Icon } from '@/components/Icon';
 import { RemindersCard } from '@/components/Reminders';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -25,6 +26,10 @@ export default function Settings() {
       <PageHeader title="Settings" subtitle="Reminders, sound and your account." />
 
       <RemindersCard />
+
+      <View className="mb-8">
+        <DriveConnect />
+      </View>
 
       <Card className="mb-8 gap-4">
         <View className="flex-row items-center gap-3">

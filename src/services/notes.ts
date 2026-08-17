@@ -11,6 +11,7 @@ import type {
   Subject,
 } from '@/lib/schema';
 import { getDb } from './firebase';
+import { blobFromDriveKey, sourceKeyOf } from './driveStorage';
 import { getR2FileUrl } from './r2Storage';
 
 const DB_NAME = 'notomi-notes-v1';
@@ -408,9 +409,18 @@ export async function hydrateNoteAssets(nodes: NoteNode[]): Promise<NoteNode[]> 
 
   for (const [sourceFileKey, targets] of missingBySource) {
     try {
-      const response = await fetch(await getR2FileUrl(sourceFileKey));
-      if (!response.ok) continue;
-      const source = await response.blob();
+      // Originals in the student's own Drive are fetched with their token
+      // rather than a signed url. Keys written by R2 carry no prefix, so this
+      // is invisible to every board that predates Drive.
+      const fromDrive = await blobFromDriveKey(sourceFileKey);
+      let source: Blob;
+      if (fromDrive) {
+        source = fromDrive;
+      } else {
+        const response = await fetch(await getR2FileUrl(sourceFileKey));
+        if (!response.ok) continue;
+        source = await response.blob();
+      }
       const isPdf = targets.some((node) => node.type === 'pdf_page');
       const typed = isPdf && !/pdf/i.test(source.type)
         ? new Blob([await source.arrayBuffer()], { type: 'application/pdf' })
@@ -566,10 +576,15 @@ export async function renderMaterial(
 }
 
 export async function materialBlob(material: NoteMaterial): Promise<Blob> {
+  const fromDrive = await blobFromDriveKey(sourceKeyOf(material.document));
+  const blob = fromDrive ?? (await r2MaterialBlob(material));
+  if (blob.type === material.document.mimeType) return blob;
+  return new Blob([await blob.arrayBuffer()], { type: material.document.mimeType });
+}
+
+async function r2MaterialBlob(material: NoteMaterial): Promise<Blob> {
   const url = await getR2FileUrl(material.document.r2FileKey);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Could not load the material (${response.status}).`);
-  const blob = await response.blob();
-  if (blob.type === material.document.mimeType) return blob;
-  return new Blob([await blob.arrayBuffer()], { type: material.document.mimeType });
+  return response.blob();
 }
