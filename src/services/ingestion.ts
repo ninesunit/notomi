@@ -227,6 +227,11 @@ export async function processUploadedMaterial(
   const documentRef = doc(paths.documents(db, userId, subjectId));
   const warnings: string[] = [];
 
+  // Started now, read much further down. It depends on nothing above it, so
+  // leaving it where it is used means a round trip that waits out the entire
+  // file transfer before it even begins.
+  const subjectSnapPromise = getDoc(paths.subject(db, userId, subjectId));
+
   report('uploading');
   let r2FileKey = '';
   let r2FileUrl = '';
@@ -313,24 +318,23 @@ export async function processUploadedMaterial(
     createdAt: serverTimestamp(),
   });
 
-  const subjectSnap = await getDoc(paths.subject(db, userId, subjectId));
+  const subjectSnap = await subjectSnapPromise;
   const subjectName = (subjectSnap.data()?.name as string) ?? metadata?.subjectName ?? 'Subject';
 
-  await updateDoc(paths.subject(db, userId, subjectId), {
-    documentCount: increment(1),
-    updatedAt: serverTimestamp(),
-    ...(metadata?.moduleCode && !subjectSnap.data()?.moduleCode
-      ? { moduleCode: metadata.moduleCode }
-      : {}),
-  });
-
-  const deadlinesCreated = await saveDeadlines(
-    userId,
-    subjectId,
-    subjectName,
-    documentRef.id,
-    metadata?.deadlines ?? []
-  );
+  // Both follow the document write and neither depends on the other, so they
+  // go together. The document write itself stays on its own above: bumping
+  // documentCount alongside a write that then fails would leave the subject
+  // claiming a file that is not there.
+  const [, deadlinesCreated] = await Promise.all([
+    updateDoc(paths.subject(db, userId, subjectId), {
+      documentCount: increment(1),
+      updatedAt: serverTimestamp(),
+      ...(metadata?.moduleCode && !subjectSnap.data()?.moduleCode
+        ? { moduleCode: metadata.moduleCode }
+        : {}),
+    }),
+    saveDeadlines(userId, subjectId, subjectName, documentRef.id, metadata?.deadlines ?? []),
+  ]);
 
   // Reel cards are an enhancement, not part of the upload transaction. Let
   // the student finish immediately while generation continues in the
@@ -535,7 +539,19 @@ export async function ingestFiles(
 
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
-    const report = (stage: IngestStage, kind?: FileKind) =>
+
+    // Each stage prints how long the previous one took. An upload that "takes
+    // a really long time" is reading, extracting, analysing, transferring and
+    // saving, and only one of those is usually the problem — without this the
+    // guess is as good as the measurement, which is to say not good.
+    let stageStartedAt = Date.now();
+    let openStage: IngestStage | null = null;
+    const report = (stage: IngestStage, kind?: FileKind) => {
+      if (openStage) {
+        console.info(`[ingest] ${openStage} · ${Date.now() - stageStartedAt}ms · ${file.name}`);
+      }
+      openStage = stage;
+      stageStartedAt = Date.now();
       options.onProgress?.({
         stage,
         kind: kind ?? null,
@@ -543,6 +559,7 @@ export async function ingestFiles(
         index: index + 1,
         total: files.length,
       });
+    };
 
     try {
       // Obvious schedule/calendar filenames can skip the generic classifier.

@@ -130,10 +130,70 @@ function clearModelCooldown(modelName: string): void {
 const isUnknownModel = (raw: string): boolean =>
   /not found|NOT_FOUND|is not supported|does not exist|unsupported model|invalid model/i.test(raw);
 
+/**
+ * Thinking off, for the calls where it buys nothing.
+ *
+ * Recent models reason before answering, which is worth the wait for a quiz or
+ * a set of notes and is pure latency for "where is my next class" or for
+ * pulling a module code out of a syllabus. Those calls are short, structured
+ * and judged on speed, so they opt out; the heavy generative ones say nothing
+ * and keep the model's default.
+ */
+const FAST_THINKING = { thinkingBudget: 0 } as const;
+
+/**
+ * Not every model accepts a thinking budget, and one that does not errors the
+ * whole request rather than ignoring the field — so sending it unconditionally
+ * would be a way to take every AI feature down again. The first refusal turns
+ * it off for the session and the call is retried without it, which means the
+ * worst case is one wasted round trip once, not a broken app.
+ */
+const THINKING_UNSUPPORTED_KEY = 'notomi:ai-thinking-unsupported';
+let thinkingRejected = false;
+
+function thinkingIsRejected(): boolean {
+  if (thinkingRejected) return true;
+  if (typeof sessionStorage === 'undefined') return false;
+  try {
+    thinkingRejected = sessionStorage.getItem(THINKING_UNSUPPORTED_KEY) === '1';
+  } catch {
+    /* private mode; in-memory only */
+  }
+  return thinkingRejected;
+}
+
+function rememberThinkingRejected(): void {
+  thinkingRejected = true;
+  console.info('[ai] this model refused a thinking budget; continuing without one.');
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(THINKING_UNSUPPORTED_KEY, '1');
+  } catch {
+    /* private mode; in-memory only */
+  }
+}
+
+/** A 400 that names thinking is the model telling us it has no such setting. */
+function isThinkingRefusal(error: unknown): boolean {
+  const { httpStatus, message } = errorDetails(error);
+  return httpStatus === 400 && /thinking/i.test(message);
+}
+
+const sendsThinking = (params: Omit<ModelParams, 'model'>): boolean =>
+  Boolean(params.generationConfig?.thinkingConfig);
+
+/** The same params with the thinking budget removed, leaving the rest intact. */
+function withoutThinking(params: Omit<ModelParams, 'model'>): Omit<ModelParams, 'model'> {
+  if (!sendsThinking(params)) return params;
+  const { thinkingConfig: _dropped, ...generationConfig } = params.generationConfig ?? {};
+  return { ...params, generationConfig };
+}
+
 function modelFor(modelName: string, params: Omit<ModelParams, 'model'> = {}): GenerativeModel {
+  const tuned = thinkingIsRejected() ? withoutThinking(params) : params;
   return getGenerativeModel(
     getAiClient(),
-    { model: modelName, ...params },
+    { model: modelName, ...tuned },
     { timeout: REQUEST_TIMEOUT_MS }
   );
 }
@@ -231,11 +291,32 @@ async function runWithModelFallback<T>(
   }
   let lastError: unknown;
 
+  // Timed because "the AI is slow" is not a diagnosis. Which call, on which
+  // model, for how many milliseconds is one — and it is the difference
+  // between fixing the slow thing and tuning the fast one.
+  const startedAt = Date.now();
+
   for (let index = 0; index < candidates.length; index += 1) {
     const candidate = candidates[index];
     try {
-      const value = await run(modelFor(candidate, params));
+      let value: T;
+      try {
+        value = await run(modelFor(candidate, params));
+      } catch (error) {
+        // A model with no thinking setting refuses the request outright rather
+        // than ignoring the field. That is a fault in our config, not in this
+        // model, so drop the budget for the session and give the same
+        // candidate another go — spending a fallback on it would blame the
+        // wrong thing and still fail on the next model for the same reason.
+        if (isThinkingRefusal(error) && sendsThinking(params) && !thinkingIsRejected()) {
+          rememberThinkingRejected();
+          value = await run(modelFor(candidate, params));
+        } else {
+          throw error;
+        }
+      }
       clearModelCooldown(candidate);
+      console.info(`[ai] ${operation} · ${candidate} · ${Date.now() - startedAt}ms`);
       if (candidate !== activeModel) {
         console.info(`[ai] switched from ${activeModel} to ${candidate}.`);
         rememberModel(candidate);
@@ -848,6 +929,10 @@ export async function extractMetadata(text: string): Promise<ExtractedMetadata> 
         responseMimeType: 'application/json',
         responseSchema: metadataSchema,
         temperature: 0.1,
+        // Pulling a title, a module code and some dates out of a document is
+        // reading, not reasoning, and this call sits directly in the upload
+        // path where every second is one the student spends watching a bar.
+        thinkingConfig: FAST_THINKING,
       },
     },
     `Analyze this syllabus/lecture document and return the requested JSON.
@@ -2250,7 +2335,9 @@ class is, call get_schedule; if they mention something due, call create_task.
 
 TODAY
 ${input.brief}`,
-    generationConfig: { temperature: 0.3 },
+    // Answers here are one or two sentences, usually read while walking
+    // between classes. Deliberation buys nothing and costs the whole wait.
+    generationConfig: { temperature: 0.3, thinkingConfig: FAST_THINKING },
   };
 
   const contents: Content[] = [
