@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from '@/components/Icon';
 import { CountdownChip } from './Countdown';
 import { DatePicker } from './DatePicker';
@@ -39,6 +39,19 @@ export function TodoRow({
   const [titleDraft, setTitleDraft] = useState(todo.title);
   const [confirming, setConfirming] = useState(false);
 
+  /**
+   * Below this the row's furniture does not fit beside the title.
+   *
+   * A checkbox, a priority badge and three icon buttons come to roughly 290
+   * points of fixed width. The title column is flex-1 with no floor, so on a
+   * phone it got whatever was left — about sixty points — and set one word per
+   * line down the whole screen. Widening the title is not the fix; there is
+   * genuinely no room for both, so on a narrow screen the controls move to
+   * their own line underneath.
+   */
+  const { width } = useWindowDimensions();
+  const narrow = width < 640;
+
   const subTasks = todo.subTasks ?? [];
   const doneCount = subTasks.filter((subTask) => subTask.isCompleted).length;
   const due = toDate(todo.dueDate);
@@ -74,6 +87,44 @@ export function TodoRow({
     actions.rename(todo, next);
   }
 
+  const controls = (
+    <>
+      <Pressable
+        accessibilityLabel={`Priority: ${todo.priority}. Tap to change.`}
+        onPress={() => actions.cyclePriority(todo)}
+      >
+        <Badge label={todo.priority} tone={PRIORITY_TONE[todo.priority] ?? 'neutral'} />
+      </Pressable>
+
+      <IconButton
+        icon="edit-2"
+        label={`Rename ${todo.title}`}
+        onPress={() => {
+          setTitleDraft(todo.title);
+          setEditing(true);
+        }}
+      />
+
+      {/* Two taps to delete, but both are on the row: a task the student
+          cannot see how to remove is exactly what the orphan bug felt like. */}
+      <IconButton
+        icon={confirming ? 'check' : 'trash-2'}
+        tone="rose"
+        label={confirming ? `Confirm deleting ${todo.title}` : `Delete ${todo.title}`}
+        onPress={() => {
+          if (confirming) actions.remove(todo);
+          else setConfirming(true);
+        }}
+      />
+
+      <IconButton
+        icon={expanded ? 'chevron-up' : 'chevron-down'}
+        label="Toggle subtasks"
+        onPress={() => setExpanded((value) => !value)}
+      />
+    </>
+  );
+
   return (
     <View className="border-t border-line first:border-t-0">
       <View className="flex-row items-start gap-3 px-4 py-3.5">
@@ -89,7 +140,10 @@ export function TodoRow({
           {todo.isCompleted ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
         </Pressable>
 
-        <Pressable className="flex-1 gap-1.5" onPress={() => setExpanded((value) => !value)}>
+        <Pressable
+          className="min-w-0 flex-1 gap-1.5"
+          onPress={() => setExpanded((value) => !value)}
+        >
           {editing ? (
             <TextInput
               value={titleDraft}
@@ -140,40 +194,12 @@ export function TodoRow({
           </View>
         </Pressable>
 
-        <Pressable
-          accessibilityLabel={`Priority: ${todo.priority}. Tap to change.`}
-          onPress={() => actions.cyclePriority(todo)}
-        >
-          <Badge label={todo.priority} tone={PRIORITY_TONE[todo.priority] ?? 'neutral'} />
-        </Pressable>
-
-        <IconButton
-          icon="edit-2"
-          label={`Rename ${todo.title}`}
-          onPress={() => {
-            setTitleDraft(todo.title);
-            setEditing(true);
-          }}
-        />
-
-        {/* Two taps to delete, but both are on the row: a task the student
-            cannot see how to remove is exactly what the orphan bug felt like. */}
-        <IconButton
-          icon={confirming ? 'check' : 'trash-2'}
-          tone="rose"
-          label={confirming ? `Confirm deleting ${todo.title}` : `Delete ${todo.title}`}
-          onPress={() => {
-            if (confirming) actions.remove(todo);
-            else setConfirming(true);
-          }}
-        />
-
-        <IconButton
-          icon={expanded ? 'chevron-up' : 'chevron-down'}
-          label="Toggle subtasks"
-          onPress={() => setExpanded((value) => !value)}
-        />
+        {narrow ? null : controls}
       </View>
+
+      {narrow ? (
+        <View className="flex-row items-center gap-2 px-4 pb-3 pl-12">{controls}</View>
+      ) : null}
 
       {confirming ? (
         <View className="flex-row items-center gap-3 border-t border-line bg-rose-soft/50 px-4 py-2 pl-12">

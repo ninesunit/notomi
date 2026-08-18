@@ -15,6 +15,7 @@ import { SetupScreen } from '@/components/SetupScreen';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { registerServiceWorker } from '@/services/appUpdate';
 import { trackViewportHeight } from '@/lib/viewport';
+import { CrashScreen } from '@/components/CrashScreen';
 import { isFirebaseConfigured } from '@/services/firebase';
 import '../global.css';
 
@@ -50,6 +51,21 @@ function AuthGate() {
   return <Slot />;
 }
 
+/**
+ * Expo Router renders this instead of a blank page when a screen throws.
+ *
+ * Exported from the root layout so it covers every route: a crash in the
+ * timetable, the canvas or a document reader all land here rather than
+ * whiting out the tab. This is the difference between "Notomi broke" and
+ * "Notomi is gone", and only one of those is recoverable by the student.
+ */
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => void }) {
+  // Logged as well as shown: the screenshot a student sends will have the
+  // message, but the console has the whole stack.
+  console.error('[notomi] A screen crashed.', error);
+  return <CrashScreen error={error} retry={retry} />;
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
@@ -68,6 +84,23 @@ export default function RootLayout() {
   // Bound to the visible viewport rather than the layout one, so the iOS
   // keyboard shortens the app instead of covering the bottom of it.
   useEffect(() => trackViewportHeight(), []);
+
+  /**
+   * Promise rejections nobody awaited.
+   *
+   * These never reach the error boundary — the render succeeded, something
+   * later just failed silently. A background sync that dies without a word is
+   * precisely the kind of fault that gets described as "something is broken
+   * but I cannot pinpoint it", so it gets written down with a tag that can be
+   * searched for.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onRejection = (event: PromiseRejectionEvent) =>
+      console.error('[notomi] Unhandled promise rejection.', event.reason);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => window.removeEventListener('unhandledrejection', onRejection);
+  }, []);
 
   useEffect(() => {
     if (fontError) console.error('[fonts] Brand font loading failed.', fontError);

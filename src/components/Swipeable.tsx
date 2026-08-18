@@ -37,17 +37,33 @@ export function SwipeableRow({
   const translate = useRef(new Animated.Value(0)).current;
   const offset = useRef(0);
 
+  /**
+   * The handlers, read live.
+   *
+   * PanResponder.create runs once and its callbacks close over that first
+   * render. Every caller here passes an inline arrow that captures the row's
+   * current data — `onSwipeRight={() => actions.toggle(todo)}` — so the
+   * gesture was acting on a snapshot taken when the row first mounted. Rename
+   * a task, tick it, change its priority, then swipe: the write went out based
+   * on the task as it was minutes ago, and `toggle` computing !isCompleted
+   * from stale data can flip it to the value it already had.
+   *
+   * Refreshed on every render so the gesture always sees the row as it is now.
+   */
+  const latest = useRef({ onSwipeLeft, onSwipeRight, enabled });
+  latest.current = { onSwipeLeft, onSwipeRight, enabled };
+
   const responder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_event, gesture) => {
-        if (!enabled) return false;
+        if (!latest.current.enabled) return false;
         const horizontal = Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.6;
         return horizontal && Math.abs(gesture.dx) > 12;
       },
       onPanResponderMove: (_event, gesture) => {
         // Refuse the direction that has no action wired up.
-        if (gesture.dx < 0 && !onSwipeLeft) return;
-        if (gesture.dx > 0 && !onSwipeRight) return;
+        if (gesture.dx < 0 && !latest.current.onSwipeLeft) return;
+        if (gesture.dx > 0 && !latest.current.onSwipeRight) return;
         const clamped = Math.max(-MAX_DRAG, Math.min(MAX_DRAG, gesture.dx));
         offset.current = clamped;
         translate.setValue(clamped);
@@ -66,8 +82,9 @@ export function SwipeableRow({
           callback?.();
         };
 
-        if (distance <= -TRIGGER && onSwipeLeft) settle(onSwipeLeft);
-        else if (distance >= TRIGGER && onSwipeRight) settle(onSwipeRight);
+        const { onSwipeLeft: left, onSwipeRight: right } = latest.current;
+        if (distance <= -TRIGGER && left) settle(left);
+        else if (distance >= TRIGGER && right) settle(right);
         else settle();
 
         // gesture is unused beyond the guard above but kept for clarity when

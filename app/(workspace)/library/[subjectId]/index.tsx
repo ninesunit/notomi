@@ -432,7 +432,12 @@ export default function SubjectFolder({
                   <View className="gap-3">
                     {moduleDocuments.map((document) => (
                       <Card key={document.id} className="gap-3">
-                        <View className="flex-row items-start gap-3">
+                        {/* Wraps rather than squeezing. Filenames are long and
+                            the controls beside them are fixed width, so without
+                            this the title column collapses on a phone and sets
+                            one word per line — the same fault the to-do rows
+                            had. */}
+                        <View className="flex-row flex-wrap items-start gap-3">
                           <View className="mt-0.5 h-9 w-9 items-center justify-center rounded-lg bg-sand">
                             <Icon
                               name={document.mimeType?.includes('pdf') ? 'file-text' : 'file'}
@@ -444,7 +449,7 @@ export default function SubjectFolder({
                           {/* The whole row opens the note reader — the icons beside
                               it stay reserved for the destructive actions. */}
                           <Link href={`${basePath}/${subjectId}/${document.id}`} asChild>
-                            <Pressable className="flex-1 gap-1">
+                            <Pressable className="min-w-0 flex-1 gap-1" style={{ minWidth: 200 }}>
                               <Text className="text-[15px] font-semibold leading-5 text-ink">
                                 {document.fileName}
                               </Text>
