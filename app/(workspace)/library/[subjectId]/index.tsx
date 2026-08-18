@@ -52,6 +52,7 @@ import { deleteMaterial, deleteSubject } from '@/services/ingestion';
 import { getR2FileUrl } from '@/services/r2Storage';
 import { describeLastStudied, formatMinutes, studyBySubject } from '@/services/sessions';
 import { findActiveSemester } from '@/services/academicPlanner';
+import { DEFAULT_SUBJECT_ICON } from '@/lib/schema';
 
 type TabId = 'sources' | 'tasks' | 'log';
 
@@ -276,7 +277,11 @@ export default function SubjectFolder({
       >
         <View className="h-1.5 w-full" style={{ backgroundColor: subject.data.color }} />
         <View className="flex-1 flex-row items-center gap-3 px-5">
-          <Icon name="book-open" size={28} color={subject.data.color} />
+          <Icon
+            name={(subject.data.icon ?? DEFAULT_SUBJECT_ICON) as never}
+            size={28}
+            color={subject.data.color}
+          />
           {subject.data.tag ? (
             <View
               className="rounded-full px-2.5 py-1"

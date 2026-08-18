@@ -3,10 +3,12 @@ import { Pressable, Text, View } from 'react-native';
 import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { Sheet } from './Sheet';
 import { Icon } from './Icon';
-import { Button, Field } from './ui';
+import { Button, Field, Touchable } from './ui';
 import { paths } from '@/lib/paths';
 import {
   colorForSubject,
+  DEFAULT_SUBJECT_ICON,
+  SUBJECT_ICONS,
   SUBJECT_PALETTE,
   tidyName,
   type Subject,
@@ -70,6 +72,7 @@ function SubjectForm({
   const [moduleCode, setModuleCode] = useState(subject?.moduleCode ?? '');
   const [tag, setTag] = useState(subject?.tag ?? '');
   const [color, setColor] = useState(subject?.color ?? SUBJECT_PALETTE[0].value);
+  const [icon, setIcon] = useState<string>(subject?.icon ?? DEFAULT_SUBJECT_ICON);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,6 +89,7 @@ function SubjectForm({
       moduleCode: moduleCode.trim() || null,
       tag: tag.trim() || null,
       emoji: null,
+      icon,
       color,
       updatedAt: serverTimestamp(),
     };
@@ -167,6 +171,31 @@ function SubjectForm({
         </View>
 
         <View className="gap-2">
+          <Text className="text-sm font-medium text-muted">Icon</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {SUBJECT_ICONS.map((option) => {
+              const selected = icon === option;
+              return (
+                <Touchable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Icon ${option.replace(/-/g, ' ')}`}
+                  accessibilityState={{ selected }}
+                  onPress={() => setIcon(option)}
+                  className={`h-10 w-10 items-center justify-center rounded-xl border ${
+                    selected ? 'border-ink bg-sand' : 'border-line bg-surface'
+                  }`}
+                >
+                  {/* Tinted with the chosen colour so the two pickers read as
+                      one decision rather than two unrelated grids. */}
+                  <Icon name={option as never} size={18} color={selected ? color : '#6F6A5F'} />
+                </Touchable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View className="gap-2">
           <Text className="text-sm font-medium text-muted">Colour</Text>
           <View className="flex-row flex-wrap gap-2">
             {SUBJECT_PALETTE.map((option) => (
@@ -198,7 +227,7 @@ function SubjectForm({
           >
             <View className="h-1.5 w-full" style={{ backgroundColor: color }} />
             <View className="flex-row items-center gap-3 p-3.5">
-              <Icon name="book-open" size={20} color={color} />
+              <Icon name={icon as never} size={20} color={color} />
               <View className="flex-1">
                 <Text className="text-sm font-semibold text-ink" numberOfLines={1}>
                   {name.trim() || 'Subject name'}

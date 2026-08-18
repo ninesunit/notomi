@@ -9,7 +9,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import { Slot, usePathname } from 'expo-router';
+import { router, Slot, usePathname } from 'expo-router';
 import { getDocs } from 'firebase/firestore';
 import { Copilot } from '@/components/Copilot';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
@@ -23,6 +23,7 @@ import { ReminderProvider } from '@/hooks/useReminders';
 import { UndoProvider } from '@/hooks/useUndo';
 import { useWorkspaceChrome, WorkspaceChromeProvider } from '@/hooks/useWorkspaceChrome';
 import { Icon } from '@/components/Icon';
+import { isDetailRoute } from '@/components/nav';
 import { paths } from '@/lib/paths';
 import type { ClassBlock } from '@/lib/schema';
 import { getDb, getFirebaseAuth } from '@/services/firebase';
@@ -239,7 +240,18 @@ function WorkspaceShell() {
                   <Slot />
                 </View>
               ) : (
-                <EdgeSwipeArea onOpen={() => setDrawer(true)}>
+                <EdgeSwipeArea
+                  onOpen={() => setDrawer(true)}
+                  // Only on a screen that was navigated into, and only when
+                  // there is something to pop: a deep link opened cold has no
+                  // history, and a gesture that silently does nothing is worse
+                  // than one that opens the drawer.
+                  onBack={
+                    isDetailRoute(pathname) && router.canGoBack()
+                      ? () => router.back()
+                      : undefined
+                  }
+                >
                   <Slot />
                 </EdgeSwipeArea>
               )}

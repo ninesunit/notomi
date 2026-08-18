@@ -117,6 +117,25 @@ export function DriveConnect({
       ) : null}
 
       <View className="flex-row flex-wrap gap-2">
+        {/*
+          A session-only connection is a state the student can get out of, and
+          until now the card described it without offering the way. It happens
+          whenever the permanent grant could not be taken — a Worker that was
+          not reachable, a consent screen dismissed early — and it leaves an
+          hourly re-login the student has no reason to accept, because the only
+          button on offer was Disconnect. This runs the same flow the first
+          connection tries.
+        */}
+        {connected && !permanent ? (
+          <Button
+            label="Stay connected"
+            icon="refresh-cw"
+            size="sm"
+            loading={busy}
+            onPress={() => void connect()}
+          />
+        ) : null}
+
         {connected ? (
           <Button
             label="Disconnect"
@@ -126,6 +145,7 @@ export function DriveConnect({
             onPress={() => {
               disconnectDrive();
               setConnected(false);
+              setPermanent(false);
               feedback('toggle');
             }}
           />
@@ -144,7 +164,7 @@ export function DriveConnect({
         <Text className="text-[11px] leading-4 text-subtle">
           {permanent
             ? 'Disconnecting withdraws Notomi’s access to your Drive everywhere, not just on this device. Nothing is removed from your Drive.'
-            : 'This connection lasts about an hour, then asks again. Nothing is removed from your Drive.'}
+            : 'This connection lasts about an hour, then asks again. “Stay connected” makes it permanent so it survives closing the tab. Nothing is removed from your Drive.'}
         </Text>
       ) : null}
     </Card>

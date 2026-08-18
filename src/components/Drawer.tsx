@@ -20,6 +20,7 @@ import { feedback } from '@/lib/sound';
 import { GlobalSearch } from './GlobalSearch';
 import { Logo } from './Logo';
 import { DRAWER_SECTIONS, isActive } from './nav';
+import { Touchable } from '@/components/ui';
 
 /**
  * The phone navigation drawer.
@@ -57,11 +58,32 @@ function panelWidth(screenWidth: number): number {
  */
 export function EdgeSwipeArea({
   onOpen,
+  onBack,
   children,
 }: {
   onOpen: () => void;
+  /**
+   * Where a left-edge swipe goes on a pushed screen.
+   *
+   * One edge, two meanings, and they cannot both win. Top-level screens keep
+   * the drawer, because there is nothing to go back to. A subject, a document
+   * or a notebook takes the iOS reading instead — an edge swipe means back —
+   * because on a detail screen that is what a hand expects, and wants far more
+   * often than the nav. The drawer is still one tap away on the top bar, which
+   * is more than can be said for going back in an installed app that has no
+   * browser chrome at all.
+   */
+  onBack?: () => void;
   children: ReactNode;
 }) {
+  // PanResponder.create runs once and its handlers close over that render's
+  // props. Reading the callbacks through a ref that every render refreshes is
+  // what keeps the gesture pointed at the *current* screen — capturing them
+  // directly means the second screen you open still runs the first one's
+  // handler, which is a bug that only shows up on the second navigation.
+  const latest = useRef({ onOpen, onBack });
+  latest.current = { onOpen, onBack };
+
   const responder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (event, gesture) => {
@@ -71,13 +93,16 @@ export function EdgeSwipeArea({
         return gesture.dx > 14 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.6;
       },
       onPanResponderRelease: (_event, gesture) => {
-        if (gesture.dx > 40) onOpen();
+        if (gesture.dx <= 40) return;
+        const { onOpen: open, onBack: back } = latest.current;
+        if (back) back();
+        else open();
       },
     })
   ).current;
 
   return (
-    <View className="flex-1 min-h-0" {...responder.panHandlers}>
+    <View className="min-h-0 flex-1" {...responder.panHandlers}>
       {children}
     </View>
   );
@@ -109,9 +134,10 @@ export function MobileTopBar({
       }}
     >
       <View className="flex-row items-center gap-2 px-3 py-2.5">
-        <Pressable
+        <Touchable
           accessibilityRole="button"
           accessibilityLabel="Open menu"
+          cue="none"
           onPress={() => {
             feedback('tap');
             onMenu();
@@ -120,7 +146,7 @@ export function MobileTopBar({
           className="h-10 w-10 items-center justify-center rounded-xl"
         >
           <Icon name="menu" size={20} color="#1B1A17" />
-        </Pressable>
+        </Touchable>
 
         <Logo size={26} />
 
@@ -129,9 +155,10 @@ export function MobileTopBar({
         </View>
 
         {width >= 640 ? (
-          <Pressable
+          <Touchable
             accessibilityRole="button"
             accessibilityLabel="Hide navigation"
+          cue="none"
             onPress={() => {
               feedback('tap');
               onHide();
@@ -140,12 +167,13 @@ export function MobileTopBar({
             className="h-10 w-10 items-center justify-center rounded-xl"
           >
             <Icon name="panel-left-close" size={18} color="#6F6A5F" />
-          </Pressable>
+          </Touchable>
         ) : null}
 
-        <Pressable
+        <Touchable
           accessibilityRole="button"
           accessibilityLabel="Ask Notomi"
+          cue="none"
           onPress={() => {
             feedback('tap');
             onAsk();
@@ -154,7 +182,7 @@ export function MobileTopBar({
           className="h-10 w-10 items-center justify-center rounded-xl bg-ink"
         >
           <Icon name="zap" size={17} color="#F7F5EE" />
-        </Pressable>
+        </Touchable>
       </View>
     </View>
   );
@@ -275,7 +303,7 @@ export function NavDrawer({
           <View className="flex-row items-center gap-2.5 px-5 pb-3 pt-4">
             <Logo size={30} />
             <Text className="flex-1 text-lg font-bold tracking-tight text-ink">Notomi</Text>
-            <Pressable
+            <Touchable
               accessibilityRole="button"
               accessibilityLabel="Close menu"
               onPress={onClose}
@@ -283,7 +311,7 @@ export function NavDrawer({
               className="h-9 w-9 items-center justify-center rounded-lg"
             >
               <Icon name="x" size={18} color="#6F6A5F" />
-            </Pressable>
+            </Touchable>
           </View>
 
           <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-5 px-3 pb-4">
@@ -307,7 +335,7 @@ export function NavDrawer({
 
           <View className="shrink-0 gap-1 border-t border-line px-3 pt-3">
             <Link href="/profile" asChild>
-            <Pressable accessibilityRole="link" className="flex-row items-center gap-3 rounded-xl px-3 py-2">
+            <Touchable accessibilityRole="link" className="flex-row items-center gap-3 rounded-xl px-3 py-2">
               <View className="h-9 w-9 items-center justify-center rounded-full bg-accent-soft">
                 <Text className="text-sm font-bold text-accent">{initial}</Text>
               </View>
@@ -320,7 +348,7 @@ export function NavDrawer({
                 </Text>
               </View>
               <Icon name="chevron-right" size={15} color="#9A9488" />
-            </Pressable>
+            </Touchable>
             </Link>
 
             <DrawerLink
@@ -330,8 +358,9 @@ export function NavDrawer({
               active={isActive(pathname, '/settings')}
             />
 
-            <Pressable
+            <Touchable
               accessibilityRole="button"
+              cue="toggle"
               onPress={() => {
                 void logOut().catch((error) =>
                   Alert.alert(
@@ -344,7 +373,7 @@ export function NavDrawer({
             >
               <Icon name="log-out" size={16} color="#6F6A5F" />
               <Text className="text-[15px] font-medium text-muted">Sign out</Text>
-            </Pressable>
+            </Touchable>
           </View>
         </View>
       </Animated.View>
@@ -367,9 +396,10 @@ function DrawerLink({
     <Link href={href} asChild>
       {/* No onPress here: expo-router owns it through `asChild`, and the
           drawer closes on the pathname change instead. */}
-      <Pressable
+      <Touchable
         accessibilityRole="link"
         accessibilityState={{ selected: active }}
+        cue="none"
         onPressIn={() => feedback('tap', 6)}
         className={`flex-row items-center gap-3 rounded-xl px-3 py-3 ${
           active ? 'bg-ink' : ''
@@ -381,7 +411,7 @@ function DrawerLink({
         >
           {label}
         </Text>
-      </Pressable>
+      </Touchable>
     </Link>
   );
 }

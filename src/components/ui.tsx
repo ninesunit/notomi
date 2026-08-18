@@ -8,10 +8,103 @@ import {
   TextInput,
   View,
   type GestureResponderEvent,
+  type PressableProps,
+  type StyleProp,
   type TextInputProps,
+  type ViewStyle,
 } from 'react-native';
 import { Icon, type IconName } from '@/components/Icon';
 import { feedback } from '@/lib/sound';
+
+/* ---------------------------- Touchable ---------------------------- */
+
+type TouchableProps = Omit<PressableProps, 'children' | 'style'> & {
+  children: ReactNode;
+  className?: string;
+  style?: StyleProp<ViewStyle>;
+  /**
+   * How far it sinks. Cards want less than buttons — the same 3% on a
+   * full-width card reads as the whole screen lurching.
+   */
+  scaleTo?: number;
+  /** Pass 'none' for targets that fire repeatedly, like a stepper. */
+  cue?: 'tap' | 'toggle' | 'none';
+};
+
+/**
+ * A Pressable that answers back.
+ *
+ * `Button` has sunk slightly under the finger since it was written, but most
+ * of what a student actually taps is not a Button — it is a subject card, a
+ * timetable block, a to-do row, a tab. Those were bare Pressables, and because
+ * the app clears `-webkit-tap-highlight-color` to avoid iOS's grey flash, they
+ * had no feedback at all: on a phone the tap landed, a screen changed a moment
+ * later, and nothing in between said the touch had registered. That gap is
+ * most of the difference between "an app" and "a website in a browser".
+ *
+ * Every unrecognised prop is forwarded rather than picked off a whitelist,
+ * because the most common use of this is inside `<Link asChild>`, and Link
+ * clones its child with the href and press handler that make the link work. A
+ * typed subset would drop them and turn every card into a dead rectangle —
+ * quietly, since it would still look and animate exactly right.
+ */
+export const Touchable = forwardRef<View, TouchableProps>(function Touchable(
+  {
+    children,
+    onPress,
+    onPressIn,
+    onPressOut,
+    disabled = false,
+    className = '',
+    style,
+    scaleTo = 0.98,
+    cue = 'tap',
+    ...rest
+  },
+  ref
+) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  // useNativeDriver is false on web: react-native-web has no native animation
+  // thread, and asking for one there warns on every press.
+  const spring = (toValue: number) =>
+    Animated.spring(scale, {
+      toValue,
+      speed: 40,
+      bounciness: 0,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+
+  return (
+    <Pressable
+      {...rest}
+      ref={ref}
+      disabled={disabled}
+      // The caller's own handlers still run; the animation is added to them
+      // rather than replacing them.
+      onPressIn={(event) => {
+        if (!disabled) spring(scaleTo);
+        onPressIn?.(event);
+      }}
+      onPressOut={(event) => {
+        spring(1);
+        onPressOut?.(event);
+      }}
+      onPress={
+        onPress
+          ? (event) => {
+              if (cue !== 'none') feedback(cue);
+              onPress(event);
+            }
+          : undefined
+      }
+      className={className}
+      style={[{ transform: [{ scale }] }, style]}
+    >
+      {children}
+    </Pressable>
+  );
+});
 
 /* ----------------------------- Button ----------------------------- */
 

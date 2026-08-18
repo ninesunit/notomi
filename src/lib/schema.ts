@@ -201,6 +201,11 @@ export type Subject = {
   color: string;
   /** Legacy field retained for existing records; the UI uses vector icons. */
   emoji: string | null;
+  /**
+   * Which vector icon the card shows. A name from SUBJECT_ICONS; null on every
+   * subject made before students could choose, which renders the default.
+   */
+  icon?: string | null;
   /** Free-text label shown on the card banner, e.g. "Core" or "Elective". */
   tag: string | null;
   documentCount: number;
@@ -241,6 +246,37 @@ export const SUBJECT_PALETTE = [
   { name: 'Slate', value: '#4A5568' },
   { name: 'Teal', value: '#2B7A78' },
 ];
+
+/**
+ * Icons offered for a subject folder.
+ *
+ * Drawn from the set already registered in Icon.tsx rather than pulling in new
+ * artwork, and chosen so the sixteen read as sixteen *kinds* of course at a
+ * glance on a phone — a lab is not a seminar is not a studio. The first is the
+ * default every existing subject already renders, so a student who never opens
+ * this picker sees no change.
+ */
+export const SUBJECT_ICONS = [
+  'book-open',
+  'graduation-cap',
+  'notebook-pen',
+  'pen-tool',
+  'brush',
+  'monitor',
+  'network',
+  'activity',
+  'map',
+  'headphones',
+  'film',
+  'layers',
+  'target',
+  'trophy',
+  'users-round',
+  'trending-up',
+] as const;
+
+/** The icon a subject card renders, falling back for records made before the picker. */
+export const DEFAULT_SUBJECT_ICON = SUBJECT_ICONS[0];
 
 /** users/{uid}/subjects/{subjectId}/documents/{documentId} */
 export type SourceDocument = {

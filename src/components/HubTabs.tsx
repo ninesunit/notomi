@@ -1,6 +1,7 @@
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Icon, type IconName } from './Icon';
 import { feedback } from '@/lib/sound';
+import { Touchable } from '@/components/ui';
 
 export type HubTab<T extends string> = {
   id: T;
@@ -24,10 +25,14 @@ export function HubTabs<T extends string>({
           {tabs.map((tab) => {
             const active = tab.id === value;
             return (
-              <Pressable
+              <Touchable
                 key={tab.id}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
+                // This tab plays its own cue, and only when the selection
+                // actually changes. Touchable contributes the press animation
+                // and stays quiet rather than doubling the sound.
+                cue="none"
                 onPress={() => {
                   if (active) return;
                   feedback('toggle');
@@ -45,7 +50,7 @@ export function HubTabs<T extends string>({
                 >
                   {tab.label}
                 </Text>
-              </Pressable>
+              </Touchable>
             );
           })}
         </View>

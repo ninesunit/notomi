@@ -23,8 +23,14 @@
      * Notomi targets browsers with dynamic viewport units so this wrapper never
      * falls back to the larger, bounce-prone layout viewport.
      */
-    height: 100dvh;
-    max-height: 100dvh;
+    /*
+     * --app-height is set by trackViewportHeight() to the height the device
+     * can actually show, which is what changes when the iOS keyboard opens —
+     * dvh does not. Unset everywhere that has no visualViewport, where the
+     * fallback is exactly the previous behaviour.
+     */
+    height: var(--app-height, 100dvh);
+    max-height: var(--app-height, 100dvh);
     margin: 0;
     background-color: #faf9f5;
     /*

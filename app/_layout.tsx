@@ -14,6 +14,7 @@ import { PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans/70
 import { SetupScreen } from '@/components/SetupScreen';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { registerServiceWorker } from '@/services/appUpdate';
+import { trackViewportHeight } from '@/lib/viewport';
 import { isFirebaseConfigured } from '@/services/firebase';
 import '../global.css';
 
@@ -63,6 +64,10 @@ export default function RootLayout() {
   // Registered once, at the top of the tree: an installed home-screen app has
   // no other moment where it reliably checks whether a deploy has landed.
   useEffect(() => registerServiceWorker(), []);
+
+  // Bound to the visible viewport rather than the layout one, so the iOS
+  // keyboard shortens the app instead of covering the bottom of it.
+  useEffect(() => trackViewportHeight(), []);
 
   useEffect(() => {
     if (fontError) console.error('[fonts] Brand font loading failed.', fontError);

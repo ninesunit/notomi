@@ -1,8 +1,9 @@
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Link } from 'expo-router';
 import { Icon } from '@/components/Icon';
-import type { Subject } from '@/lib/schema';
+import { DEFAULT_SUBJECT_ICON, type Subject } from '@/lib/schema';
 import { FadeIn } from './motion';
+import { Touchable } from '@/components/ui';
 
 /**
  * A subject folder tile.
@@ -40,7 +41,7 @@ export function SubjectCard({
       <View className="h-1.5 w-full" style={{ backgroundColor: color }} />
 
       <Link href={href ?? `/library/${subject.id}`} asChild>
-        <Pressable
+        <Touchable
           accessibilityRole="link"
           accessibilityLabel={`Open ${subject.name}`}
           className="gap-3.5 p-5"
@@ -50,7 +51,8 @@ export function SubjectCard({
               className="h-11 w-11 items-center justify-center rounded-xl"
               style={{ backgroundColor: `${color}24` }}
             >
-              <Icon name="book-open" size={18} color={color} />
+              {/* Falls back for every subject made before the picker existed. */}
+              <Icon name={(subject.icon ?? DEFAULT_SUBJECT_ICON) as never} size={18} color={color} />
             </View>
 
             {/* Space reserved for the overlaid menu button so the arrow never
@@ -100,11 +102,11 @@ export function SubjectCard({
               </View>
             ) : null}
           </View>
-        </Pressable>
+        </Touchable>
       </Link>
 
       {onEdit ? (
-        <Pressable
+        <Touchable
           accessibilityRole="button"
           accessibilityLabel={`Edit ${subject.name}`}
           hitSlop={10}
@@ -112,7 +114,7 @@ export function SubjectCard({
           className="absolute right-3.5 top-6 h-8 w-8 items-center justify-center rounded-lg"
         >
           <Icon name="more-horizontal" size={16} color="#6F6A5F" />
-        </Pressable>
+        </Touchable>
       ) : null}
     </View>
   );

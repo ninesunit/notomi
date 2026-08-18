@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, ScrollView, Text, View } from 'react-native';
 import { Link, usePathname } from 'expo-router';
 import { Icon } from '@/components/Icon';
 import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
@@ -8,6 +8,7 @@ import { useSafeArea } from '@/hooks/useSafeArea';
 import { GlobalSearch } from './GlobalSearch';
 import { Logo } from './Logo';
 import { isActive, NAV_ITEMS, SETTINGS_ITEM } from './nav';
+import { Touchable } from '@/components/ui';
 
 /**
  * Fixed-width, full-height rail. It must never grow or shrink with content —
@@ -35,12 +36,12 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
         <View className="min-h-0 flex-1 gap-4">
           <View className="flex-row items-center gap-1">
             <Link href="/dashboard" asChild>
-              <Pressable className="min-w-0 flex-1 flex-row items-center gap-2.5 px-2 py-1">
+              <Touchable className="min-w-0 flex-1 flex-row items-center gap-2.5 px-2 py-1">
                 <Logo size={30} />
                 <Text className="text-lg font-bold tracking-tight text-ink">Notomi</Text>
-              </Pressable>
+              </Touchable>
             </Link>
-            <Pressable
+            <Touchable
               accessibilityRole="button"
               accessibilityLabel="Hide sidebar"
               onPress={onCollapse}
@@ -48,12 +49,12 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
               className="h-9 w-9 items-center justify-center rounded-lg"
             >
               <Icon name="panel-left-close" size={17} color="#6F6A5F" />
-            </Pressable>
+            </Touchable>
           </View>
 
           <GlobalSearch />
 
-          <Pressable
+          <Touchable
             accessibilityRole="button"
             accessibilityLabel="Ask Notomi"
             onPress={onAsk}
@@ -61,14 +62,14 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
           >
             <Icon name="zap" size={15} color="#F7F5EE" />
             <Text className="text-[15px] font-semibold text-paper">Ask Notomi</Text>
-          </Pressable>
+          </Touchable>
 
           <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-1 pb-2">
             {NAV_ITEMS.map((item) => {
               const active = isActive(pathname, item.href, item.legacyPaths);
               return (
                 <Link key={item.href} href={item.href} asChild>
-                  <Pressable
+                  <Touchable
                     accessibilityRole="link"
                     accessibilityState={{ selected: active }}
                     className={`flex-row items-center gap-3 rounded-xl px-3 py-2.5 ${
@@ -87,7 +88,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
                     >
                       {item.label}
                     </Text>
-                  </Pressable>
+                  </Touchable>
                 </Link>
               );
             })}
@@ -96,7 +97,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
 
         <View className="shrink-0 gap-2 border-t border-line pt-4">
           <Link href="/profile" asChild>
-            <Pressable
+            <Touchable
               accessibilityRole="link"
               accessibilityLabel="Open your profile"
               className="flex-row items-center gap-2.5 rounded-xl px-2 py-1.5"
@@ -108,10 +109,10 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
                 {displayName}
               </Text>
               <Icon name="chevron-right" size={14} color="#9A9488" />
-            </Pressable>
+            </Touchable>
           </Link>
           <Link href={SETTINGS_ITEM.href} asChild>
-            <Pressable
+            <Touchable
               accessibilityRole="link"
               accessibilityState={{ selected: isActive(pathname, SETTINGS_ITEM.href) }}
               className={`flex-row items-center gap-3 rounded-xl px-3 py-2.5 ${
@@ -130,9 +131,9 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
               >
                 Settings
               </Text>
-            </Pressable>
+            </Touchable>
           </Link>
-          <Pressable
+          <Touchable
             accessibilityRole="switch"
             accessibilityState={{ checked: sound }}
             accessibilityLabel={sound ? 'Turn sound off' : 'Turn sound on'}
@@ -149,9 +150,9 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
             <Text className="text-sm font-medium text-muted">
               {sound ? 'Sound on' : 'Sound off'}
             </Text>
-          </Pressable>
+          </Touchable>
 
-          <Pressable
+          <Touchable
             accessibilityRole="button"
             onPress={() => {
               void logOut().catch((error) =>
@@ -165,7 +166,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
           >
             <Icon name="log-out" size={15} color="#6F6A5F" />
             <Text className="text-sm font-medium text-muted">Sign out</Text>
-          </Pressable>
+          </Touchable>
         </View>
       </View>
     </View>

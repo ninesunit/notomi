@@ -66,3 +66,21 @@ export function isActive(pathname: string, href: string, legacyPaths: string[] =
     path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`);
   return matches(href) || legacyPaths.some(matches);
 }
+
+/**
+ * Is this a screen the student navigated *into*, rather than one of the places
+ * the nav can reach directly?
+ *
+ * Used to decide what a left-edge swipe means. The nav destinations are the
+ * roots — there is nothing above them, so the edge keeps opening the drawer.
+ * Everything else is a subject, a document, a notebook or a profile, reached by
+ * tapping through, and on those the edge means back.
+ *
+ * Derived from NAV_ITEMS rather than listed separately so a new nav
+ * destination cannot quietly start behaving like a detail screen.
+ */
+export function isDetailRoute(pathname: string): boolean {
+  const roots = [...NAV_ITEMS.map((item) => item.href), SETTINGS_ITEM.href, '/', '/index'];
+  const path = pathname.split('?')[0].replace(/\/+$/, '') || '/';
+  return !roots.some((root) => path === root || path === `${root}/`);
+}

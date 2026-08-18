@@ -12,8 +12,7 @@ import {
   minutesToLabel,
   type ClassBlock,
   type Semester,
-  type Subject,
-} from '@/lib/schema';
+  type Subject, DEFAULT_SUBJECT_ICON } from '@/lib/schema';
 import { requiredAverage } from '@/services/program';
 import {
   describeLastStudied,
@@ -163,7 +162,7 @@ export function ProgramMap({
                         className="flex-row items-center gap-2.5 rounded-xl border border-line bg-paper px-3 py-2.5"
                         style={{ borderLeftWidth: 3, borderLeftColor: subject.color }}
                       >
-                        <Icon name="book-open" size={15} color={subject.color} />
+                        <Icon name={(subject.icon ?? DEFAULT_SUBJECT_ICON) as never} size={15} color={subject.color} />
                         <View className="flex-1">
                           <Text className="text-[13px] font-semibold text-ink" numberOfLines={1}>
                             {subject.name}
@@ -243,7 +242,7 @@ function SubjectDrawer({
         className="flex-row items-center gap-3 rounded-xl p-4"
         style={{ backgroundColor: `${subject.color}14` }}
       >
-        <Icon name="book-open" size={22} color={subject.color} />
+        <Icon name={(subject.icon ?? DEFAULT_SUBJECT_ICON) as never} size={22} color={subject.color} />
         <View className="flex-1">
           <Text className="text-[15px] font-bold text-ink">{subject.name}</Text>
           <Text className="text-xs text-muted">
