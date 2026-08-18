@@ -274,6 +274,14 @@ function logSetupHint(kind: 'missing-token' | 'token-refused', raw: string): voi
   );
 }
 
+/**
+ * Shown when the request never reaches the AI. Nothing the student can do
+ * changes it, so it does not ask them to try anything — it says whose problem
+ * it is and that it is being worked on.
+ */
+const AI_UNREACHABLE =
+  "Notomi's AI is temporarily unavailable. This is a problem on our side, not with your device — your work is safe and it should be back shortly.";
+
 /** Turns an unknown SDK failure into something worth showing a student. */
 function describe(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -296,13 +304,18 @@ function describe(error: unknown): string {
 
   // Two very different failures both mention attestation, and they need
   // different fixes — but both read the same to a student.
+  //
+  // The wording matters. This said "not available on this device", which sends
+  // students off reinstalling, clearing storage and switching browsers over a
+  // fault that is entirely on our side and identical on every device. Say that
+  // it is ours and that waiting is the right move, because it is.
   if (/app.?check|attestation|unattested/i.test(raw)) {
     logSetupHint(isAppCheckEnabled() ? 'token-refused' : 'missing-token', raw);
-    return 'The AI features are not available on this device right now.';
+    return AI_UNREACHABLE;
   }
   if (/permission|403|PERMISSION_DENIED|unauthenticated|401/i.test(raw)) {
     logSetupHint(isAppCheckEnabled() ? 'token-refused' : 'missing-token', raw);
-    return 'The AI features are not available on this device right now.';
+    return AI_UNREACHABLE;
   }
 
   if (/timed? ?out|deadline/i.test(raw)) return 'That took too long to come back. Try again.';
