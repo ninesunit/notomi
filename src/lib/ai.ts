@@ -1,5 +1,6 @@
 import {
   getGenerativeModel,
+  ThinkingLevel,
   Schema,
   type Content,
   type FunctionDeclarationsTool,
@@ -139,7 +140,7 @@ const isUnknownModel = (raw: string): boolean =>
  * and judged on speed, so they opt out; the heavy generative ones say nothing
  * and keep the model's default.
  */
-const FAST_THINKING = { thinkingBudget: 0 } as const;
+const FAST_THINKING = { thinkingLevel: ThinkingLevel.MINIMAL } as const;
 
 /**
  * Not every model accepts a thinking budget, and one that does not errors the
@@ -148,14 +149,14 @@ const FAST_THINKING = { thinkingBudget: 0 } as const;
  * it off for the session and the call is retried without it, which means the
  * worst case is one wasted round trip once, not a broken app.
  */
-const THINKING_UNSUPPORTED_KEY = 'notomi:ai-thinking-unsupported';
+const THINKING_UNSUPPORTED_KEY = 'notomi:ai-thinking-unsupported-v2';
 let thinkingRejected = false;
 
 function thinkingIsRejected(): boolean {
   if (thinkingRejected) return true;
-  if (typeof sessionStorage === 'undefined') return false;
+  if (typeof localStorage === 'undefined') return false;
   try {
-    thinkingRejected = sessionStorage.getItem(THINKING_UNSUPPORTED_KEY) === '1';
+    thinkingRejected = localStorage.getItem(THINKING_UNSUPPORTED_KEY) === '1';
   } catch {
     /* private mode; in-memory only */
   }
@@ -165,18 +166,29 @@ function thinkingIsRejected(): boolean {
 function rememberThinkingRejected(): void {
   thinkingRejected = true;
   console.info('[ai] this model refused a thinking budget; continuing without one.');
-  if (typeof sessionStorage === 'undefined') return;
+  if (typeof localStorage === 'undefined') return;
   try {
-    sessionStorage.setItem(THINKING_UNSUPPORTED_KEY, '1');
+    localStorage.setItem(THINKING_UNSUPPORTED_KEY, '1');
   } catch {
     /* private mode; in-memory only */
   }
 }
 
-/** A 400 that names thinking is the model telling us it has no such setting. */
+/**
+ * Any 400 raised while we are attaching a thinking setting.
+ *
+ * This deliberately does not look at the message. The first version matched
+ * /thinking/i and never fired once, because the model answers a thinking
+ * setting it does not support with a bare "Request contains an invalid
+ * argument" that names no field at all — so the safety net that was supposed
+ * to make this change unbreakable was itself the thing that broke it.
+ *
+ * Over-matching is the safe direction. A 400 from some other cause costs one
+ * retry and then surfaces normally; a 400 we fail to catch takes every AI
+ * feature down.
+ */
 function isThinkingRefusal(error: unknown): boolean {
-  const { httpStatus, message } = errorDetails(error);
-  return httpStatus === 400 && /thinking/i.test(message);
+  return errorDetails(error).httpStatus === 400;
 }
 
 const sendsThinking = (params: Omit<ModelParams, 'model'>): boolean =>
@@ -309,8 +321,12 @@ async function runWithModelFallback<T>(
         // candidate another go — spending a fallback on it would blame the
         // wrong thing and still fail on the next model for the same reason.
         if (isThinkingRefusal(error) && sendsThinking(params) && !thinkingIsRejected()) {
+          // Retry with the setting explicitly stripped, and only conclude it
+          // was to blame if that actually succeeds. Recording it up front
+          // would let any unrelated 400 — a malformed prompt, a bad schema —
+          // switch the optimisation off for good on a single false positive.
+          value = await run(modelFor(candidate, withoutThinking(params)));
           rememberThinkingRejected();
-          value = await run(modelFor(candidate, params));
         } else {
           throw error;
         }
