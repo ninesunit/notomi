@@ -4,6 +4,7 @@ import {
   getToken as getAppCheckToken,
   initializeAppCheck,
   ReCaptchaEnterpriseProvider,
+  ReCaptchaV3Provider,
   type AppCheck,
 } from 'firebase/app-check';
 import {
@@ -53,8 +54,15 @@ export const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-3.6-
 const USE_EMULATORS = process.env.EXPO_PUBLIC_USE_FIREBASE_EMULATORS === '1';
 const EMULATOR_HOST = process.env.EXPO_PUBLIC_EMULATOR_HOST || '127.0.0.1';
 
-/** reCAPTCHA Enterprise site key from Firebase console > App Check > Apps > Web. */
+/** reCAPTCHA site key from Firebase console > App Check > Apps > Web. */
 const APP_CHECK_SITE_KEY = process.env.EXPO_PUBLIC_APP_CHECK_SITE_KEY ?? '';
+/**
+ * 'v3' (the default) or 'enterprise' — whichever the web app is registered as
+ * under App Check. Getting this wrong takes every AI feature down, so it
+ * defaults to the ordinary reCAPTCHA this project has always used rather than
+ * to the stricter-sounding option.
+ */
+const APP_CHECK_PROVIDER = (process.env.EXPO_PUBLIC_APP_CHECK_PROVIDER ?? 'v3').toLowerCase();
 
 /**
  * Everything below is lazily created so that an unconfigured build still boots
@@ -115,16 +123,24 @@ function setUpAppCheck(app: FirebaseApp): void {
 
   try {
     appCheckRef = initializeAppCheck(app, {
-      // This project is registered with a reCAPTCHA Enterprise SCORE key.
-      // Using ReCaptchaV3Provider appeared to obtain a token, but AI Logic
-      // rejected it and the browser surfaced only "Failed to fetch".
-      provider: new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),
+      // Must match how the web app is registered in the console. The two are
+      // not interchangeable: an Enterprise token offered by an app registered
+      // for v3 is refused at the exchange with a bare 400, before any request
+      // the student made — which reads as "the AI is down" and is nothing of
+      // the kind. A rebuild once flipped this to Enterprise on the assumption
+      // the project used an Enterprise key; it did not, and every AI feature
+      // stopped. Hence the env var: changing it is a config decision, not a
+      // code edit, and it can be corrected without a release.
+      provider:
+        APP_CHECK_PROVIDER === 'enterprise'
+          ? new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY)
+          : new ReCaptchaV3Provider(APP_CHECK_SITE_KEY),
       isTokenAutoRefreshEnabled: true,
     });
     // Logged deliberately: "did App Check start?" is the first question when
     // AI Logic rejects a call, and it is otherwise invisible from outside.
     console.info(
-      `[firebase] App Check initialized with site key ${APP_CHECK_SITE_KEY.slice(0, 12)}…`
+      `[firebase] App Check initialized · provider ${APP_CHECK_PROVIDER} · site key ${APP_CHECK_SITE_KEY.slice(0, 12)}…`
     );
 
     // Prime attestation once so a bad key/domain is visible before an AI call
