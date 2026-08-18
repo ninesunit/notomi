@@ -938,6 +938,71 @@ function isMetadata(value: unknown): value is Partial<ExtractedMetadata> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const slideSummarySchema = Schema.object({
+  properties: {
+    headline: Schema.string({
+      description: 'At most 8 words naming what this slide is about.',
+    }),
+    points: Schema.array({
+      items: Schema.string({ description: 'One complete thought, under 90 characters.' }),
+      description: '2 to 4 points drawn only from the slide text.',
+    }),
+  },
+});
+
+/**
+ * A margin note for one slide.
+ *
+ * Sized for the canvas, not for a document: this lands beside the slide it
+ * describes, at a width a student reads at a glance while annotating. Long
+ * prose here would be a worse version of the notes generator that already
+ * exists — the job is the three or four things this particular slide says.
+ */
+export async function summariseSlide(
+  slideText: string,
+  slideTitle: string
+): Promise<{ headline: string; points: string[] }> {
+  const parsed = await generateJson<{ headline?: string; points?: string[] }>(
+    {
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: slideSummarySchema,
+        temperature: 0.2,
+        // Sits directly in front of a student who is mid-annotation and
+        // watching the canvas. Speed is the feature.
+        thinkingConfig: FAST_THINKING,
+      },
+    },
+    `Summarise this single lecture slide for a student's margin note.
+
+Rules:
+- "headline": at most 8 words, naming what this slide is actually about.
+- "points": 2 to 4 entries, each a complete thought under 90 characters.
+- Only what is on the slide. Do not add context, examples or definitions that
+  are not in the text — an invented fact in a study note is worse than a thin
+  one, because it will be revised from.
+- If the slide is a title, agenda or divider with no substance, say so in the
+  headline and return a single point explaining there is nothing to summarise.
+- No markdown, no bullet characters, no emojis.
+
+Slide: ${slideTitle}
+
+${slideText.slice(0, 12_000)}`,
+    (value): value is { headline?: string; points?: string[] } =>
+      typeof value === 'object' && value !== null
+  );
+
+  const points = (parsed.points ?? [])
+    .map((point) => String(point).replace(/^[-•*\s]+/, '').trim())
+    .filter(Boolean)
+    .slice(0, 4);
+
+  return {
+    headline: (parsed.headline ?? slideTitle).trim().slice(0, 80),
+    points: points.length > 0 ? points : ['This slide has no text to summarise.'],
+  };
+}
+
 export async function extractMetadata(text: string): Promise<ExtractedMetadata> {
   const parsed = await generateJson<Partial<ExtractedMetadata>>(
     {

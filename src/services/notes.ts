@@ -588,3 +588,169 @@ async function r2MaterialBlob(material: NoteMaterial): Promise<Blob> {
   if (!response.ok) throw new Error(`Could not load the material (${response.status}).`);
   return response.blob();
 }
+
+/* ------------------------------------------------------------------ *
+ * Reading one page back off the canvas
+ * ------------------------------------------------------------------ */
+
+/**
+ * Fetches the original a material node came from.
+ *
+ * The same two-origin lookup the rehydration path uses: Drive keys resolve
+ * with the student's own token, R2 keys through a signed url. Kept separate
+ * from that path because this one is asked for a single node on demand, not
+ * for every node on a board being reopened.
+ */
+async function sourceBlob(sourceFileKey: string): Promise<Blob | null> {
+  const fromDrive = await blobFromDriveKey(sourceFileKey).catch(() => null);
+  if (fromDrive) return fromDrive;
+
+  const url = await getR2FileUrl(sourceFileKey).catch(() => '');
+  if (!url) return null;
+  const response = await fetch(url).catch(() => null);
+  return response?.ok ? response.blob() : null;
+}
+
+/**
+ * The text of one page of a PDF the student has on the canvas.
+ *
+ * Read on demand rather than stored on the node at import time. Slide text is
+ * a few kilobytes a page and a board can hold 150 of them, which would push
+ * the canvas payload well past the 800 KB it is allowed to sync — so the
+ * cheapest place to keep this text is the file it already lives in.
+ *
+ * Returns null rather than throwing for a slide that has no text layer at all,
+ * which is the normal case for a scanned or photographed page and is worth
+ * telling the student plainly instead of failing at them.
+ */
+export async function pageTextFromSource(
+  sourceFileKey: string,
+  pageNumber: number
+): Promise<string | null> {
+  const blob = await sourceBlob(sourceFileKey);
+  if (!blob) throw new Error('Could not reach the original file for this slide.');
+
+  const pdfjs = await loadPdfJs();
+  pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+  const task = pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) });
+  const pdf = await task.promise;
+
+  try {
+    if (pageNumber < 1 || pageNumber > pdf.numPages) return null;
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+
+    // pdf.js hands back positioned runs, not lines. Joining on the explicit
+    // end-of-line markers keeps bullets apart; without it a slide arrives as
+    // one long sentence and reads to the model as a single run-on thought.
+    const text = content.items
+      .map((item) => {
+        const run = item as { str?: string; hasEOL?: boolean };
+        return `${run.str ?? ''}${run.hasEOL ? '\n' : ' '}`;
+      })
+      .join('')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    page.cleanup();
+    return text.length > 0 ? text : null;
+  } finally {
+    await pdf.cleanup();
+    await task.destroy();
+  }
+}
+
+/**
+ * Draws a margin note as an image the canvas can already hold.
+ *
+ * The node union is strokes and assets — there is no text node, and adding one
+ * means touching serialisation, undo, hit-testing and selection across the
+ * whole engine. Rendering to an image instead makes the summary an ordinary
+ * canvas object on day one: it moves, scales, selects, erases, saves and
+ * rehydrates on another device through machinery that is already load-bearing.
+ *
+ * The trade is honest and worth stating: this note cannot be edited after it
+ * lands. A student who wants to change it deletes it and asks again, which for
+ * a generated summary is usually what they would do anyway.
+ */
+export async function renderSummaryNote(
+  headline: string,
+  points: string[],
+  accent = '#B4832A'
+): Promise<{ blob: Blob; width: number; height: number }> {
+  const scale = 2; // Drawn at 2x so it stays sharp when zoomed in on the canvas.
+  const width = 320;
+  const padding = 18;
+  const bodyWidth = width - padding * 2;
+
+  const measure = document.createElement('canvas').getContext('2d');
+  if (!measure) throw new Error('Canvas rendering is unavailable in this browser.');
+
+  const wrap = (text: string, font: string): string[] => {
+    measure.font = font;
+    const lines: string[] = [];
+    let line = '';
+    for (const word of text.split(/\s+/)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (measure.measureText(candidate).width > bodyWidth && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+
+  const titleFont = '600 15px Inter, system-ui, sans-serif';
+  const bodyFont = '400 13px Inter, system-ui, sans-serif';
+  const titleLines = wrap(headline, titleFont);
+  const pointLines = points.map((point) => wrap(point, bodyFont));
+
+  // Measured before drawing so the note is exactly as tall as its content —
+  // a fixed height would clip four points or leave a gap under two.
+  const height =
+    padding * 2 +
+    titleLines.length * 21 +
+    10 +
+    pointLines.reduce((sum, lines) => sum + lines.length * 19 + 8, 0);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width * scale;
+  canvas.height = Math.ceil(height) * scale;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas rendering is unavailable in this browser.');
+  context.scale(scale, scale);
+
+  context.fillStyle = '#FFFBF0';
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = accent;
+  context.fillRect(0, 0, 4, height);
+
+  let y = padding + 14;
+  context.fillStyle = '#1B1A17';
+  context.font = titleFont;
+  for (const line of titleLines) {
+    context.fillText(line, padding, y);
+    y += 21;
+  }
+
+  y += 6;
+  context.font = bodyFont;
+  for (const lines of pointLines) {
+    context.fillStyle = accent;
+    context.fillText('•', padding, y);
+    context.fillStyle = '#3A362E';
+    for (const line of lines) {
+      context.fillText(line, padding + 12, y);
+      y += 19;
+    }
+    y += 8;
+  }
+
+  // PNG, not JPEG: this is flat text on a flat ground, where JPEG's ringing
+  // shows on every letter edge and the file is no smaller.
+  return { blob: await canvasBlob(canvas, 'image/png'), width, height };
+}

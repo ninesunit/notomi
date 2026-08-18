@@ -44,7 +44,9 @@ import {
   loadNoteNotebookLocal,
   materialBlob,
   NOTE_LIMITS,
+  pageTextFromSource,
   renderMaterial,
+  renderSummaryNote,
   saveNoteAsset,
   saveNoteCanvasLocal,
   saveNoteNotebook,
@@ -52,6 +54,8 @@ import {
   type NoteMaterial,
   type RenderedMaterialPage,
 } from '@/services/notes';
+import { summariseSlide } from '@/lib/ai';
+import { feedback } from '@/lib/sound';
 
 type Tool = 'select' | 'pen' | 'eraser' | 'lasso';
 type Point = { x: number; y: number };
@@ -922,6 +926,82 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
     return node && node.type !== 'stroke' ? node : null;
   }, [nodes, selected]);
 
+  /**
+   * A slide worth summarising: exactly one PDF page node that still knows the
+   * file it came from. An imported image has no text layer, and a page whose
+   * source key was never recorded cannot be read back.
+   */
+  const selectedSlide = useMemo(
+    () =>
+      selectedAsset && selectedAsset.type === 'pdf_page' && selectedAsset.data.sourceFileKey
+        ? selectedAsset
+        : null,
+    [selectedAsset]
+  );
+
+  const [summarising, setSummarising] = useState(false);
+
+  /**
+   * Reads the slide's own text and drops a margin note beside it.
+   *
+   * The note is placed to the right of the slide rather than over it: an
+   * annotation layer that covers the thing it annotates is a worse version of
+   * both. Nothing about the slide is modified — the summary is a separate
+   * object the student can move, shrink or erase.
+   */
+  const summariseSelectedSlide = useCallback(async () => {
+    const slide = selectedSlide;
+    if (!slide || summarising) return;
+
+    setSummarising(true);
+    setImportError(null);
+    try {
+      const text = await pageTextFromSource(
+        slide.data.sourceFileKey as string,
+        slide.data.pageNumber ?? 1
+      );
+
+      if (!text) {
+        setImportError(
+          'This slide has no text to read — it is likely a scan or a photograph. Nothing was changed.'
+        );
+        return;
+      }
+
+      const summary = await summariseSlide(text, slide.data.title);
+      const note = await renderSummaryNote(summary.headline, summary.points);
+
+      const assetKey = `${userId}:${notebookId}:${pageId}:${uid('asset')}`;
+      await saveNoteAsset(assetKey, note.blob);
+      const previewUrl = URL.createObjectURL(note.blob);
+      objectUrlsRef.current.add(previewUrl);
+
+      const placed: NoteAssetNode = {
+        id: uid('image'),
+        type: 'image',
+        x: slide.x + slide.width + 24,
+        y: slide.y,
+        width: note.width,
+        height: note.height,
+        data: {
+          assetKey,
+          previewUrl,
+          sourceFileKey: null,
+          pageNumber: null,
+          title: `Summary · ${slide.data.title}`,
+        },
+      };
+
+      replaceNodes([...nodesRef.current, placed]);
+      setSelected([placed.id]);
+      feedback('success');
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSummarising(false);
+    }
+  }, [notebookId, pageId, replaceNodes, selectedSlide, summarising, userId]);
+
   const openCrop = useCallback(() => {
     if (!selectedAsset) return;
     setCropDraft(selectedAsset.data.crop ?? { x: 0, y: 0, width: 1, height: 1 });
@@ -1449,6 +1529,13 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
             <Text className="px-2 text-xs font-semibold text-muted">{selected.length} selected</Text>
             <ToolButton label="Make smaller" icon="minus" onPress={() => scaleSelection(0.9)} />
             <ToolButton label="Make larger" icon="zoom-in" onPress={() => scaleSelection(1.1)} />
+            {selectedSlide ? (
+              <ToolButton
+                label={summarising ? 'Summarising…' : 'Summarise slide'}
+                icon="sparkles"
+                onPress={() => void summariseSelectedSlide()}
+              />
+            ) : null}
             {selectedAsset ? <ToolButton label="Crop material" icon="crop" onPress={openCrop} /> : null}
             <ToolButton label="Delete selection" icon="trash-2" danger onPress={deleteSelection} />
           </View>

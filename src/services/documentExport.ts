@@ -1,4 +1,6 @@
 import { Platform } from 'react-native';
+import type { ShareableFile } from '@/lib/deviceShare';
+import { originalBytes } from '@/services/driveStorage';
 
 function safeName(name: string): string {
   return name.trim().replace(/[^a-z0-9._-]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'notomi-notes';
@@ -64,4 +66,56 @@ export async function exportPdf(title: string, markdown: string): Promise<void> 
     y += 15;
   }
   pdf.save(`${safeName(title)}.pdf`);
+}
+
+/* ------------------------------------------------------------------ *
+ * Out of Notomi entirely
+ * ------------------------------------------------------------------ */
+
+/**
+ * Collects originals so they can be handed to the OS share sheet.
+ *
+ * Fetched one at a time rather than with Promise.all. A student selecting nine
+ * slide decks on a phone would otherwise open nine simultaneous Drive
+ * transfers, which is how the migration work earlier ran into throttling — and
+ * a share that trips a rate limit fails all of it, not one of it. Sequential is
+ * slower and finishes.
+ *
+ * Documents whose original cannot be fetched are reported rather than thrown:
+ * eight files that share is a better outcome than nine that do not, and the
+ * caller can say which one was left behind.
+ */
+export async function filesForSharing(
+  documents: {
+    fileName: string;
+    mimeType?: string | null;
+    driveFileId?: string | null;
+    r2FileKey?: string | null;
+    r2FileUrl?: string | null;
+  }[],
+  onProgress?: (completed: number, total: number) => void
+): Promise<{ files: ShareableFile[]; missing: string[] }> {
+  const files: ShareableFile[] = [];
+  const missing: string[] = [];
+
+  for (let index = 0; index < documents.length; index += 1) {
+    const document = documents[index];
+    try {
+      const blob = await originalBytes(document);
+      if (blob) {
+        files.push({
+          name: document.fileName,
+          mimeType: document.mimeType || blob.type || 'application/octet-stream',
+          blob,
+        });
+      } else {
+        missing.push(document.fileName);
+      }
+    } catch {
+      missing.push(document.fileName);
+    }
+    onProgress?.(index + 1, documents.length);
+  }
+
+  return { files, missing };
 }
