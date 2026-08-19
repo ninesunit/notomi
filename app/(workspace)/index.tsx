@@ -312,20 +312,6 @@ function ThisWeek({
   const now = new Date();
   const [selectedClass, setSelectedClass] = useState<ResolvedClass | null>(null);
 
-  /**
-   * The hours actually taught, padded by one either side.
-   *
-   * Same reasoning as the timetable's own range: a fixed 00:00–24:00 ruler
-   * makes a normal week a thin band in an ocean of empty night, and on a
-   * dashboard that ocean is the entire fold.
-   */
-  const hourRange = useMemo<[number, number]>(() => {
-    const blocks = [...classes, ...routines];
-    if (blocks.length === 0) return [8, 18];
-    const start = Math.min(...blocks.map((block) => block.startMinute));
-    const end = Math.max(...blocks.map((block) => block.endMinute));
-    return [Math.max(0, Math.floor(start / 60) - 1), Math.min(24, Math.ceil(end / 60) + 1)];
-  }, [classes, routines]);
 
   /** The dates this repeating week actually falls on, when a term is running. */
   const weekDates = useMemo(() => {
@@ -382,8 +368,6 @@ function ThisWeek({
         <CompactWeekGrid
           classes={classes}
           routines={routines}
-          firstHour={hourRange[0]}
-          lastHour={hourRange[1]}
           onSelect={setSelectedClass}
           dates={weekDates}
         />

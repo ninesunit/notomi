@@ -8,7 +8,7 @@ import { FileDropZone } from '@/components/FileDropZone';
 import { FadeIn } from '@/components/motion';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
-import { CompactWeekGrid } from '@/components/CompactWeekGrid';
+import { ALL_DAYS, CompactWeekGrid } from '@/components/CompactWeekGrid';
 import { laneOut } from '@/lib/timetableLayout';
 import { TimeField } from '@/components/TimeField';
 import { defaultScope, filterByTerm, TermFilter, type TermScope } from '@/components/TermFilter';
@@ -19,8 +19,7 @@ import {
   IconButton,
   Loading,
   Notice,
-  PageHeader,
-} from '@/components/ui';
+  PageHeader, Touchable } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { useScheduleImport } from '@/hooks/useScheduleImport';
@@ -70,6 +69,8 @@ import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
 
 /** At or above this width the whole week fits; below it, one day at a time. */
 const GRID_BREAKPOINT = 900;
+/** Where the chosen days are remembered between visits. */
+const VISIBLE_DAYS_KEY = 'notomi:timetable-visible-days';
 
 export default function Timetable() {
   const uid = useUid();
@@ -157,6 +158,43 @@ export default function Timetable() {
   // The current-time line on the phone grid needs this at the screen level;
   // the desktop grid calls the same hook internally.
   const nowMinute = useNowMinute();
+
+  /**
+   * Which days the week grid shows.
+   *
+   * All seven by default: a student opening a timetable wants their week, and
+   * a view that starts partially hidden reads as data missing rather than as a
+   * filter applied. Remembered once changed, because somebody who never has
+   * Saturday classes should not hide Saturday on every visit.
+   */
+  const [visibleDays, setVisibleDays] = useState<number[]>(() => {
+    if (typeof localStorage === 'undefined') return ALL_DAYS;
+    try {
+      const saved = JSON.parse(localStorage.getItem(VISIBLE_DAYS_KEY) ?? 'null');
+      return Array.isArray(saved) && saved.length > 0 ? (saved as number[]) : ALL_DAYS;
+    } catch {
+      return ALL_DAYS;
+    }
+  });
+
+  const toggleDay = useCallback((day: number) => {
+    setVisibleDays((current) => {
+      // Never all seven off: an empty grid is not a filter, it is a blank
+      // screen with no way to tell what happened.
+      const next = current.includes(day)
+        ? current.length > 1
+          ? current.filter((entry) => entry !== day)
+          : current
+        : [...current, day].sort((a, b) => a - b);
+      feedback('toggle');
+      try {
+        localStorage.setItem(VISIBLE_DAYS_KEY, JSON.stringify(next));
+      } catch {
+        /* private mode; the choice lasts the session */
+      }
+      return next;
+    });
+  }, []);
 
   const [firstHour, lastHour] = useMemo(() => {
     const blocks = [...classes.data, ...(showRoutines ? routines.data : [])];
@@ -382,6 +420,37 @@ export default function Timetable() {
             )}
           </View>
 
+          {/*
+            Which days are on screen. Only on the phone grid: the desktop has
+            room for all seven and nothing to gain from hiding any. Hiding days
+            widens the rest until a code, a time and a room fit — the grid
+            switches itself from heatmap to detail as that happens.
+          */}
+          {!grid && view === 'week' ? (
+            <View className="mb-3 flex-row items-center gap-1">
+              {DAY_FULL.map((full, day) => {
+                const on = visibleDays.includes(day);
+                return (
+                  <Touchable
+                    key={full}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on }}
+                    accessibilityLabel={`${full}${on ? ', showing' : ', hidden'}`}
+                    cue="none"
+                    onPress={() => toggleDay(day)}
+                    className={`h-8 flex-1 items-center justify-center rounded-lg border ${
+                      on ? 'border-ink bg-ink' : 'border-line bg-surface'
+                    }`}
+                  >
+                    <Text className={`text-[11px] font-bold ${on ? 'text-paper' : 'text-subtle'}`}>
+                      {full[0]}
+                    </Text>
+                  </Touchable>
+                );
+              })}
+            </View>
+          ) : null}
+
           {grid ? (
             <WeekGrid
               classes={classes.data}
@@ -404,8 +473,8 @@ export default function Timetable() {
             <CompactWeekGrid
               classes={classes.data}
               routines={showRoutines ? routines.data : []}
-              firstHour={firstHour}
-              lastHour={lastHour}
+              visibleDays={visibleDays}
+              fitViewport
               dates={weekDates}
               now={nowMinute}
               onSelect={(block) => setEditing(block)}
