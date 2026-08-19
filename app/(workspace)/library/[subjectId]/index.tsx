@@ -72,6 +72,7 @@ export default function SubjectFolder({
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -373,35 +374,82 @@ export default function SubjectFolder({
         </View>
       ) : null}
 
-      <View className="mb-8 flex-row flex-wrap gap-2">
+      {/*
+        One button instead of five.
+        
+        Open Reader and Take Quiz are above and stay there — they are what a
+        student came to a subject to do. These five are things they do
+        occasionally, and stacking them full-width underneath pushed the
+        sources list, the assignments and the whole reason for the page below
+        the fold on a phone. Behind one action they cost a tap and nothing
+        else; in front of it they cost the page.
+      */}
+      <View className="mb-8">
         <Button
-          label="Add material"
-          icon="upload-cloud"
+          label="Add content"
+          icon="plus"
           variant="secondary"
           size="sm"
-          onPress={() => setAddOpen(true)}
+          onPress={() => setActionsOpen(true)}
         />
-        {isDriveConfigured() ? (
-          <Button
-            label="Sync from Drive"
-            icon="refresh-cw"
-            variant="secondary"
-            size="sm"
-            loading={Boolean(driveBusy)}
-            disabled={Boolean(driveBusy)}
-            onPress={() => void syncFromDrive()}
-          />
-        ) : null}
-        <Link href={`/tasks?tab=focus&subjectId=${subjectId}`} asChild>
-          <Button label="Study this" icon="target" variant="secondary" size="sm" />
-        </Link>
-        <Link href={`/knowledge/notes?subjectId=${subjectId}`} asChild>
-          <Button label="New notebook" icon="notebook-pen" variant="secondary" size="sm" />
-        </Link>
-        <Link href={`/capture?subjectId=${subjectId}`} asChild>
-          <Button label="Capture a photo" icon="camera" variant="secondary" size="sm" />
-        </Link>
       </View>
+
+      <Sheet
+        visible={actionsOpen}
+        onClose={() => setActionsOpen(false)}
+        title="Add content"
+        icon="plus"
+        maxHeight={430}
+      >
+        <View className="gap-2">
+          <Button
+            label="Add material"
+            icon="upload-cloud"
+            variant="secondary"
+            onPress={() => {
+              setActionsOpen(false);
+              setAddOpen(true);
+            }}
+          />
+          {isDriveConfigured() ? (
+            <Button
+              label="Sync from Drive"
+              icon="refresh-cw"
+              variant="secondary"
+              loading={Boolean(driveBusy)}
+              disabled={Boolean(driveBusy)}
+              onPress={() => {
+                setActionsOpen(false);
+                void syncFromDrive();
+              }}
+            />
+          ) : null}
+          <Link href={`/tasks?tab=focus&subjectId=${subjectId}`} asChild>
+            <Button
+              label="Study this"
+              icon="target"
+              variant="secondary"
+              onPress={() => setActionsOpen(false)}
+            />
+          </Link>
+          <Link href={`/knowledge/notes?subjectId=${subjectId}`} asChild>
+            <Button
+              label="New notebook"
+              icon="notebook-pen"
+              variant="secondary"
+              onPress={() => setActionsOpen(false)}
+            />
+          </Link>
+          <Link href={`/capture?subjectId=${subjectId}`} asChild>
+            <Button
+              label="Capture a photo"
+              icon="camera"
+              variant="secondary"
+              onPress={() => setActionsOpen(false)}
+            />
+          </Link>
+        </View>
+      </Sheet>
 
       <Tabs tabs={TABS} value={tab} onChange={setTab} />
 

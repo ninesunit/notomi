@@ -329,7 +329,18 @@ export function NotomiReel() {
           {queue.map((card, index) => (
             <View
               key={card.id}
-              className="items-center justify-center px-5 py-8 md:px-10"
+              /*
+               * justify-start, not justify-center.
+               *
+               * The cell is exactly one viewport tall. Centring a card that is
+               * taller than that pushes half the overflow above the top edge,
+               * where it is both cut off and unreachable — the card opened
+               * mid-sentence, under the header, with no way to scroll up to
+               * the beginning of it. Anchoring to the top means a long card is
+               * only ever clipped at the end, which is the direction a reader
+               * expects and can do something about.
+               */
+              className="items-center justify-start px-5 pb-8 pt-5 md:px-10"
               style={
                 Platform.OS === 'web'
                   ? ({ height: viewportHeight, scrollSnapAlign: 'start' } as ViewStyle)

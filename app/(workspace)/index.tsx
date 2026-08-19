@@ -30,6 +30,7 @@ import { getDb } from '@/services/firebase';
 import { academicClasses, type ResolvedClass } from '@/services/timetable';
 import { buildBurnoutWeeks, findActiveSemester } from '@/services/academicPlanner';
 import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
+import { pickMaterials, type MaterialFile } from '@/services/ingestion';
 
 /**
  * The dashboard.
@@ -128,6 +129,7 @@ export default function Dashboard() {
 
       <Engines
         busy={ingest.busy}
+        collapsed={compact}
         onFiles={(files) => ingest.startFiles(files).then(() => undefined)}
       />
 
@@ -212,10 +214,54 @@ function MissionStatus({ semester, todos }: { semester: Semester | null; todos: 
 function Engines({
   busy,
   onFiles,
+  collapsed,
 }: {
   busy: boolean;
   onFiles: (files: import('@/services/ingestion').MaterialFile[]) => Promise<void>;
+  /** True once this workspace has content and the screen is a phone. */
+  collapsed: boolean;
 }) {
+  const [error, setError] = useState<string | null>(null);
+
+  /*
+   * The full panel is an onboarding target, and it earns its size exactly
+   * once: on an empty workspace, where there is nothing else to look at and
+   * everything downstream depends on the first upload. After that it is three
+   * hundred points of instruction for something the student has already done,
+   * sitting between them and the schedule they opened the app to check.
+   *
+   * So it collapses to one action on a phone that is already set up, and stays
+   * whole for a new account and on any screen with room for both.
+   */
+  if (collapsed) {
+    return (
+      <View className="mb-4">
+        <Button
+          label="Add anything academic"
+          icon="upload-cloud"
+          variant="secondary"
+          loading={busy}
+          onPress={() => {
+            setError(null);
+            // Called straight from the press with nothing awaited before it:
+            // iOS Safari only opens a file picker inside the gesture that
+            // asked for one.
+            void pickMaterials()
+              .then((files: MaterialFile[]) => (files.length > 0 ? onFiles(files) : undefined))
+              .catch((caught: unknown) =>
+                setError(caught instanceof Error ? caught.message : String(caught))
+              );
+          }}
+        />
+        {error ? (
+          <View className="mt-2">
+            <Notice title="Could not add those files" body={error} />
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
   return (
     <View className="mb-5">
       <FileDropZone

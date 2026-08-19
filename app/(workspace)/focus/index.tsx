@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Icon } from '@/components/Icon';
+import { ResponsiveTermPicker } from '@/components/ResponsiveTermPicker';
 import { orderBy, query } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Badge, Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
@@ -351,25 +352,36 @@ export default function Focus() {
         ) : todos.data.filter((candidate) => !candidate.isCompleted).length === 0 ? (
           <Text className="text-sm text-muted">Add a task on the Task Board to attach it to this focus block.</Text>
         ) : (
-          <View className="flex-row flex-wrap gap-1.5">
-            {todos.data.filter((candidate) => !candidate.isCompleted).map((candidate) => (
-              <Pressable
-                key={candidate.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected: taskId === candidate.id }}
-                onPress={() => {
-                  const next = taskId === candidate.id ? null : candidate.id;
-                  setTaskId(next);
-                  if (next && candidate.subjectId) setSubjectId(candidate.subjectId);
-                }}
-                className={`rounded-lg border px-3 py-2 ${taskId === candidate.id ? 'border-ink bg-ink' : 'border-stone-200 bg-paper'}`}
-              >
-                <Text className={`text-xs font-medium ${taskId === candidate.id ? 'text-white' : 'text-muted'}`} numberOfLines={1}>
-                  {candidate.title}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          /*
+           * A picker, not a wall of pills.
+           *
+           * Every open task was rendered as a pill with no maximum width, so a
+           * title like "Leadership and Integrity Day Project: Form group and
+           * select topic" made a single pill wider than the phone — and
+           * flex-wrap cannot break one item, so the row ran off the card and
+           * off the screen. Thirty tasks then stacked that overflow thirty
+           * times, burying the timer this screen exists for.
+           *
+           * The same picker the Reel filter uses: a dropdown where there is
+           * room and a sheet where there is not, with the list scrolling
+           * inside it instead of pushing the page.
+           */
+          <ResponsiveTermPicker
+            options={[
+              { id: '', label: 'No task attached' },
+              ...todos.data
+                .filter((candidate) => !candidate.isCompleted)
+                .map((candidate) => ({ id: candidate.id, label: candidate.title })),
+            ]}
+            value={taskId ?? ''}
+            title="Attach a task"
+            sheetIcon="check-square"
+            onChange={(next) => {
+              setTaskId(next || null);
+              const chosen = todos.data.find((candidate) => candidate.id === next);
+              if (next && chosen?.subjectId) setSubjectId(chosen.subjectId);
+            }}
+          />
         )}
       </Card>
 
