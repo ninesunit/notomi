@@ -8,7 +8,8 @@ import { FileDropZone } from '@/components/FileDropZone';
 import { FadeIn } from '@/components/motion';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
-import { WeekOverview } from '@/components/WeekOverview';
+import { CompactWeekGrid } from '@/components/CompactWeekGrid';
+import { laneOut } from '@/lib/timetableLayout';
 import { TimeField } from '@/components/TimeField';
 import { defaultScope, filterByTerm, TermFilter, type TermScope } from '@/components/TermFilter';
 import {
@@ -153,6 +154,10 @@ export default function Timetable() {
    * hour. A fixed 00:00-24:00 ruler would make a normal week a thin band in an
    * ocean of empty night.
    */
+  // The current-time line on the phone grid needs this at the screen level;
+  // the desktop grid calls the same hook internally.
+  const nowMinute = useNowMinute();
+
   const [firstHour, lastHour] = useMemo(() => {
     const blocks = [...classes.data, ...(showRoutines ? routines.data : [])];
     if (blocks.length === 0) return [8, 18];
@@ -388,10 +393,21 @@ export default function Timetable() {
               dates={weekDates}
             />
           ) : view === 'week' ? (
-            <WeekOverview
+            /*
+             * The same grid as the desktop, compressed. The row-per-day list
+             * that used to live here was legible but shapeless: a timetable's
+             * whole value is seeing that Tuesday is empty until noon, and only
+             * a time grid shows that. The hour range is already trimmed to the
+             * hours actually taught, so this clears the fold without side
+             * scrolling.
+             */
+            <CompactWeekGrid
               classes={classes.data}
               routines={showRoutines ? routines.data : []}
+              firstHour={firstHour}
+              lastHour={lastHour}
               dates={weekDates}
+              now={nowMinute}
               onSelect={(block) => setEditing(block)}
               onSelectRoutine={(block) => setEditingRoutine(block)}
             />
@@ -891,29 +907,6 @@ const HOUR_HEIGHT = 56;
  * seminar could not be tapped at all. Each block now takes the leftmost lane
  * that is free at its start, the way every calendar does it.
  */
-function laneOut<T extends ClassBlock>(blocks: T[]): { block: T; lane: number; lanes: number }[] {
-  const ordered = [...blocks].sort(
-    (a, b) => a.startMinute - b.startMinute || b.endMinute - a.endMinute
-  );
-
-  // The end time currently occupying each lane.
-  const ends: number[] = [];
-  const placed = ordered.map((block) => {
-    let lane = ends.findIndex((end) => end <= block.startMinute);
-    if (lane === -1) {
-      lane = ends.length;
-      ends.push(block.endMinute);
-    } else {
-      ends[lane] = block.endMinute;
-    }
-    return { block, lane };
-  });
-
-  // One width for the whole day: columns that changed width partway down read
-  // as a rendering fault rather than as a busier morning.
-  const lanes = Math.max(1, ends.length);
-  return placed.map((entry) => ({ ...entry, lanes }));
-}
 /** Width of the hour ruler beside the grid. */
 const RULER_WIDTH = 46;
 /** Height of the day-name header, so the ruler can be offset to match. */

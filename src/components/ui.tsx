@@ -355,7 +355,16 @@ export function PageHeader({
         <Text className="font-heading text-[28px] font-bold leading-8 tracking-tight text-ink">{title}</Text>
         {subtitle ? <Text className="text-[15px] leading-6 text-muted">{subtitle}</Text> : null}
       </View>
-      {actions ? <View className="flex-row items-center gap-2">{actions}</View> : null}
+      {/*
+        Wraps. Without it a header with three actions squeezes them until the
+        labels clip — "Import academic calenda…" — because a flex row with no
+        wrap will shrink its children before it will ever break the line. Every
+        page header in the app shares this, so the fault was never local to the
+        one screen it was noticed on.
+      */}
+      {actions ? (
+        <View className="flex-row flex-wrap items-center gap-2">{actions}</View>
+      ) : null}
     </View>
   );
 }
