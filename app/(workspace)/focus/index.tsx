@@ -309,6 +309,36 @@ export default function Focus() {
           />
         </View>
 
+        {/*
+          Inline, directly above Start.
+          
+          What you are about to work on and the button that starts working on
+          it belong in the same glance. This sat in its own card below the
+          timer, below the focus room and below the ambient controls, so
+          attaching a task meant scrolling past the thing the screen is for and
+          scrolling back to press Start.
+        */}
+        {todos.data.some((candidate) => !candidate.isCompleted) ? (
+          <View className="w-full max-w-sm">
+            <ResponsiveTermPicker
+              options={[
+                { id: '', label: 'No task attached' },
+                ...todos.data
+                  .filter((candidate) => !candidate.isCompleted)
+                  .map((candidate) => ({ id: candidate.id, label: candidate.title })),
+              ]}
+              value={taskId ?? ''}
+              title="Attach a task"
+              sheetIcon="check-square"
+              onChange={(next) => {
+                setTaskId(next || null);
+                const chosen = todos.data.find((candidate) => candidate.id === next);
+                if (next && chosen?.subjectId) setSubjectId(chosen.subjectId);
+              }}
+            />
+          </View>
+        ) : null}
+
         <View className="flex-row flex-wrap items-center justify-center gap-2">
           {running ? (
             <Button label="Pause" icon="pause" onPress={pause} />
@@ -345,45 +375,6 @@ export default function Focus() {
 
       <AmbientControl />
 
-      <Card className="mb-6 gap-3">
-        <Text className="text-sm font-semibold text-ink">Active task</Text>
-        {todos.loading ? (
-          <Loading label="Loading tasks…" />
-        ) : todos.data.filter((candidate) => !candidate.isCompleted).length === 0 ? (
-          <Text className="text-sm text-muted">Add a task on the Task Board to attach it to this focus block.</Text>
-        ) : (
-          /*
-           * A picker, not a wall of pills.
-           *
-           * Every open task was rendered as a pill with no maximum width, so a
-           * title like "Leadership and Integrity Day Project: Form group and
-           * select topic" made a single pill wider than the phone — and
-           * flex-wrap cannot break one item, so the row ran off the card and
-           * off the screen. Thirty tasks then stacked that overflow thirty
-           * times, burying the timer this screen exists for.
-           *
-           * The same picker the Reel filter uses: a dropdown where there is
-           * room and a sheet where there is not, with the list scrolling
-           * inside it instead of pushing the page.
-           */
-          <ResponsiveTermPicker
-            options={[
-              { id: '', label: 'No task attached' },
-              ...todos.data
-                .filter((candidate) => !candidate.isCompleted)
-                .map((candidate) => ({ id: candidate.id, label: candidate.title })),
-            ]}
-            value={taskId ?? ''}
-            title="Attach a task"
-            sheetIcon="check-square"
-            onChange={(next) => {
-              setTaskId(next || null);
-              const chosen = todos.data.find((candidate) => candidate.id === next);
-              if (next && chosen?.subjectId) setSubjectId(chosen.subjectId);
-            }}
-          />
-        )}
-      </Card>
 
       <Card className="mb-6 gap-3">
         <Text className="text-sm font-semibold text-ink">What are you working on?</Text>

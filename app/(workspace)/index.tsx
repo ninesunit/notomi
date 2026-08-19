@@ -8,6 +8,8 @@ import { LogComposer } from '@/components/LectureLog';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import { CompactWeekGrid } from '@/components/CompactWeekGrid';
+import { DayFilter } from '@/components/DayFilter';
+import { useVisibleDays } from '@/hooks/useVisibleDays';
 import { defaultScope, filterByTerm } from '@/components/TermFilter';
 import { Badge, Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
@@ -311,6 +313,7 @@ function ThisWeek({
 }) {
   const now = new Date();
   const [selectedClass, setSelectedClass] = useState<ResolvedClass | null>(null);
+  const { visibleDays, toggleDay } = useVisibleDays();
 
 
   /** The dates this repeating week actually falls on, when a term is running. */
@@ -365,12 +368,21 @@ function ThisWeek({
          * rather than two different summaries of the same data. Hours are
          * trimmed to what is actually taught, padded by one either side.
          */
-        <CompactWeekGrid
-          classes={classes}
-          routines={routines}
-          onSelect={setSelectedClass}
-          dates={weekDates}
-        />
+        <>
+          {/*
+            The same control and the same setting as the timetable. A student
+            who hides the weekend in one place and finds it back in the other
+            has two settings that look like one.
+          */}
+          {compact ? <DayFilter visibleDays={visibleDays} onToggle={toggleDay} /> : null}
+          <CompactWeekGrid
+            classes={classes}
+            routines={routines}
+            visibleDays={visibleDays}
+            onSelect={setSelectedClass}
+            dates={weekDates}
+          />
+        </>
       )}
 
       {due.length > 0 ? (

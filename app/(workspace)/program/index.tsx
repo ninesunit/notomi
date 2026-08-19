@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Link } from 'expo-router';
 import { Icon } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
@@ -252,6 +252,9 @@ export default function Program() {
  * ------------------------------------------------------------------ */
 
 function OverviewBar({ subjects, semesters }: { subjects: Subject[]; semesters: Semester[] }) {
+  const { width } = useWindowDimensions();
+  /** Below this the three stats cannot sit side by side at full size. */
+  const tight = width < 640;
   const overall = calculateGpa(subjects);
   const current = semesters.find((semester) => semester.isCurrent);
   const currentSubjects = current
@@ -264,15 +267,28 @@ function OverviewBar({ subjects, semesters }: { subjects: Subject[]; semesters: 
   const target = current?.gpaTarget ?? null;
 
   return (
-    <Card className="gap-5 bg-sand/60">
-      <View className="flex-row flex-wrap gap-x-10 gap-y-5">
+    <Card className={`bg-sand/60 ${tight ? 'gap-3 py-3' : 'gap-5'}`}>
+      {/*
+        Three stats at 140 points wide with 28-point numbers wrap to three rows
+        on a phone — roughly a quarter of the screen spent on numbers a student
+        glances at. Side by side they cost one row, and nothing is dropped
+        except the whitespace.
+      */}
+      <View className={tight ? 'flex-row items-stretch' : 'flex-row flex-wrap gap-x-10 gap-y-5'}>
         <Stat
+          tight={tight}
           label="Cumulative GPA"
           value={overall.gpa === null ? '—' : overall.gpa.toFixed(2)}
           hint={overall.graded > 0 ? `${overall.graded} graded credits` : 'No grades recorded yet'}
         />
-        <Stat label="Credit hours" value={String(overall.credits)} hint="Across all semesters" />
         <Stat
+          tight={tight}
+          label="Credit hours"
+          value={String(overall.credits)}
+          hint="Across all semesters"
+        />
+        <Stat
+          tight={tight}
           label={current ? current.name : 'Current semester'}
           value={currentGpa.gpa === null ? '—' : currentGpa.gpa.toFixed(2)}
           hint={
@@ -288,7 +304,37 @@ function OverviewBar({ subjects, semesters }: { subjects: Subject[]; semesters: 
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
+function Stat({
+  label,
+  value,
+  hint,
+  tight = false,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  /** Side by side in one row, for a phone. */
+  tight?: boolean;
+}) {
+  if (tight) {
+    return (
+      <View className="min-w-0 flex-1 gap-0.5 border-l border-line px-2 first:border-l-0 first:pl-0">
+        <Text
+          className="text-[9px] font-semibold uppercase tracking-wider text-muted"
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+        <Text className="text-[20px] font-bold leading-6 text-ink" numberOfLines={1}>
+          {value}
+        </Text>
+        <Text className="text-[10px] leading-3 text-subtle" numberOfLines={1}>
+          {hint}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View className="gap-1" style={{ minWidth: 140 }}>
       <Text className="text-xs font-semibold uppercase tracking-wider text-muted" numberOfLines={1}>
