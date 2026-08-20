@@ -137,7 +137,7 @@ function PickerLabel({ label }: { label: string }) {
 function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} className={`self-start rounded-xl px-3 py-2 ${active ? 'bg-ink' : 'bg-sand'}`}>
-      <Text className={`text-xs font-semibold ${active ? 'text-white' : 'text-muted'}`}>{label}</Text>
+      <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}>{label}</Text>
     </Pressable>
   );
 }

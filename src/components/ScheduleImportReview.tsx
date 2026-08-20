@@ -179,7 +179,7 @@ export function ScheduleImportReview() {
 
       {error ? <View className="mt-4"><Notice title="Schedule was not saved" body={error} /></View> : null}
 
-      <Card className="mt-5 flex-row flex-wrap items-center gap-3 border-stone-200">
+      <Card className="mt-5 flex-row flex-wrap items-center gap-3 border-line">
         <View className="min-w-0 flex-1">
           <Text className="text-sm font-semibold text-ink">Ready to save</Text>
           <Text className="text-xs text-muted">{included.length} valid class session{included.length === 1 ? '' : 's'} will be committed.</Text>
@@ -212,13 +212,13 @@ function ReviewClassCard({
   const invalid = start === null || end === null || end <= start || !row.title.trim();
 
   return (
-    <Card className={`gap-4 border-stone-200 ${row.include ? '' : 'opacity-60'}`}>
+    <Card className={`gap-4 border-line ${row.include ? '' : 'opacity-60'}`}>
       <View className="flex-row items-center gap-3">
         <Pressable
           accessibilityRole="checkbox"
           accessibilityState={{ checked: row.include }}
           onPress={() => onPatch({ include: !row.include })}
-          className={`h-6 w-6 items-center justify-center rounded-lg border ${row.include ? 'border-ink bg-ink' : 'border-stone-200'}`}
+          className={`h-6 w-6 items-center justify-center rounded-lg border ${row.include ? 'border-ink bg-ink' : 'border-line'}`}
         >
           {row.include ? <Icon name="check" size={13} color="#FFFFFF" /> : null}
         </Pressable>
@@ -251,7 +251,7 @@ function ReviewClassCard({
               onPress={() => onPatch({ day })}
               className={`rounded-lg px-3 py-2 ${row.day === day ? 'bg-ink' : 'bg-sand'}`}
             >
-              <Text className={`text-xs font-semibold ${row.day === day ? 'text-white' : 'text-ink'}`}>{label}</Text>
+              <Text className={`text-xs font-semibold ${row.day === day ? 'text-paper' : 'text-ink'}`}>{label}</Text>
             </Pressable>
           ))}
         </View>

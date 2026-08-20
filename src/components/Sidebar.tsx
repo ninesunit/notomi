@@ -83,7 +83,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
                     />
                     <Text
                       className={`text-[15px] ${
-                        active ? 'font-semibold text-white' : 'font-medium text-muted'
+                        active ? 'font-semibold text-paper' : 'font-medium text-muted'
                       }`}
                     >
                       {item.label}
@@ -126,7 +126,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
               />
               <Text
                 className={`text-sm font-medium ${
-                  isActive(pathname, SETTINGS_ITEM.href) ? 'text-white' : 'text-muted'
+                  isActive(pathname, SETTINGS_ITEM.href) ? 'text-paper' : 'text-muted'
                 }`}
               >
                 Settings

@@ -170,7 +170,7 @@ export default function Dashboard() {
 function MissionStatus({ semester, todos }: { semester: Semester | null; todos: Todo[] }) {
   if (!semester) {
     return (
-      <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-surface px-4 py-3">
+      <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
         <Icon name="calendar" size={16} color="#6F6A5F" />
         <Text className="flex-1 text-sm font-semibold text-ink">No active term selected</Text>
         <Link href="/schedule?tab=terms" asChild>
@@ -193,7 +193,7 @@ function MissionStatus({ semester, todos }: { semester: Semester | null; todos: 
   const tone = ratio >= 0.8 ? 'rose' : ratio >= 0.45 ? 'amber' : 'pine';
 
   return (
-    <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-surface px-4 py-3">
+    <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
       <Icon name="layout-dashboard" size={16} color="#18181B" />
       <Badge label={`${semester.name}${week ? ` • Week ${week}` : ''}`} />
       {dates ? <Text className="text-xs font-medium text-muted">{dates}</Text> : null}

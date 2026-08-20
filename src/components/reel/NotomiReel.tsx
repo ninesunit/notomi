@@ -463,7 +463,7 @@ function KnowledgeCard({
         if (now - lastTap.current < 300) onBookmark();
         lastTap.current = now;
       }}
-      className="w-full overflow-hidden rounded-3xl border border-stone-200/80 bg-white"
+      className="w-full overflow-hidden rounded-3xl border border-line/80 bg-surface"
       style={{ maxWidth: 448, minHeight: 470 }}
       {...responder.panHandlers}
     >

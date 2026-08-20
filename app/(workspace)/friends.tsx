@@ -573,7 +573,7 @@ function ScheduleOverlap({
             }`}
           >
             {selected.includes(friend.id) ? <Icon name="check" size={13} color="#FFFFFF" /> : null}
-            <Text className={`text-xs font-semibold ${selected.includes(friend.id) ? 'text-white' : 'text-muted'}`}>
+            <Text className={`text-xs font-semibold ${selected.includes(friend.id) ? 'text-paper' : 'text-muted'}`}>
               {friend.displayName.split(' ')[0]}
             </Text>
           </Pressable>
@@ -716,7 +716,7 @@ function FilterPill({
       className={`flex-row items-center gap-2 rounded-full px-3 py-2 ${active ? 'bg-ink' : 'bg-sand'}`}
     >
       <Icon name={icon} size={14} color={active ? '#FFFFFF' : '#6F6A5F'} />
-      <Text className={`text-xs font-semibold ${active ? 'text-white' : 'text-muted'}`}>{label}</Text>
+      <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}>{label}</Text>
     </Pressable>
   );
 }

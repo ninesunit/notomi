@@ -407,7 +407,7 @@ function DrawerLink({
       >
         <Icon name={icon} size={17} color={active ? '#FFFFFF' : '#6F6A5F'} />
         <Text
-          className={`text-[15px] ${active ? 'font-semibold text-white' : 'font-medium text-muted'}`}
+          className={`text-[15px] ${active ? 'font-semibold text-paper' : 'font-medium text-muted'}`}
         >
           {label}
         </Text>

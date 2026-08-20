@@ -220,7 +220,7 @@ function Choice({ label, selected, onPress }: { label: string; selected: boolean
       onPress={onPress}
       className={`rounded-xl px-3 py-2 ${selected ? 'bg-ink' : 'bg-sand'}`}
     >
-      <Text className={`text-xs font-semibold ${selected ? 'text-white' : 'text-muted'}`}>{label}</Text>
+      <Text className={`text-xs font-semibold ${selected ? 'text-paper' : 'text-muted'}`}>{label}</Text>
     </Pressable>
   );
 }
@@ -300,7 +300,7 @@ function SprintCard({ sprint, uid }: { sprint: GroupSprint; uid: string }) {
                     accessibilityState={{ checked: task.completed }}
                     onPress={() => void toggleSprintTask(sprint.id, task.id)}
                     className={`mt-0.5 h-5 w-5 items-center justify-center rounded-md border ${
-                      task.completed ? 'border-pine bg-pine' : 'border-line bg-white'
+                      task.completed ? 'border-pine bg-pine' : 'border-line bg-surface'
                     }`}
                   >
                     {task.completed ? <Icon name="check" size={12} color="#FFFFFF" /> : null}

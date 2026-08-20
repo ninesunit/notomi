@@ -3,6 +3,34 @@
 @tailwind utilities;
 
 /*
+ * The palette lives here as RGB channel triplets rather than hex, because
+ * tailwind.config.js reads each one back as `rgb(var(--ink) / <alpha-value>)`.
+ *
+ * Tailwind bakes opacity modifiers at build time: `bg-ink/40` compiles to the
+ * literal `#18181b66`, which no variable can ever reach. Forty-one classes in
+ * this app carry such a modifier, so a hex-valued variable would leave every
+ * one of them frozen at the light palette while everything around them moved.
+ * Channels are the only form an alpha modifier can still be applied to.
+ */
+:root {
+  --paper: 250 249 245;
+  --surface: 255 255 255;
+  --sand: 245 243 239;
+  --line: 231 229 228;
+  --ink: 24 24 27;
+  --muted: 111 106 95;
+  --subtle: 154 148 136;
+  --accent: 180 85 45;
+  --accent-soft: 245 229 218;
+  --pine: 46 111 94;
+  --pine-soft: 225 237 232;
+  --amber: 180 131 42;
+  --amber-soft: 247 237 216;
+  --rose: 176 68 62;
+  --rose-soft: 247 226 225;
+}
+
+/*
  * Web-only guards. React Native has no document/body, so these rules are inert
  * on native and only take effect in the browser build.
  */
@@ -32,7 +60,7 @@
     height: var(--app-height, 100dvh);
     max-height: var(--app-height, 100dvh);
     margin: 0;
-    background-color: #faf9f5;
+    background-color: rgb(var(--paper));
     /*
      * Only the panes inside the shell scroll. Without this the document keeps
      * its own scrollport and iOS rubber-banding fights every inner scroller.

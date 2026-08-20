@@ -6,22 +6,23 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Warm "paper" workspace palette.
-        paper: '#FAF9F5',
-        surface: '#FFFFFF',
-        sand: '#F5F3EF',
-        line: '#E7E5E4',
-        ink: '#18181B',
-        muted: '#6F6A5F',
-        subtle: '#9A9488',
-        accent: '#B4552D',
-        'accent-soft': '#F5E5DA',
-        pine: '#2E6F5E',
-        'pine-soft': '#E1EDE8',
-        amber: '#B4832A',
-        'amber-soft': '#F7EDD8',
-        rose: '#B0443E',
-        'rose-soft': '#F7E2E1',
+        // Warm "paper" workspace palette, driven by the channel triplets in
+        // global.css so the whole app re-themes from one block of variables.
+        paper: 'rgb(var(--paper) / <alpha-value>)',
+        surface: 'rgb(var(--surface) / <alpha-value>)',
+        sand: 'rgb(var(--sand) / <alpha-value>)',
+        line: 'rgb(var(--line) / <alpha-value>)',
+        ink: 'rgb(var(--ink) / <alpha-value>)',
+        muted: 'rgb(var(--muted) / <alpha-value>)',
+        subtle: 'rgb(var(--subtle) / <alpha-value>)',
+        accent: 'rgb(var(--accent) / <alpha-value>)',
+        'accent-soft': 'rgb(var(--accent-soft) / <alpha-value>)',
+        pine: 'rgb(var(--pine) / <alpha-value>)',
+        'pine-soft': 'rgb(var(--pine-soft) / <alpha-value>)',
+        amber: 'rgb(var(--amber) / <alpha-value>)',
+        'amber-soft': 'rgb(var(--amber-soft) / <alpha-value>)',
+        rose: 'rgb(var(--rose) / <alpha-value>)',
+        'rose-soft': 'rgb(var(--rose-soft) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Inter_400Regular', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],

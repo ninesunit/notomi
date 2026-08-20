@@ -281,7 +281,7 @@ function SubjectPicker({
               onPress={() => onChange(subject.id)}
               className={`rounded-xl border px-3 py-2 ${active ? 'border-ink bg-ink' : 'border-line bg-surface'}`}
             >
-              <Text className={`text-xs font-semibold ${active ? 'text-white' : 'text-ink'}`}>
+              <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-ink'}`}>
                 {subject.moduleCode || subject.name}
               </Text>
             </Pressable>
@@ -300,7 +300,7 @@ function ModeChip({ active, label, onPress }: { active: boolean; label: string; 
       onPress={onPress}
       className={`rounded-xl px-3 py-2 ${active ? 'bg-ink' : 'bg-sand'}`}
     >
-      <Text className={`text-xs font-semibold ${active ? 'text-white' : 'text-muted'}`}>{label}</Text>
+      <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}>{label}</Text>
     </Pressable>
   );
 }

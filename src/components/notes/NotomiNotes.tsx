@@ -1392,7 +1392,7 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
         className="absolute left-3 right-3 top-3 z-20 items-center"
       >
         <View
-          className="max-w-full flex-row flex-wrap items-center justify-center gap-1 rounded-2xl border border-white/60 bg-surface/90 p-1.5 shadow"
+          className="max-w-full flex-row flex-wrap items-center justify-center gap-1 rounded-2xl border border-surface/60 bg-surface/90 p-1.5 shadow"
           style={{ backdropFilter: 'blur(18px)' } as unknown as ViewStyle}
         >
           <ToolButton
@@ -1427,7 +1427,7 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
         </View>
 
         {tool === 'pen' ? (
-          <View className="mt-2 max-w-full flex-row flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/60 bg-surface/90 px-3 py-2 shadow">
+          <View className="mt-2 max-w-full flex-row flex-wrap items-center justify-center gap-2 rounded-2xl border border-surface/60 bg-surface/90 px-3 py-2 shadow">
             {BRUSHES.map((entry) => (
               <Pressable
                 key={entry.id}
@@ -1472,7 +1472,7 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
           </View>
         ) : null}
 
-        <View className="mt-2 flex-row items-center gap-1 rounded-full border border-white/60 bg-surface/90 p-1.5 shadow">
+        <View className="mt-2 flex-row items-center gap-1 rounded-full border border-surface/60 bg-surface/90 p-1.5 shadow">
           <ToolButton
             label="Previous page"
             icon="chevron-left"

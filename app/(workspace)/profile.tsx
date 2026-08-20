@@ -554,7 +554,7 @@ function PrivacyToggle({
         <Text className="text-xs leading-4 text-muted">{detail}</Text>
       </View>
       <View className={`h-6 w-11 rounded-full p-0.5 ${value ? 'bg-pine' : 'bg-line'}`}>
-        <View className={`h-5 w-5 rounded-full bg-white ${value ? 'self-end' : 'self-start'}`} />
+        <View className={`h-5 w-5 rounded-full bg-surface ${value ? 'self-end' : 'self-start'}`} />
       </View>
     </Pressable>
   );
