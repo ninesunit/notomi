@@ -1,12 +1,18 @@
 import { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Link } from 'expo-router';
 import { Icon } from '@/components/Icon';
-import { orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { Timestamp, addDoc, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { CountdownBlock, CountdownChip } from '@/components/Countdown';
 import { BurnoutHeatmap } from '@/components/AcademicInsights';
 import { MonthCalendar, type DayMarker } from '@/components/MonthCalendar';
+import { FloatingAction } from '@/components/FloatingAction';
+import { SwipeableRow } from '@/components/Swipeable';
+import { Reveal } from '@/components/motion';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { Sheet } from '@/components/Sheet';
+import { TaskComposer, type NewTask } from '@/components/TaskComposer';
+import { PHONE } from '@/lib/breakpoints';
 import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
@@ -36,6 +42,11 @@ export default function Calendar() {
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
   const [selected, setSelected] = useState<Date | null>(new Date());
+  const { width } = useWindowDimensions();
+  const phone = width < PHONE;
+  /** Analytics, folded away on a phone until asked for. */
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [message, setMessage] = useState<{
     tone: 'rose' | 'pine';
@@ -99,6 +110,31 @@ export default function Calendar() {
     return open.filter((entry) => entry.due >= now && entry.due <= horizon).slice(0, 8);
   }, [open]);
 
+  /**
+   * The same write the Task Board does, because it is the same collection.
+   *
+   * Duplicated deliberately rather than shared: hoisting it would mean a module
+   * that both screens import for four lines, and the two callers differ in the
+   * one way that matters — this one has a date already chosen.
+   */
+  async function addTask({ title, dueDate, priority, subjectId }: NewTask) {
+    const subject = subjects.data.find((candidate) => candidate.id === subjectId) ?? null;
+    await addDoc(paths.todos(db, uid), {
+      title,
+      dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,
+      isCompleted: false,
+      subjectId: subject?.id ?? null,
+      subjectName: subject?.name ?? null,
+      priority,
+      subTasks: [],
+      source: 'manual',
+      sourceDocumentId: null,
+      createdAt: serverTimestamp(),
+      completedAt: null,
+    });
+    setComposerOpen(false);
+  }
+
   function toggle(todo: Todo) {
     void updateDoc(paths.todo(db, uid, todo.id), {
       isCompleted: !todo.isCompleted,
@@ -137,7 +173,28 @@ export default function Calendar() {
   }
 
   return (
-    <ScreenScroll>
+    <ScreenScroll
+      floating={
+        phone ? (
+          <FloatingAction label="New task" onPress={() => setComposerOpen(true)} />
+        ) : undefined
+      }
+    >
+      {/*
+        A 28-point title with a subtitle is about a hundred and fifty points of
+        chrome, and this screen already spends a hundred and seventy on the hub
+        tabs above it. Same trade the dashboard made at app/(workspace)/index.tsx.
+      */}
+      {phone ? (
+        <View className="mb-4 flex-row items-center justify-between gap-3">
+          <Text className="text-[17px] font-semibold tracking-tight text-ink">Calendar</Text>
+          <Text className="text-xs text-muted">
+            {open.length
+              ? `${open.length} open${overdue.length ? ` · ${overdue.length} overdue` : ''}`
+              : 'Nothing due'}
+          </Text>
+        </View>
+      ) : (
       <PageHeader
         title="Calendar"
         subtitle={
@@ -155,6 +212,7 @@ export default function Calendar() {
           </>
         }
       />
+      )}
 
       {message ? (
         <View className="mb-6">
@@ -168,27 +226,7 @@ export default function Calendar() {
         </View>
       ) : null}
 
-      <BurnoutHeatmap semester={activeSemester} todos={todos.data} />
 
-      {activeSemester?.studyLeaveStart && activeSemester.studyLeaveEnd ? (
-        <Card className="mb-6 gap-4 border-pine/20 bg-pine-soft">
-          <View className="flex-row flex-wrap items-start justify-between gap-4">
-            <View className="flex-1 gap-1" style={{ minWidth: 220 }}>
-              <Text className="text-[15px] font-semibold text-ink">Smart exam gap strategist</Text>
-              <Text className="text-xs leading-5 text-muted">
-                Build a Study Leave plan from exam spacing and each subject's credit weighting.
-              </Text>
-            </View>
-            <Button
-              label="Build revision plan"
-              icon="map"
-              size="sm"
-              loading={planning}
-              onPress={() => void planStudyLeave()}
-            />
-          </View>
-        </Card>
-      ) : null}
 
       {/* Next-up panel: the countdown is the point of this page. */}
       {next ? (
@@ -215,12 +253,14 @@ export default function Calendar() {
                 })}
               </Text>
             </View>
-            <CountdownBlock due={next.due} />
+            {phone ? <CountdownChip due={next.due} compact /> : <CountdownBlock due={next.due} />}
           </View>
         </Card>
       ) : null}
 
-      {overdue.length > 0 ? (
+      {/* The header already says "· N overdue"; on a phone this is the same
+          fact a second time, for a hundred points. */}
+      {overdue.length > 0 && !phone ? (
         <View className="mb-6">
           <Notice
             title={`${overdue.length} deadline${overdue.length === 1 ? '' : 's'} already passed`}
@@ -241,6 +281,7 @@ export default function Calendar() {
               selected={selected}
               onSelectDay={setSelected}
               markers={markers}
+              compact={phone}
             />
           </Card>
         </View>
@@ -264,41 +305,139 @@ export default function Calendar() {
             ) : (
               <Card className="gap-0 p-0">
                 {forSelectedDay.map((entry, index) => (
-                  <DeadlineRow
+                  <SwipeableRow
                     key={entry.todo.id}
-                    entry={entry}
-                    color={colorFor(entry.todo.subjectId)}
-                    first={index === 0}
-                    onToggle={() => toggle(entry.todo)}
-                  />
+                    onSwipeRight={() => toggle(entry.todo)}
+                    rightLabel={entry.todo.isCompleted ? 'Reopen' : 'Complete'}
+                  >
+                    <DeadlineRow
+                      entry={entry}
+                      color={colorFor(entry.todo.subjectId)}
+                      first={index === 0}
+                      onToggle={() => toggle(entry.todo)}
+                    />
+                  </SwipeableRow>
                 ))}
               </Card>
             )}
           </View>
 
           <View className="gap-3">
-            <Text className="text-sm font-semibold text-muted">Next 7 days</Text>
+            <View className="flex-row items-baseline justify-between gap-2">
+              <Text className="text-sm font-semibold text-muted">Next 7 days</Text>
+              {phone && nextSeven.length > 4 ? (
+                <Link href="/tasks" asChild>
+                  <Pressable accessibilityRole="link">
+                    <Text className="text-xs font-semibold text-accent">
+                      See all {nextSeven.length}
+                    </Text>
+                  </Pressable>
+                </Link>
+              ) : null}
+            </View>
             {nextSeven.length === 0 ? (
               <Card>
                 <Text className="text-sm text-muted">A clear week ahead.</Text>
               </Card>
             ) : (
               <Card className="gap-0 p-0">
-                {nextSeven.map((entry, index) => (
-                  <DeadlineRow
+                {(phone ? nextSeven.slice(0, 4) : nextSeven).map((entry, index) => (
+                  <SwipeableRow
                     key={entry.todo.id}
-                    entry={entry}
-                    color={colorFor(entry.todo.subjectId)}
-                    first={index === 0}
-                    showDate
-                    onToggle={() => toggle(entry.todo)}
-                  />
+                    onSwipeRight={() => toggle(entry.todo)}
+                    rightLabel={entry.todo.isCompleted ? 'Reopen' : 'Complete'}
+                  >
+                    <DeadlineRow
+                      entry={entry}
+                      color={colorFor(entry.todo.subjectId)}
+                      first={index === 0}
+                      showDate
+                      onToggle={() => toggle(entry.todo)}
+                    />
+                  </SwipeableRow>
                 ))}
               </Card>
             )}
           </View>
         </View>
       </View>
+
+      {/*
+        Analytics, demoted.
+        
+        The heatmap and the strategist are worth having and are not what the
+        page is for. Above the grid they pushed the month itself to roughly nine
+        hundred points down — past the fold, on a screen whose whole job is
+        showing a month. Below it, behind one pill, they cost a tap.
+        
+        Both can render nothing: the heatmap returns null with no active
+        semester, and the strategist needs study-leave dates. The pill only
+        appears when at least one of them has something to say.
+      */}
+      {phone && (activeSemester?.startDate || activeSemester?.studyLeaveStart) ? (
+        <View className="mt-6 gap-3">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: insightsOpen }}
+            onPress={() => setInsightsOpen((value) => !value)}
+            className="flex-row items-center gap-2 self-start rounded-full border border-line bg-surface px-3.5 py-2"
+          >
+            <Icon name="activity" size={14} tone="accent" />
+            <Text className="text-xs font-semibold text-ink">Insights</Text>
+            <Icon name={insightsOpen ? 'chevron-up' : 'chevron-down'} size={14} tone="subtle" />
+          </Pressable>
+
+          <Reveal open={insightsOpen}>
+            <View>
+              <BurnoutHeatmap semester={activeSemester} todos={todos.data} />
+              {activeSemester?.studyLeaveStart && activeSemester.studyLeaveEnd ? (
+        <Card className="mb-6 gap-4 border-pine/20 bg-pine-soft">
+          <View className="flex-row flex-wrap items-start justify-between gap-4">
+            <View className="flex-1 gap-1" style={{ minWidth: 220 }}>
+              <Text className="text-[15px] font-semibold text-ink">Smart exam gap strategist</Text>
+              <Text className="text-xs leading-5 text-muted">
+                Build a Study Leave plan from exam spacing and each subject's credit weighting.
+              </Text>
+            </View>
+            <Button
+              label="Build revision plan"
+              icon="map"
+              size="sm"
+              loading={planning}
+              onPress={() => void planStudyLeave()}
+            />
+          </View>
+        </Card>
+      ) : null}
+            </View>
+          </Reveal>
+        </View>
+      ) : null}
+
+      {!phone ? (
+        <View className="mt-6">
+          <BurnoutHeatmap semester={activeSemester} todos={todos.data} />
+          {activeSemester?.studyLeaveStart && activeSemester.studyLeaveEnd ? (
+        <Card className="mb-6 gap-4 border-pine/20 bg-pine-soft">
+          <View className="flex-row flex-wrap items-start justify-between gap-4">
+            <View className="flex-1 gap-1" style={{ minWidth: 220 }}>
+              <Text className="text-[15px] font-semibold text-ink">Smart exam gap strategist</Text>
+              <Text className="text-xs leading-5 text-muted">
+                Build a Study Leave plan from exam spacing and each subject's credit weighting.
+              </Text>
+            </View>
+            <Button
+              label="Build revision plan"
+              icon="map"
+              size="sm"
+              loading={planning}
+              onPress={() => void planStudyLeave()}
+            />
+          </View>
+        </Card>
+      ) : null}
+        </View>
+      ) : null}
 
       {dated.length === 0 ? (
         <View className="mt-8">
@@ -315,6 +454,27 @@ export default function Calendar() {
         </View>
       ) : null}
 
+      {/*
+        Pre-filled with the day the student is already looking at. Adding a
+        deadline from a calendar almost always means adding it to the date under
+        the cursor, and asking again for a date they just tapped is the kind of
+        small stupidity that makes an app feel like a form.
+      */}
+      <Sheet
+        visible={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        title="New task"
+        icon="plus"
+        dismissOnScrim={false}
+      >
+        <TaskComposer
+          subjects={subjects.data}
+          markers={markers}
+          initialDueDate={selected}
+          onSubmit={addTask}
+          autoFocus
+        />
+      </Sheet>
     </ScreenScroll>
   );
 }
