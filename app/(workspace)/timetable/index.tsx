@@ -9,8 +9,10 @@ import { FadeIn } from '@/components/motion';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import { CompactWeekGrid } from '@/components/CompactWeekGrid';
+import { AgendaWeek } from '@/components/AgendaWeek';
 import { DayFilter } from '@/components/DayFilter';
 import { useVisibleDays } from '@/hooks/useVisibleDays';
+import { useWeekStyle } from '@/hooks/useWeekStyle';
 import { laneOut } from '@/lib/timetableLayout';
 import { TimeField } from '@/components/TimeField';
 import { defaultScope, filterByTerm, TermFilter, type TermScope } from '@/components/TermFilter';
@@ -164,6 +166,7 @@ export default function Timetable() {
   const nowMinute = useNowMinute();
 
   const { visibleDays, toggleDay } = useVisibleDays();
+  const [style, setStyle] = useWeekStyle();
 
   const [firstHour, lastHour] = useMemo(() => {
     const blocks = [...classes.data, ...(showRoutines ? routines.data : [])];
@@ -375,6 +378,43 @@ export default function Timetable() {
             {/* Week is the default: the whole point of a timetable is seeing
                 the week. The timeline stays one tap away for the days that
                 need the hour-by-hour shape. */}
+            {/*
+              Outside the Week/Day wrapper on purpose. Week versus day is a
+              phone-only question — a desktop shows the whole week and has no
+              day mode — but grid versus list is a preference at every width,
+              and it is the same preference the dashboard reads.
+            */}
+            <View className="flex-row overflow-hidden rounded-lg border border-line">
+              {(['grid', 'agenda'] as const).map((option) => (
+                <Pressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: style === option }}
+                  accessibilityLabel={option === 'grid' ? 'Time grid' : 'Day-by-day list'}
+                  onPress={() => {
+                    feedback('toggle');
+                    setStyle(option);
+                  }}
+                  className={`flex-row items-center gap-1.5 px-3 py-1.5 ${
+                    style === option ? 'bg-ink' : 'bg-surface'
+                  }`}
+                >
+                  <Icon
+                    name={option === 'grid' ? 'layout-dashboard' : 'list'}
+                    size={13}
+                    tone={style === option ? 'inverse' : 'muted'}
+                  />
+                  <Text
+                    className={`text-xs font-semibold ${
+                      style === option ? 'text-paper' : 'text-muted'
+                    }`}
+                  >
+                    {option === 'grid' ? 'Grid' : 'List'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
             {grid ? null : (
               <View className="flex-row overflow-hidden rounded-lg border border-line">
                 {(['week', 'day'] as const).map((option) => (
@@ -403,42 +443,68 @@ export default function Timetable() {
           </View>
 
           {/*
-            Only on the phone grid: the desktop has room for all seven and
-            nothing to gain from hiding any.
+            Shown exactly when the view on screen obeys it.
+            
+            The desktop time grid ignores visibleDays, so offering the control
+            beside it would be a switch that does nothing. The list obeys it at
+            every width — and without this rule a student who hid the weekend on
+            their phone would open the desktop list to a weekend-less week with
+            no way to bring it back.
           */}
-          {!grid && view === 'week' ? (
+          {view === 'week' && (!grid || style === 'agenda') ? (
             <DayFilter visibleDays={visibleDays} onToggle={toggleDay} />
           ) : null}
 
           {grid ? (
-            <WeekGrid
-              classes={classes.data}
-              routines={showRoutines ? routines.data : []}
-              firstHour={firstHour}
-              lastHour={lastHour}
-              onSelect={(block) => setEditing(block)}
-              onSelectRoutine={(block) => setEditingRoutine(block)}
-              dates={weekDates}
-            />
+            style === 'agenda' ? (
+              <AgendaWeek
+                classes={classes.data}
+                routines={showRoutines ? routines.data : []}
+                visibleDays={visibleDays}
+                dates={weekDates}
+                onSelect={(block) => setEditing(block)}
+                onSelectRoutine={(block) => setEditingRoutine(block)}
+              />
+            ) : (
+              <WeekGrid
+                classes={classes.data}
+                routines={showRoutines ? routines.data : []}
+                firstHour={firstHour}
+                lastHour={lastHour}
+                onSelect={(block) => setEditing(block)}
+                onSelectRoutine={(block) => setEditingRoutine(block)}
+                dates={weekDates}
+              />
+            )
           ) : view === 'week' ? (
             /*
-             * The same grid as the desktop, compressed. The row-per-day list
-             * that used to live here was legible but shapeless: a timetable's
-             * whole value is seeing that Tuesday is empty until noon, and only
-             * a time grid shows that. The hour range is already trimmed to the
-             * hours actually taught, so this clears the fold without side
-             * scrolling.
+             * Whichever shape the student asked for. The grid shows that
+             * Tuesday is empty until noon and pays for it in legibility; the
+             * list gives that up and gets the code, the section and the room
+             * back at full size. Neither is the right answer for everyone,
+             * which is why it is a setting rather than a breakpoint.
              */
-            <CompactWeekGrid
-              classes={classes.data}
-              routines={showRoutines ? routines.data : []}
-              visibleDays={visibleDays}
-              fitViewport
-              dates={weekDates}
-              now={nowMinute}
-              onSelect={(block) => setEditing(block)}
-              onSelectRoutine={(block) => setEditingRoutine(block)}
-            />
+            style === 'agenda' ? (
+              <AgendaWeek
+                classes={classes.data}
+                routines={showRoutines ? routines.data : []}
+                visibleDays={visibleDays}
+                dates={weekDates}
+                onSelect={(block) => setEditing(block)}
+                onSelectRoutine={(block) => setEditingRoutine(block)}
+              />
+            ) : (
+              <CompactWeekGrid
+                classes={classes.data}
+                routines={showRoutines ? routines.data : []}
+                visibleDays={visibleDays}
+                fitViewport
+                dates={weekDates}
+                now={nowMinute}
+                onSelect={(block) => setEditing(block)}
+                onSelectRoutine={(block) => setEditingRoutine(block)}
+              />
+            )
           ) : (
             <View className="gap-3">
               <WeekStrip

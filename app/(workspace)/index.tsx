@@ -8,8 +8,10 @@ import { LogComposer } from '@/components/LectureLog';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import { CompactWeekGrid } from '@/components/CompactWeekGrid';
+import { AgendaWeek } from '@/components/AgendaWeek';
 import { DayFilter } from '@/components/DayFilter';
 import { useVisibleDays } from '@/hooks/useVisibleDays';
+import { useWeekStyle } from '@/hooks/useWeekStyle';
 import { defaultScope, filterByTerm } from '@/components/TermFilter';
 import { Badge, Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
@@ -314,6 +316,7 @@ function ThisWeek({
   const now = new Date();
   const [selectedClass, setSelectedClass] = useState<ResolvedClass | null>(null);
   const { visibleDays, toggleDay } = useVisibleDays();
+  const [style] = useWeekStyle();
 
 
   /** The dates this repeating week actually falls on, when a term is running. */
@@ -374,14 +377,26 @@ function ThisWeek({
             who hides the weekend in one place and finds it back in the other
             has two settings that look like one.
           */}
-          {compact ? <DayFilter visibleDays={visibleDays} onToggle={toggleDay} /> : null}
-          <CompactWeekGrid
-            classes={classes}
-            routines={routines}
-            visibleDays={visibleDays}
-            onSelect={setSelectedClass}
-            dates={weekDates}
-          />
+          {compact || style === 'agenda' ? (
+            <DayFilter visibleDays={visibleDays} onToggle={toggleDay} />
+          ) : null}
+          {style === 'agenda' ? (
+            <AgendaWeek
+              classes={classes}
+              routines={routines}
+              visibleDays={visibleDays}
+              onSelect={setSelectedClass}
+              dates={weekDates}
+            />
+          ) : (
+            <CompactWeekGrid
+              classes={classes}
+              routines={routines}
+              visibleDays={visibleDays}
+              onSelect={setSelectedClass}
+              dates={weekDates}
+            />
+          )}
         </>
       )}
 
