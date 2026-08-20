@@ -15,6 +15,7 @@ import { SetupScreen } from '@/components/SetupScreen';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { registerServiceWorker } from '@/services/appUpdate';
 import { trackViewportHeight } from '@/lib/viewport';
+import { useTheme } from '@/lib/theme';
 import { CrashScreen } from '@/components/CrashScreen';
 import { isFirebaseConfigured } from '@/services/firebase';
 import '../global.css';
@@ -67,6 +68,9 @@ export function ErrorBoundary({ error, retry }: { error: Error; retry: () => voi
 }
 
 export default function RootLayout() {
+  // The document is already painted with the right palette by the inline script
+  // in index.html; this is what keeps the native status bar in step with it.
+  const theme = useTheme();
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -109,7 +113,7 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) {
     return (
       <SafeAreaProvider>
-        <StatusBar style="dark" />
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
         <Splash />
       </SafeAreaProvider>
     );
@@ -117,7 +121,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       {isFirebaseConfigured ? (
         <AuthProvider>
           <AuthGate />

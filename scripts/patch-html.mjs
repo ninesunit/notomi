@@ -25,6 +25,29 @@ const DESCRIPTION =
   'Upload your lectures, ask questions grounded in your own sources, and let your ' +
   'syllabus fill in your to-do list.';
 
+/**
+ * Runs before the first paint, so the page never flashes cream and then turns
+ * dark. It reads the same key and the same JSON encoding `createPreference`
+ * writes, and falls back to the device setting — `system` is the default, and
+ * an unreadable store (private mode, cleared data) should behave like a fresh
+ * install rather than throw.
+ *
+ * src/lib/theme.ts takes over from here; this only owns the first frame.
+ */
+const THEME_SCRIPT = `
+    <script>
+      (function () {
+        var theme = 'light';
+        try {
+          var raw = localStorage.getItem('notomi:theme');
+          var choice = raw ? JSON.parse(raw) : 'system';
+          if (choice === 'dark') theme = 'dark';
+          else if (choice !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches) theme = 'dark';
+        } catch (e) {}
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>`;
+
 const HEAD = `
     <meta name="description" content="${DESCRIPTION}" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -53,6 +76,12 @@ html = html.replace(
 
 html = html.replace(/<title>[^<]*<\/title>/, `<title>${TITLE}</title>`);
 
+// Ahead of the stylesheet link Expo injects, so the attribute the palette is
+// keyed off is already on <html> before any of it is applied.
+if (!html.includes('notomi:theme')) {
+  html = html.replace('</title>', `</title>${THEME_SCRIPT}`);
+}
+
 // Idempotent: re-running must not stack duplicate tags.
 if (!html.includes('apple-touch-icon')) {
   html = html.replace('</head>', `${HEAD}  </head>`);
@@ -71,6 +100,9 @@ const checks = [
   ['apple-touch-icon', /apple-touch-icon/],
   ['manifest', /manifest\.webmanifest/],
   ['favicon', /favicon\.ico/],
+  // A broken injection here is invisible until someone loads the app in dark
+  // mode and watches it flash. The build should refuse to ship it instead.
+  ['theme-script', /notomi:theme/],
 ];
 
 const missing = checks.filter(([, pattern]) => !pattern.test(html)).map(([name]) => name);
