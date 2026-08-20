@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { Icon } from '@/components/Icon';
 import {
   addDoc,
@@ -11,18 +11,21 @@ import {
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
-import { DatePicker } from '@/components/DatePicker';
+import { FloatingAction } from '@/components/FloatingAction';
 import { ScreenScroll } from '@/components/ScreenScroll';
+import { Sheet } from '@/components/Sheet';
+import { TaskComposer, type NewTask } from '@/components/TaskComposer';
 import { SwipeableRow } from '@/components/Swipeable';
 import { nextPriority, TodoRow, type TodoActions } from '@/components/TodoRow';
-import { Button, Card, EmptyState, Field, Loading, Notice, PageHeader } from '@/components/ui';
+import { Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { useUndo } from '@/hooks/useUndo';
+import { PHONE } from '@/lib/breakpoints';
 import { bucketFor, dayKey, toDate, type DueBucket } from '@/lib/dates';
 import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
-import type { Priority, SubTask, Subject, Todo } from '@/lib/schema';
+import type { SubTask, Subject, Todo } from '@/lib/schema';
 import { sweepOrphanedTodos } from '@/services/ingestion';
 
 const GROUPS: { key: DueBucket; title: string; hint: string }[] = [
@@ -49,11 +52,10 @@ export default function Todos() {
     [all, hidden]
   );
 
-  const [title, setTitle] = useState('');
-  const [dueDate, setDueDate] = useState<Date | null>(null);
-  const [priority, setPriority] = useState<Priority>('medium');
-  const [subjectId, setSubjectId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const { width } = useWindowDimensions();
+  const phone = width < PHONE;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -116,35 +118,40 @@ export default function Todos() {
     return map;
   }, [open, subjects.data]);
 
-  async function addTodo() {
-    const trimmed = title.trim();
-    if (!trimmed) return;
-    setError(null);
+  /**
+   * The write, kept here rather than in the composer.
+   *
+   * The composer is shared with the Calendar, which saves to the same place but
+   * arrives with a due date already chosen. Leaving the Firestore call on the
+   * screen is what lets one component serve both.
+   */
+  const addTodo = useCallback(
+    async ({ title, dueDate, priority, subjectId }: NewTask) => {
+      setError(null);
+      const subject = subjects.data.find((candidate) => candidate.id === subjectId) ?? null;
 
-    const subject = subjects.data.find((candidate) => candidate.id === subjectId) ?? null;
-
-    try {
-      await addDoc(paths.todos(db, uid), {
-        title: trimmed,
-        dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,
-        isCompleted: false,
-        subjectId: subject?.id ?? null,
-        subjectName: subject?.name ?? null,
-        priority,
-        subTasks: [],
-        source: 'manual',
-        sourceDocumentId: null,
-        createdAt: serverTimestamp(),
-        completedAt: null,
-      });
-      setTitle('');
-      setDueDate(null);
-      setPriority('medium');
-      setSubjectId(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
-  }
+      try {
+        await addDoc(paths.todos(db, uid), {
+          title,
+          dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,
+          isCompleted: false,
+          subjectId: subject?.id ?? null,
+          subjectName: subject?.name ?? null,
+          priority,
+          subTasks: [],
+          source: 'manual',
+          sourceDocumentId: null,
+          createdAt: serverTimestamp(),
+          completedAt: null,
+        });
+        setComposerOpen(false);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+        throw caught;
+      }
+    },
+    [db, subjects.data, uid]
+  );
 
   /** Bulk clear. Batched so a long list is one round trip, not fifty. */
   const clearMany = useCallback(
@@ -208,7 +215,14 @@ export default function Todos() {
   };
 
   return (
-    <ScreenScroll maxWidth={860}>
+    <ScreenScroll
+      maxWidth={860}
+      floating={
+        phone ? (
+          <FloatingAction label="New task" onPress={() => setComposerOpen(true)} />
+        ) : undefined
+      }
+    >
       <PageHeader
         title="Task Board"
         subtitle={
@@ -254,78 +268,20 @@ export default function Todos() {
         </View>
       ) : null}
 
-      <Card className="mb-8 gap-4">
-        <Field
-          label="New task"
-          value={title}
-          onChangeText={setTitle}
-          placeholder="Draft the literature review"
-          onSubmitEditing={() => void addTodo()}
-          returnKeyType="done"
-        />
-
-        <View className="flex-row flex-wrap items-end gap-4">
-          <View className="flex-1 gap-2" style={{ minWidth: 220 }}>
-            <DatePicker value={dueDate} onChange={setDueDate} markers={markers} />
-          </View>
-
-          <View className="gap-2">
-            <Text className="text-sm font-medium text-muted">Priority</Text>
-            <View className="flex-row gap-2">
-              {(['low', 'medium', 'high'] as Priority[]).map((level) => (
-                <Pressable
-                  key={level}
-                  onPress={() => setPriority(level)}
-                  className={`rounded-lg border px-3 py-2 ${
-                    priority === level ? 'border-ink bg-ink' : 'border-line bg-paper'
-                  }`}
-                >
-                  <Text
-                    className={`text-xs font-semibold capitalize ${
-                      priority === level ? 'text-paper' : 'text-muted'
-                    }`}
-                  >
-                    {level}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        {subjects.data.length > 0 ? (
-          <View className="gap-2">
-            <Text className="text-sm font-medium text-muted">Subject (optional)</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {subjects.data.map((subject) => (
-                <Pressable
-                  key={subject.id}
-                  onPress={() => setSubjectId(subjectId === subject.id ? null : subject.id)}
-                  className={`rounded-lg border px-3 py-1.5 ${
-                    subjectId === subject.id ? 'border-accent bg-accent-soft' : 'border-line bg-paper'
-                  }`}
-                >
-                  <Text
-                    className={`text-xs font-medium ${
-                      subjectId === subject.id ? 'text-accent' : 'text-muted'
-                    }`}
-                  >
-                    {subject.moduleCode || subject.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
-
-        <Button
-          label="Add task"
-          icon="plus"
-          onPress={() => void addTodo()}
-          disabled={!title.trim()}
-          className="self-start"
-        />
-      </Card>
+      {/*
+        The form is the whole first screen on a phone.
+        
+        Header plus form came to roughly six hundred and fifty of an
+        eight-hundred-point viewport, so a student opening the Task Board saw a
+        form and no tasks. On a desktop it costs nothing and works well, so it
+        stays exactly as it was; on a phone it moves behind the button in the
+        corner and the list gets the screen.
+      */}
+      {phone ? null : (
+        <Card className="mb-8">
+          <TaskComposer subjects={subjects.data} markers={markers} onSubmit={addTodo} />
+        </Card>
+      )}
 
       {todos.loading ? (
         <Loading label="Loading your tasks…" />
@@ -333,7 +289,17 @@ export default function Todos() {
         <EmptyState
           icon="check-circle"
           title="Nothing on your list"
-          body="Add a task above, or upload a syllabus — every deadline Notomi finds in it lands here automatically."
+          body={
+            phone
+              ? 'Tap the button below, or upload a syllabus — every deadline Notomi finds in it lands here automatically.'
+              : 'Add a task above, or upload a syllabus — every deadline Notomi finds in it lands here automatically.'
+          }
+          // On a phone the form is no longer above to be the obvious next step.
+          action={
+            phone ? (
+              <Button label="New task" icon="plus" onPress={() => setComposerOpen(true)} />
+            ) : undefined
+          }
         />
       ) : (
         <View className="gap-8">
@@ -406,6 +372,25 @@ export default function Todos() {
           ) : null}
         </View>
       )}
+      {/*
+        dismissOnScrim is off deliberately: a half-typed task thrown away by a
+        stray tap on the backdrop is exactly the failure Sheet's own notes
+        describe, and this form takes longer to fill than most.
+      */}
+      <Sheet
+        visible={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        title="New task"
+        icon="plus"
+        dismissOnScrim={false}
+      >
+        <TaskComposer
+          subjects={subjects.data}
+          markers={markers}
+          onSubmit={addTodo}
+          autoFocus
+        />
+      </Sheet>
     </ScreenScroll>
   );
 }
