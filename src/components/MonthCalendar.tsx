@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import {
   addMonths,
   dayKey,
@@ -45,6 +45,7 @@ export function MonthCalendar({
   disablePast = false,
   compact = false,
 }: Props) {
+  const tones = useTones();
   const [uncontrolled, setUncontrolled] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
@@ -159,9 +160,9 @@ export function MonthCalendar({
                       className="h-1.5 w-1.5 rounded-full"
                       style={{
                         backgroundColor: isSelected
-                          ? '#F7F5EE'
+                          ? tones.inverse
                           : marker.overdue
-                            ? '#B0443E'
+                            ? tones.rose
                             : marker.color,
                       }}
                     />

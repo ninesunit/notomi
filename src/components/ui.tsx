@@ -261,12 +261,13 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
   { label, hint, className = '', ...props },
   ref
 ) {
+  const tones = useTones();
   return (
     <View className="gap-1.5">
       {label ? <Text className="text-sm font-medium text-muted">{label}</Text> : null}
       <TextInput
         ref={ref}
-        placeholderTextColor="#9A9488"
+        placeholderTextColor={tones.subtle}
         className={`rounded-xl border border-line bg-surface px-4 py-3 text-[15px] text-ink ${className}`}
         {...props}
       />
@@ -328,11 +329,10 @@ export function Notice({
   const icon = ({ rose: 'alert-circle', amber: 'alert-triangle', pine: 'check-circle' } as const)[
     tone
   ];
-  const color = { rose: '#B0443E', amber: '#B4832A', pine: '#2E6F5E' }[tone];
 
   return (
     <View className={`flex-row gap-3 rounded-xl p-3.5 ${surface}`}>
-      <Icon name={icon} size={16} color={color} style={{ marginTop: 2 }} />
+      <Icon name={icon} size={16} tone={tone} style={{ marginTop: 2 }} />
       <View className="flex-1 gap-1">
         <Text className={`text-sm font-semibold ${text}`}>{title}</Text>
         {body ? <Text className="text-sm leading-5 text-ink/80">{body}</Text> : null}

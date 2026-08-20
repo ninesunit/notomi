@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { query, where } from 'firebase/firestore';
-import { Icon } from '@/components/Icon';
+import { Icon, type IconTone } from '@/components/Icon';
 import { Card, Notice } from '@/components/ui';
 import { Sheet } from '@/components/Sheet';
 import { useCollection } from '@/hooks/useFirestore';
@@ -230,7 +230,7 @@ export function AttendanceGuard({
                       log?.status === status ? attendanceTone(status) : 'border-line bg-surface'
                     }`}
                   >
-                    <Icon name={attendanceIcon(status)} size={15} color={attendanceColor(status)} />
+                    <Icon name={attendanceIcon(status)} size={15} tone={attendanceIconTone(status)} />
                   </Pressable>
                 ))}
               </View>
@@ -292,8 +292,8 @@ function attendanceIcon(status: AttendanceStatus): 'check-circle-2' | 'x-circle'
   return status === 'present' ? 'check-circle-2' : status === 'absent' ? 'x-circle' : 'shield';
 }
 
-function attendanceColor(status: AttendanceStatus): string {
-  return status === 'present' ? '#2E6F5E' : status === 'absent' ? '#B0443E' : '#B4832A';
+function attendanceIconTone(status: AttendanceStatus): IconTone {
+  return status === 'present' ? 'pine' : status === 'absent' ? 'rose' : 'amber';
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

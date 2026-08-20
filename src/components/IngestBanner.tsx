@@ -3,9 +3,9 @@ import { Icon } from '@/components/Icon';
 import { useIngest } from '@/hooks/useIngest';
 
 const TONE = {
-  pine: { surface: 'bg-pine-soft', text: 'text-pine', icon: 'check-circle', color: '#2E6F5E' },
-  amber: { surface: 'bg-amber-soft', text: 'text-amber', icon: 'alert-triangle', color: '#B4832A' },
-  rose: { surface: 'bg-rose-soft', text: 'text-rose', icon: 'alert-circle', color: '#B0443E' },
+  pine: { surface: 'bg-pine-soft', text: 'text-pine', icon: 'check-circle' },
+  amber: { surface: 'bg-amber-soft', text: 'text-amber', icon: 'alert-triangle' },
+  rose: { surface: 'bg-rose-soft', text: 'text-rose', icon: 'alert-circle' },
 } as const;
 
 /**
@@ -21,7 +21,7 @@ export function IngestBanner() {
 
   return (
     <View className={`shrink-0 flex-row gap-3 border-b border-line px-5 py-3.5 md:px-10 ${tone.surface}`}>
-      <Icon name={tone.icon} size={16} color={tone.color} style={{ marginTop: 2 }} />
+      <Icon name={tone.icon} size={16} tone={summary.tone} style={{ marginTop: 2 }} />
 
       <View className="flex-1 gap-1">
         <Text className={`text-sm font-semibold ${tone.text}`}>{summary.title}</Text>
@@ -36,7 +36,7 @@ export function IngestBanner() {
         onPress={dismiss}
         className="h-6 w-6 items-center justify-center rounded"
       >
-        <Icon name="x" size={14} color={tone.color} />
+        <Icon name="x" size={14} tone={summary.tone} />
       </Pressable>
     </View>
   );

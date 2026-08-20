@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { AddMaterialModal } from '@/components/AddMaterialModal';
 import { DriveDropZone } from '@/components/DriveDropZone';
@@ -668,6 +668,7 @@ function ChapterHeading({
   count: number;
   onRename: (next: string) => void;
 }) {
+  const tones = useTones();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name === UNGROUPED ? '' : name);
 
@@ -685,7 +686,7 @@ function ChapterHeading({
           onChangeText={setDraft}
           autoFocus
           placeholder="Chapter name"
-          placeholderTextColor="#9A9488"
+          placeholderTextColor={tones.subtle}
           onSubmitEditing={commit}
           onBlur={commit}
           className="flex-1 rounded-lg border border-line bg-paper px-3 py-1.5 text-sm text-ink"

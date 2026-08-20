@@ -110,6 +110,7 @@ export function LogComposer({
   dense?: boolean;
   onLogged?: () => void;
 }) {
+  const tones = useTones();
   const [mode, setMode] = useState<Mode>('log');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -203,7 +204,7 @@ export function LogComposer({
             ? 'Today we did topic 4 and reached 4.2 — normalisation up to 3NF.'
             : 'Why does 3NF still allow redundancy?'
         }
-        placeholderTextColor="#9A9488"
+        placeholderTextColor={tones.subtle}
         className="min-h-[76px] rounded-xl border border-line bg-paper px-4 py-3 text-[15px] leading-6 text-ink"
         style={{ textAlignVertical: 'top' }}
       />

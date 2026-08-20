@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, Text, TextInput, useWindowDimensions, View } from 'react-native';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { CountdownChip } from './Countdown';
 import { DatePicker } from './DatePicker';
 import { Badge, IconButton } from './ui';
@@ -34,6 +34,7 @@ export function TodoRow({
   actions: TodoActions;
   overdue: boolean;
 }) {
+  const tones = useTones();
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState(false);
@@ -263,7 +264,7 @@ export function TodoRow({
               onChangeText={setDraft}
               onSubmitEditing={addSubTask}
               placeholder="Break this into a step…"
-              placeholderTextColor="#9A9488"
+              placeholderTextColor={tones.subtle}
               returnKeyType="done"
               className="flex-1 py-1.5 text-sm text-ink"
             />

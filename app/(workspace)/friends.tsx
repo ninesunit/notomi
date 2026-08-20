@@ -49,6 +49,7 @@ const FILTERS: { id: DirectoryFilter; label: string; icon: 'users' | 'graduation
 ];
 
 export default function Friends() {
+  const tones = useTones();
   const uid = useUid();
   const db = getDb();
   const router = useRouter();
@@ -254,7 +255,7 @@ export default function Friends() {
             value={lookup}
             onChangeText={setLookup}
             placeholder="Search students by name, @username, or university..."
-            placeholderTextColor="#9A9488"
+            placeholderTextColor={tones.subtle}
             autoCapitalize="none"
             autoCorrect={false}
             className="min-w-0 flex-1 py-3.5 text-[15px] text-ink"

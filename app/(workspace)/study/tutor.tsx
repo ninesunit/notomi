@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Link, useLocalSearchParams } from 'expo-router';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { getDocs, orderBy, query } from 'firebase/firestore';
 import { Markdown } from '@/components/Markdown';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -36,6 +36,7 @@ type Attempt = {
 const EXAM_LENGTH = 6;
 
 export default function Tutor() {
+  const tones = useTones();
   const params = useLocalSearchParams<{ subjectId?: string; mode?: string }>();
   const uid = useUid();
   const db = getDb();
@@ -268,7 +269,7 @@ export default function Tutor() {
             value={draft}
             onChangeText={setDraft}
             placeholder="Answer in your own words — a few sentences is fine."
-            placeholderTextColor="#9A9488"
+            placeholderTextColor={tones.subtle}
             multiline
             editable={!grading}
             className="min-h-[140px] rounded-xl border border-line bg-paper px-4 py-3 text-[15px] leading-6 text-ink"

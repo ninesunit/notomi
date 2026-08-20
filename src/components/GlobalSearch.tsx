@@ -257,7 +257,7 @@ export function GlobalSearch() {
                 value={term}
                 onChangeText={setTerm}
                 placeholder="Search subjects, documents, notes and to-dos"
-                placeholderTextColor="#9A9488"
+                placeholderTextColor={tones.subtle}
                 autoCorrect={false}
                 autoCapitalize="none"
                 onSubmitEditing={() => hits[selected] && go(hits[selected])}

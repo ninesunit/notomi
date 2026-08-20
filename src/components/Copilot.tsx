@@ -199,7 +199,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
           multiline
           editable={!busy}
           placeholder={hearing ? 'Listening…' : 'Ask, or say what you have to do'}
-          placeholderTextColor="#9A9488"
+          placeholderTextColor={tones.subtle}
           onSubmitEditing={() => void send(draft)}
           className="max-h-24 min-h-[44px] flex-1 rounded-2xl border border-line bg-paper px-4 py-2.5 text-[15px] leading-5 text-ink"
           style={{ textAlignVertical: 'top' }}

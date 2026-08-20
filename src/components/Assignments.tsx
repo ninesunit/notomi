@@ -375,6 +375,7 @@ function AddAssignment({
   subjectName: string;
   onClose: () => void;
 }) {
+  const tones = useTones();
   const [pasted, setPasted] = useState('');
   const [file, setFile] = useState<MaterialFile | null>(null);
   const [busy, setBusy] = useState(false);
@@ -512,7 +513,7 @@ function AddAssignment({
             multiline
             editable={!file}
             placeholder="Paste the task description, requirements and deadline…"
-            placeholderTextColor="#9A9488"
+            placeholderTextColor={tones.subtle}
             className={`min-h-[120px] rounded-xl border border-line px-4 py-3 text-[15px] leading-6 text-ink ${
               file ? 'bg-sand opacity-50' : 'bg-paper'
             }`}

@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Link, useLocalSearchParams } from 'expo-router';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { AudioOverview } from '@/components/AudioOverview';
 import { FileDropZone } from '@/components/FileDropZone';
@@ -41,6 +41,7 @@ const STARTERS = [
 ];
 
 export default function Reader({ parentHref }: { parentHref?: string } = {}) {
+  const tones = useTones();
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>();
   const uid = useUid();
   const db = getDb();
@@ -416,7 +417,7 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
             value={draft}
             onChangeText={setDraft}
             placeholder="Ask about your sources…"
-            placeholderTextColor="#9A9488"
+            placeholderTextColor={tones.subtle}
             multiline
             className="max-h-32 flex-1 px-3 py-2.5 text-[15px] text-ink"
             onSubmitEditing={() => void send(draft)}

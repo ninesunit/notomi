@@ -285,7 +285,7 @@ export function DocumentChat({
           value={draft}
           onChangeText={setDraft}
           placeholder="Ask about this material…"
-          placeholderTextColor="#9A9488"
+          placeholderTextColor={tones.subtle}
           multiline
           onSubmitEditing={() => void send(draft)}
           blurOnSubmit
