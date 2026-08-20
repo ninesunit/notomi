@@ -79,7 +79,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
                     <Icon
                       name={item.icon}
                       size={16}
-                      color={active ? '#FFFFFF' : '#6F6A5F'}
+                      tone={active ? 'inverse' : 'muted'}
                     />
                     <Text
                       className={`text-[15px] ${
@@ -122,7 +122,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
               <Icon
                 name={SETTINGS_ITEM.icon}
                 size={15}
-                color={isActive(pathname, SETTINGS_ITEM.href) ? '#FFFFFF' : '#6F6A5F'}
+                tone={isActive(pathname, SETTINGS_ITEM.href) ? 'inverse' : 'muted'}
               />
               <Text
                 className={`text-sm font-medium ${

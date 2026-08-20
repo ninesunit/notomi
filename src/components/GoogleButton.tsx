@@ -1,4 +1,5 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { useTones } from '@/components/Icon';
 import Svg, { Path } from 'react-native-svg';
 
 /**
@@ -40,6 +41,7 @@ export function GoogleButton({
   disabled?: boolean;
   label?: string;
 }) {
+  const tones = useTones();
   const isDisabled = disabled || loading;
 
   return (
@@ -54,7 +56,7 @@ export function GoogleButton({
       }`}
     >
       {loading ? (
-        <ActivityIndicator size="small" color="#1B1A17" />
+        <ActivityIndicator size="small" color={tones.ink} />
       ) : (
         <View className="h-[18px] w-[18px] items-center justify-center">
           <GoogleMark />

@@ -547,7 +547,7 @@ function PrivacyToggle({
       className="flex-row items-center gap-3 rounded-xl border border-line bg-paper p-3"
     >
       <View className={`h-9 w-9 items-center justify-center rounded-lg ${value ? 'bg-pine-soft' : 'bg-sand'}`}>
-        <Icon name={icon} size={16} color={value ? '#2E6F5E' : '#6F6A5F'} />
+        <Icon name={icon} size={16} tone={value ? 'pine' : 'muted'} />
       </View>
       <View className="min-w-0 flex-1 gap-0.5">
         <Text className="text-sm font-semibold text-ink">{title}</Text>

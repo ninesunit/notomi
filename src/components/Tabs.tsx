@@ -98,7 +98,7 @@ export function Tabs<T extends string>({
               }}
               className="h-10 min-w-0 flex-1 flex-row items-center justify-center rounded-xl sm:h-auto sm:flex-none sm:px-3.5 sm:py-2.5"
             >
-              <Icon name={tab.icon} size={14} color={active ? '#B4552D' : '#6F6A5F'} />
+              <Icon name={tab.icon} size={14} tone={active ? 'accent' : 'muted'} />
               <Text
                 className={`hidden text-[13px] sm:ml-2 sm:inline ${
                   active ? 'font-semibold text-ink' : 'font-medium text-muted'

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { orderBy, query, Timestamp } from 'firebase/firestore';
 import { useCollection } from '@/hooks/useFirestore';
 import { formatDue, toDate } from '@/lib/dates';
@@ -530,6 +530,7 @@ function AddAssignment({
 
 /** The editable preview of what Gemini read, shown before anything is written. */
 function DraftReview({ draft, onChange }: { draft: Draft; onChange: (next: Draft) => void }) {
+  const tones = useTones();
   const due = toDate(draft.dueDate);
 
   return (
@@ -559,7 +560,7 @@ function DraftReview({ draft, onChange }: { draft: Draft; onChange: (next: Draft
               <Icon
                 name={option.icon}
                 size={13}
-                color={draft.kind === option.id ? '#FFFFFF' : option.color}
+                color={draft.kind === option.id ? tones.inverse : option.color}
               />
               <Text
                 className={`text-xs font-semibold ${

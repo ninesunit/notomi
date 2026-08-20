@@ -546,7 +546,7 @@ function TaskRow({ entry, first }: { entry: Entry; first: boolean }) {
           <Icon
             name={entry.overdue ? 'alert-circle' : 'check-square'}
             size={14}
-            color={entry.overdue ? '#B0443E' : '#6F6A5F'}
+            tone={entry.overdue ? 'rose' : 'muted'}
           />
         </View>
 

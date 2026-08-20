@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useTones } from '@/components/Icon';
 import { ActivityIndicator, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Slot, useRouter, useSegments } from 'expo-router';
@@ -21,9 +22,10 @@ import { isFirebaseConfigured } from '@/services/firebase';
 import '../global.css';
 
 function Splash() {
+  const tones = useTones();
   return (
     <View className="flex-1 items-center justify-center bg-paper">
-      <ActivityIndicator color="#B4552D" />
+      <ActivityIndicator color={tones.accent} />
     </View>
   );
 }

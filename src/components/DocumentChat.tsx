@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { limit, orderBy, query } from 'firebase/firestore';
 import { Markdown } from './Markdown';
 import { IconButton, Notice } from './ui';
@@ -47,6 +47,7 @@ export function DocumentChat({
   sources: { title: string; text: string }[];
   heading: string;
 }) {
+  const tones = useTones();
   const db = getDb();
   const [chatId, setChatId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -271,7 +272,7 @@ export function DocumentChat({
 
         {thinking ? (
           <View className="flex-row items-center gap-2 self-start rounded-2xl bg-sand px-3 py-2.5">
-            <ActivityIndicator size="small" color="#B4552D" />
+            <ActivityIndicator size="small" color={tones.accent} />
             <Text className="text-xs text-muted">Reading your material…</Text>
           </View>
         ) : null}

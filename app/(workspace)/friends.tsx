@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import { ShareMaterial } from '@/components/social/ShareMaterial';
@@ -630,13 +630,14 @@ function StudentCard({
   selected?: boolean;
   actions: React.ReactNode;
 }) {
+  const tones = useTones();
   const state = presenceState(presence);
   return (
     <Card className={`gap-4 p-4 sm:p-5 ${selected ? 'border-pine' : ''}`}>
       <View className="flex-row items-start gap-3">
         <Avatar
           name={profile.displayName}
-          color={profile.avatarPreset || profile.color || '#B4552D'}
+          color={profile.avatarPreset || profile.color || tones.accent}
           avatarUrl={profile.avatarUrl}
           statusColor={state.color}
         />
@@ -715,7 +716,7 @@ function FilterPill({
       onPress={onPress}
       className={`flex-row items-center gap-2 rounded-full px-3 py-2 ${active ? 'bg-ink' : 'bg-sand'}`}
     >
-      <Icon name={icon} size={14} color={active ? '#FFFFFF' : '#6F6A5F'} />
+      <Icon name={icon} size={14} tone={active ? 'inverse' : 'muted'} />
       <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}>{label}</Text>
     </Pressable>
   );

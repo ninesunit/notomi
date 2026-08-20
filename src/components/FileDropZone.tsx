@@ -64,7 +64,7 @@ export function FileDropZone({
           dragging ? 'border-accent bg-accent-soft' : 'border-line bg-paper'
         }`}
       >
-        <Icon name="upload-cloud" size={compact ? 18 : 22} color={dragging ? '#B4552D' : '#9A9488'} />
+        <Icon name="upload-cloud" size={compact ? 18 : 22} tone={dragging ? 'accent' : 'subtle'} />
         <View className="items-center gap-1">
           <Text className="text-sm font-semibold text-ink">{title}</Text>
           <Text className="text-center text-xs leading-5 text-muted">{body}</Text>

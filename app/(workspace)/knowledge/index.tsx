@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { getDocs, orderBy, query } from 'firebase/firestore';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { KnowledgeTabs, type KnowledgeTab } from '@/components/KnowledgeTabs';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Button, Card, EmptyState, Loading, Notice, PageHeader, Touchable } from '@/components/ui';
@@ -126,6 +126,7 @@ type VaultRow = { subject: Subject; document: SourceDocument };
  * "the tutorials for Research Methods" is the question actually being asked.
  */
 function DocumentVault({ onOpen }: { onOpen: (subjectId: string, documentId: string) => void }) {
+  const tones = useTones();
   const uid = useUid();
   const subjects = useCollection<Subject>(paths.subjects(getDb(), uid), [uid]);
   const [rows, setRows] = useState<VaultRow[]>([]);
@@ -383,7 +384,7 @@ function DocumentVault({ onOpen }: { onOpen: (subjectId: string, documentId: str
                           <Icon
                             name={picking ? (ticked ? 'check-circle-2' : 'circle') : 'file-text'}
                             size={16}
-                            color={picking && ticked ? subject.color : picking ? '#9A9488' : subject.color}
+                            color={picking && ticked ? subject.color : picking ? tones.subtle : subject.color}
                           />
                           <View className="flex-1 gap-0.5">
                             <Text className="text-sm font-semibold text-ink" numberOfLines={1}>

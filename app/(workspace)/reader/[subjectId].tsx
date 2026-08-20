@@ -281,7 +281,7 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
             onPress={() => setShowAttachments((value) => !value)}
             className={`h-9 w-9 items-center justify-center rounded-lg ${showAttachments ? 'bg-accent-soft' : ''}`}
           >
-            <Icon name="paperclip" size={15} color={showAttachments ? '#B4552D' : '#6F6A5F'} />
+            <Icon name="paperclip" size={15} tone={showAttachments ? 'accent' : 'muted'} />
           </Pressable>
 
           {messages.length > 0 ? (
@@ -432,7 +432,7 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
               draft.trim() && !thinking ? 'bg-ink' : 'bg-sand'
             }`}
           >
-            <Icon name="arrow-up" size={17} color={draft.trim() && !thinking ? '#F7F5EE' : '#9A9488'} />
+            <Icon name="arrow-up" size={17} tone={draft.trim() && !thinking ? 'inverse' : 'subtle'} />
           </Pressable>
         </View>
         <Text className="mx-auto mt-2 w-full text-center text-xs text-subtle" style={{ maxWidth: 880 }}>

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { useCollection } from '@/hooks/useFirestore';
 import { formatDateTime } from '@/lib/dates';
@@ -180,7 +180,7 @@ export function LogComposer({
             <Icon
               name={option.icon}
               size={12}
-              color={mode === option.id ? '#F7F5EE' : '#6F6A5F'}
+              tone={mode === option.id ? 'inverse' : 'muted'}
             />
             <Text
               className={`text-xs font-semibold ${
@@ -258,6 +258,7 @@ function LogEntry({
   subjectId: string;
   log: LectureLog;
 }) {
+  const tones = useTones();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -309,7 +310,7 @@ function LogEntry({
 
       {pending ? (
         <View className="flex-row items-center gap-2">
-          <ActivityIndicator size="small" color="#B4552D" />
+          <ActivityIndicator size="small" color={tones.accent} />
           <Text className="text-xs text-subtle">Notes are still being written…</Text>
         </View>
       ) : null}

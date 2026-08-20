@@ -235,8 +235,8 @@ function FileRow({ entry, onRemove }: { entry: FileState; onRemove: () => void }
                   : 'file-text'
           }
           size={15}
-          color={
-            entry.status === 'done' ? '#2E6F5E' : entry.status === 'failed' ? '#B0443E' : '#6F6A5F'
+          tone={
+            entry.status === 'done' ? 'pine' : entry.status === 'failed' ? 'rose' : 'muted'
           }
         />
         <Text className="flex-1 text-sm font-medium text-ink" numberOfLines={1}>

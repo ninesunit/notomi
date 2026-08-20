@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { useUid } from '@/hooks/useAuth';
 import type { CopilotTurn } from '@/lib/ai';
 import { feedback } from '@/lib/sound';
@@ -29,6 +29,7 @@ const OPENERS = [
 ];
 
 export function Copilot({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const tones = useTones();
   const uid = useUid();
 
   const [turns, setTurns] = useState<CopilotTurn[]>([]);
@@ -178,7 +179,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
 
           {busy ? (
             <View className="flex-row items-center gap-2 self-start px-1">
-              <ActivityIndicator size="small" color="#B4552D" />
+              <ActivityIndicator size="small" color={tones.accent} />
               <Text className="text-xs text-subtle">Thinking…</Text>
             </View>
           ) : null}
@@ -213,7 +214,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
             draft.trim() && !busy ? 'bg-ink' : 'bg-line'
           }`}
         >
-          <Icon name="arrow-up" size={18} color={draft.trim() && !busy ? '#F7F5EE' : '#9A9488'} />
+          <Icon name="arrow-up" size={18} tone={draft.trim() && !busy ? 'inverse' : 'subtle'} />
         </Pressable>
       </View>
     </Sheet>
@@ -262,7 +263,7 @@ function MicButton({ hearing, onPress }: { hearing: boolean; onPress: () => void
             hearing ? 'bg-accent' : 'border border-line bg-surface'
           }`}
         >
-          <Icon name="mic" size={18} color={hearing ? '#F7F5EE' : '#6F6A5F'} />
+          <Icon name="mic" size={18} tone={hearing ? 'inverse' : 'muted'} />
         </View>
       </Animated.View>
     </Pressable>

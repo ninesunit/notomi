@@ -22,7 +22,7 @@ import { IngestProvider } from '@/hooks/useIngest';
 import { ReminderProvider } from '@/hooks/useReminders';
 import { UndoProvider } from '@/hooks/useUndo';
 import { useWorkspaceChrome, WorkspaceChromeProvider } from '@/hooks/useWorkspaceChrome';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { isDetailRoute } from '@/components/nav';
 import { paths } from '@/lib/paths';
 import type { ClassBlock } from '@/lib/schema';
@@ -74,6 +74,7 @@ export default function WorkspaceLayout() {
 }
 
 function WorkspaceShell() {
+  const tones = useTones();
   const { width } = useWindowDimensions();
   const insets = useSafeArea();
   const { user } = useAuth();
@@ -174,7 +175,7 @@ function WorkspaceShell() {
   if (!user) {
     return (
       <View className="h-full w-full items-center justify-center bg-paper">
-        <ActivityIndicator color="#B4552D" />
+        <ActivityIndicator color={tones.accent} />
       </View>
     );
   }

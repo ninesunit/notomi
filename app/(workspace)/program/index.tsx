@@ -582,7 +582,7 @@ function SubjectRow({
           >
             {subject.grade ?? 'Grade'}
           </Text>
-          <Icon name="chevron-down" size={11} color={subject.grade ? '#2E6F5E' : '#6F6A5F'} />
+          <Icon name="chevron-down" size={11} tone={subject.grade ? 'pine' : 'muted'} />
         </Pressable>
 
         <Pressable
@@ -597,11 +597,11 @@ function SubjectRow({
             moveOpen ? 'bg-ink' : 'bg-sand'
           }`}
         >
-          <Icon name="layers" size={12} color={moveOpen ? '#F7F5EE' : '#6F6A5F'} />
+          <Icon name="layers" size={12} tone={moveOpen ? 'inverse' : 'muted'} />
           <Text className={`text-xs font-semibold ${moveOpen ? 'text-paper' : 'text-muted'}`}>
             Move
           </Text>
-          <Icon name="chevron-down" size={11} color={moveOpen ? '#F7F5EE' : '#6F6A5F'} />
+          <Icon name="chevron-down" size={11} tone={moveOpen ? 'inverse' : 'muted'} />
         </Pressable>
       </View>
 
@@ -953,7 +953,7 @@ function ViewChip({
       onPress={onPress}
       className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${active ? 'bg-ink' : 'bg-sand'}`}
     >
-      <Icon name={icon} size={13} color={active ? '#F7F5EE' : '#6F6A5F'} />
+      <Icon name={icon} size={13} tone={active ? 'inverse' : 'muted'} />
       <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}>
         {label}
       </Text>

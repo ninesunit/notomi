@@ -405,7 +405,7 @@ function DrawerLink({
           active ? 'bg-ink' : ''
         }`}
       >
-        <Icon name={icon} size={17} color={active ? '#FFFFFF' : '#6F6A5F'} />
+        <Icon name={icon} size={17} tone={active ? 'inverse' : 'muted'} />
         <Text
           className={`text-[15px] ${active ? 'font-semibold text-paper' : 'font-medium text-muted'}`}
         >

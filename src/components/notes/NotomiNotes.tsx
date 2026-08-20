@@ -1440,7 +1440,7 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
                 }}
                 className={`h-8 w-8 items-center justify-center rounded-lg ${brush === entry.id ? 'bg-ink' : 'bg-sand'}`}
               >
-                <Icon name={entry.icon} size={15} color={brush === entry.id ? '#FFFFFF' : '#6F6A5F'} />
+                <Icon name={entry.icon} size={15} tone={brush === entry.id ? 'inverse' : 'muted'} />
               </Pressable>
             ))}
             <ToolbarDivider />
@@ -1663,7 +1663,7 @@ function ToolButton({
       onPress={onPress}
       className={`h-9 w-9 items-center justify-center rounded-xl ${active ? 'bg-ink' : danger ? 'bg-rose-soft' : 'bg-transparent'} ${disabled ? 'opacity-40' : ''}`}
     >
-      <Icon name={icon} size={17} color={active ? '#FFFFFF' : danger ? '#B0443E' : '#6F6A5F'} />
+      <Icon name={icon} size={17} tone={active ? 'inverse' : danger ? 'rose' : 'muted'} />
     </Pressable>
   );
 }

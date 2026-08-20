@@ -324,7 +324,7 @@ function GpaRow({
           <Text className={`text-xs font-bold ${row.grade ? 'text-pine' : 'text-muted'}`}>
             {row.grade ?? 'Grade'}
           </Text>
-          <Icon name="chevron-down" size={11} color={row.grade ? '#2E6F5E' : '#6F6A5F'} />
+          <Icon name="chevron-down" size={11} tone={row.grade ? 'pine' : 'muted'} />
         </Pressable>
 
         {onRemove ? (

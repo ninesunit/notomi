@@ -119,7 +119,7 @@ export function RemindersCard() {
                             : 'clock'
                       }
                       size={14}
-                      color={reminder.kind === 'deadline' ? '#B0443E' : '#6F6A5F'}
+                      tone={reminder.kind === 'deadline' ? 'rose' : 'muted'}
                     />
                     <View className="flex-1 gap-0.5">
                       <Text className="text-sm font-medium text-ink" numberOfLines={1}>

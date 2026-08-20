@@ -103,7 +103,7 @@ export function DatePicker({
         onPress={openPicker}
         className="flex-row items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-3"
       >
-        <Icon name="calendar" size={15} color={value ? '#B4552D' : '#9A9488'} />
+        <Icon name="calendar" size={15} tone={value ? 'accent' : 'subtle'} />
         <Text className={`flex-1 text-[15px] ${value ? 'text-ink' : 'text-subtle'}`}>{summary}</Text>
         {value ? (
           <Pressable

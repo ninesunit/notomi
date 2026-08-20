@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { getDocs, orderBy, query } from 'firebase/firestore';
 import { useUid } from '@/hooks/useAuth';
 import { paths } from '@/lib/paths';
@@ -56,6 +56,7 @@ const KIND_META: Record<Hit['kind'], { icon: 'folder' | 'file-text' | 'feather' 
 };
 
 export function GlobalSearch() {
+  const tones = useTones();
   const uid = useUid();
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -262,7 +263,7 @@ export function GlobalSearch() {
                 onSubmitEditing={() => hits[selected] && go(hits[selected])}
                 className="flex-1 text-[15px] text-ink"
               />
-              {loading ? <ActivityIndicator size="small" color="#B4552D" /> : null}
+              {loading ? <ActivityIndicator size="small" color={tones.accent} /> : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Close"

@@ -604,7 +604,7 @@ function ActionButton({
         active ? 'bg-ink' : 'bg-sand'
       }`}
     >
-      <Icon name={icon} size={13} color={active ? '#F7F5EE' : '#6F6A5F'} />
+      <Icon name={icon} size={13} tone={active ? 'inverse' : 'muted'} />
       <Text className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}>{label}</Text>
     </Pressable>
   );

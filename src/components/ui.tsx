@@ -13,7 +13,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import { Icon, type IconName } from '@/components/Icon';
+import { Icon, type IconName, useTones } from '@/components/Icon';
 import { feedback } from '@/lib/sound';
 
 /* ---------------------------- Touchable ---------------------------- */
@@ -149,8 +149,10 @@ export function Button({
   disabled = false,
   className = '',
 }: ButtonProps) {
+  const tones = useTones();
   const isDisabled = disabled || loading;
-  const iconColor = variant === 'primary' ? '#F7F5EE' : variant === 'danger' ? '#B0443E' : '#1B1A17';
+  const iconColor =
+    variant === 'primary' ? tones.inverse : variant === 'danger' ? tones.rose : tones.ink;
 
   // Scale is applied here rather than in a wrapper so every button in the app
   // responds to touch without each screen opting in.
@@ -301,9 +303,10 @@ export function EmptyState({
 /* ----------------------------- Loading ---------------------------- */
 
 export function Loading({ label = 'Loading…' }: { label?: string }) {
+  const tones = useTones();
   return (
     <View className="items-center justify-center gap-3 py-16">
-      <ActivityIndicator color="#B4552D" />
+      <ActivityIndicator color={tones.accent} />
       <Text className="text-sm text-muted">{label}</Text>
     </View>
   );
@@ -389,7 +392,7 @@ export function IconButton({
       onPress={onPress}
       className="h-9 w-9 items-center justify-center rounded-lg"
     >
-      <Icon name={icon} size={16} color={tone === 'rose' ? '#B0443E' : '#6F6A5F'} />
+      <Icon name={icon} size={16} tone={tone === 'rose' ? 'rose' : 'muted'} />
     </Pressable>
   );
 }

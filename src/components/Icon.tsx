@@ -270,6 +270,16 @@ const TONES = {
 
 export type IconTone = keyof typeof TONES;
 
+/**
+ * The same tones, for the handful of call sites that cannot use the prop: an
+ * ActivityIndicator, or an icon whose colour is a subject's on one branch and
+ * the theme's on the other. Reading them through a hook rather than an export
+ * is what will let the dark palette arrive without touching those sites again.
+ */
+export function useTones(): Record<IconTone, string> {
+  return TONES;
+}
+
 export function Icon({
   name,
   size = 16,

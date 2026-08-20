@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
 import { ImportReview } from '@/components/ImportReview';
 import { FileDropZone } from '@/components/FileDropZone';
@@ -357,7 +357,7 @@ export default function Timetable() {
               <Icon
                 name={showRoutines ? 'eye' : 'eye-off'}
                 size={13}
-                color={showRoutines ? '#1B1A17' : '#9A9488'}
+                tone={showRoutines ? 'ink' : 'subtle'}
               />
               <Text
                 className={`text-xs font-semibold ${showRoutines ? 'text-ink' : 'text-subtle'}`}
@@ -1573,6 +1573,7 @@ function RoutineForm({
   onClose: () => void;
   onDelete: (routineId: string) => void;
 }) {
+  const tones = useTones();
   const [title, setTitle] = useState(block?.title ?? '');
   const [category, setCategory] = useState(block?.category ?? ROUTINE_CATEGORIES[0].id);
   const [venue, setVenue] = useState(block?.venue ?? '');
@@ -1676,7 +1677,7 @@ function RoutineForm({
               <Icon
                 name={option.icon}
                 size={13}
-                color={category === option.id ? '#FFFFFF' : option.color}
+                color={category === option.id ? tones.inverse : option.color}
               />
               <Text
                 className={`text-xs font-semibold ${

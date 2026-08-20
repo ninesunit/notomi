@@ -68,7 +68,7 @@ export function DriveMigrationModal({
             <Icon
               name={toMove === 0 && state.phase !== 'migrating' ? 'check-circle' : 'upload-cloud'}
               size={14}
-              color={toMove === 0 && state.phase !== 'migrating' ? '#2E6F5E' : '#6F6A5F'}
+              tone={toMove === 0 && state.phase !== 'migrating' ? 'pine' : 'muted'}
             />
             <Text className="flex-1 text-[13px] font-medium text-ink">
               {state.message ||

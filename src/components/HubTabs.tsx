@@ -42,7 +42,7 @@ export function HubTabs<T extends string>({
                   active ? 'bg-ink' : 'bg-transparent'
                 }`}
               >
-                <Icon name={tab.icon} size={15} color={active ? '#FFFFFF' : '#6F6A5F'} />
+                <Icon name={tab.icon} size={15} tone={active ? 'inverse' : 'muted'} />
                 <Text
                   className={`hidden text-sm font-semibold sm:ml-2 sm:inline ${
                     active ? 'text-paper' : 'text-muted'

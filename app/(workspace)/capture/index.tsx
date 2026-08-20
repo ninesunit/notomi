@@ -194,7 +194,7 @@ export default function Capture() {
                 busy ? 'bg-sand' : 'bg-ink'
               }`}
             >
-              <Icon name="camera" size={30} color={busy ? '#9A9488' : '#F7F5EE'} />
+              <Icon name="camera" size={30} tone={busy ? 'subtle' : 'inverse'} />
             </View>
 
             <Text className="text-base font-semibold text-ink">

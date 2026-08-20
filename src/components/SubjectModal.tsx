@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { Sheet } from './Sheet';
-import { Icon } from './Icon';
+import { Icon, useTones } from './Icon';
 import { Button, Field, Touchable } from './ui';
 import { paths } from '@/lib/paths';
 import {
@@ -63,6 +63,7 @@ function SubjectForm({
   onClose: () => void;
   onCreated?: (subjectId: string) => void;
 }) {
+  const tones = useTones();
   /**
    * A name captured from a screenshot arrives in block capitals. The editor
    * offers the calmed version pre-typed rather than rewriting it behind the
@@ -188,7 +189,7 @@ function SubjectForm({
                 >
                   {/* Tinted with the chosen colour so the two pickers read as
                       one decision rather than two unrelated grids. */}
-                  <Icon name={option as never} size={18} color={selected ? color : '#6F6A5F'} />
+                  <Icon name={option as never} size={18} color={selected ? color : tones.muted} />
                 </Touchable>
               );
             })}

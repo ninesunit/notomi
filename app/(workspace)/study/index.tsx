@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Link, useLocalSearchParams } from 'expo-router';
-import { Icon } from '@/components/Icon';
+import { Icon, useTones } from '@/components/Icon';
 import { getDocs, orderBy, query, where } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Badge, Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
@@ -22,6 +22,7 @@ import { logSession } from '@/services/sessions';
 type Phase = 'choosing' | 'generating' | 'active' | 'results';
 
 export default function StudyCenter() {
+  const tones = useTones();
   const params = useLocalSearchParams<{ subjectId?: string }>();
   const uid = useUid();
   const db = getDb();
@@ -484,7 +485,7 @@ export default function StudyCenter() {
                   className="h-10 w-10 items-center justify-center rounded-xl"
                   style={{ backgroundColor: `${candidate.color || '#B4552D'}1A` }}
                 >
-                  <Icon name="book-open" size={16} color={candidate.color || '#B4552D'} />
+                  <Icon name="book-open" size={16} color={candidate.color || tones.accent} />
                 </View>
 
                 <View className="flex-1 gap-1">
