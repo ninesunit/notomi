@@ -57,6 +57,7 @@ import {
 } from '@/services/timetable';
 import { findActiveSemester } from '@/services/academicPlanner';
 import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
+import { GRID as GRID_BREAKPOINT, PHONE } from '@/lib/breakpoints';
 
 /**
  * The timetable.
@@ -70,7 +71,7 @@ import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
  */
 
 /** At or above this width the whole week fits; below it, one day at a time. */
-const GRID_BREAKPOINT = 900;
+
 
 export default function Timetable() {
   const uid = useUid();
@@ -133,7 +134,7 @@ export default function Timetable() {
 
   const grid = width >= GRID_BREAKPOINT;
   /** A phone, where the secondary controls cost more rows than they are worth. */
-  const tight = width < 640;
+  const tight = width < PHONE;
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {

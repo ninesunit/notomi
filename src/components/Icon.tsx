@@ -238,18 +238,61 @@ const ICONS = {
 
 export type IconName = keyof typeof ICONS;
 
+/**
+ * What an icon is *for*, rather than what colour it happens to be today.
+ *
+ * Every one of the 236 icons in the app passes an explicit colour, and 213 of
+ * those pass a hex literal — because this component takes a plain string, so
+ * Tailwind classes cannot reach inside it. That was fine while there was one
+ * palette. It stops being fine the moment there are two, since a hex baked into
+ * a call site cannot know which one is active.
+ *
+ * The mapping turned out to be mechanical rather than a matter of taste: those
+ * 213 sites use only eleven distinct values, and each maps onto exactly one
+ * meaning. So this is a rename with a purpose, not a redesign.
+ */
+const TONES = {
+  /** Body text and most glyphs. */
+  muted: '#6F6A5F',
+  /** Secondary, de-emphasised. */
+  subtle: '#9A9488',
+  /** Primary text weight. */
+  ink: '#18181B',
+  /** On a dark or accent-filled surface. */
+  inverse: '#F7F5EE',
+  accent: '#B4552D',
+  pine: '#2E6F5E',
+  amber: '#B4832A',
+  rose: '#B0443E',
+  /** Dividers and other structural marks. */
+  line: '#C9C4B8',
+} as const;
+
+export type IconTone = keyof typeof TONES;
+
 export function Icon({
   name,
   size = 16,
-  color = '#1C1917',
+  color,
+  tone,
   strokeWidth = 1.75,
   ...props
 }: SvgProps & {
   name: IconName;
   size?: number;
+  /**
+   * An explicit colour, for the cases a tone cannot express: subject colours,
+   * notebook colours, anything chosen by the student rather than by the theme.
+   * Wins over `tone` when both are given.
+   */
   color?: string;
+  /** Preferred over `color` for anything the theme owns. */
+  tone?: IconTone;
   strokeWidth?: number;
 }) {
   const Glyph = ICONS[name];
-  return <Glyph size={size} color={color} strokeWidth={strokeWidth} {...props} />;
+  // Order matters: an explicit colour is always data or brand, and data must
+  // never be overridden by a theme.
+  const resolved = color ?? (tone ? TONES[tone] : TONES.muted);
+  return <Glyph size={size} color={resolved} strokeWidth={strokeWidth} {...props} />;
 }

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Platform, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeArea } from '@/hooks/useSafeArea';
+import { WIDE } from '@/lib/breakpoints';
 
 /**
  * The workspace's main scroll container: `flex-1 h-full overflow-y-auto`.
@@ -20,20 +21,30 @@ import { useSafeArea } from '@/hooks/useSafeArea';
 /** Gutter either side of the content. Wider once there is room for it. */
 const GUTTER = 20;
 const WIDE_GUTTER = 40;
-const WIDE = 768;
+
 
 export function ScreenScroll({
   children,
   maxWidth = 1080,
+  floating,
 }: {
   children: ReactNode;
   maxWidth?: number;
+  /**
+   * Pinned above the scrolling content — a floating action, usually.
+   *
+   * Offered here because this component returns the ScrollView itself, so a
+   * caller wanting something pinned has to wrap the whole screen in a
+   * positioned View. One slot beats every screen inventing that wrapper, and
+   * inventing it slightly differently.
+   */
+  floating?: ReactNode;
 }) {
   const insets = useSafeArea();
   const { width } = useWindowDimensions();
   const gutter = width >= WIDE ? WIDE_GUTTER : GUTTER;
 
-  return (
+  const scroller = (
     <ScrollView
       className={`flex-1 h-full ${Platform.OS === 'web' ? 'overflow-y-auto' : ''}`}
       contentContainerStyle={{
@@ -52,5 +63,14 @@ export function ScreenScroll({
         {children}
       </View>
     </ScrollView>
+  );
+
+  if (!floating) return scroller;
+
+  return (
+    <View className="min-h-0 flex-1">
+      {scroller}
+      {floating}
+    </View>
   );
 }

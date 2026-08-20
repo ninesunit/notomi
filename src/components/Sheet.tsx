@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeArea } from '@/hooks/useSafeArea';
 import { Icon } from '@/components/Icon';
+import { SHEET as SHEET_BREAKPOINT } from '@/lib/breakpoints';
 
 /**
  * One container, two presentations.
@@ -23,7 +24,7 @@ import { Icon } from '@/components/Icon';
  * feel without each screen branching on width.
  */
 
-const SHEET_BREAKPOINT = 700;
+
 
 export function Sheet({
   visible,

@@ -6,6 +6,7 @@ import { DatePicker } from './DatePicker';
 import { Badge, IconButton } from './ui';
 import { formatDue, toDate } from '@/lib/dates';
 import type { Priority, SubTask, Todo } from '@/lib/schema';
+import { PHONE } from '@/lib/breakpoints';
 
 const PRIORITY_TONE: Record<Priority, 'rose' | 'amber' | 'neutral'> = {
   high: 'rose',
@@ -50,7 +51,7 @@ export function TodoRow({
    * their own line underneath.
    */
   const { width } = useWindowDimensions();
-  const narrow = width < 640;
+  const narrow = width < PHONE;
 
   const subTasks = todo.subTasks ?? [];
   const doneCount = subTasks.filter((subTask) => subTask.isCompleted).length;
