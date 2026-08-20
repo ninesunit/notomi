@@ -1377,7 +1377,7 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
           ]}
         >
           <View className="max-w-sm items-center gap-2 rounded-2xl border border-line bg-surface/90 px-6 py-5">
-            <Icon name="pen-tool" size={22} color="#B4552D" />
+            <Icon name="pen-tool" size={22} tone="accent" />
             <Text className="text-center font-heading text-base font-semibold text-ink">Blank page ready</Text>
             <Text className="text-center text-xs leading-5 text-muted">
               Apple Pencil draws. Fingers pan and pinch. Two-finger double-tap undoes; three-finger double-tap redoes.
@@ -1587,13 +1587,13 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
                 className="flex-row items-center gap-3 rounded-xl border border-line bg-paper p-3"
               >
                 <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-                  <Icon name={/pdf/i.test(material.document.mimeType) ? 'file-text' : 'image'} size={16} color="#6F6A5F" />
+                  <Icon name={/pdf/i.test(material.document.mimeType) ? 'file-text' : 'image'} size={16} tone="muted" />
                 </View>
                 <View className="min-w-0 flex-1">
                   <Text className="text-sm font-semibold text-ink" numberOfLines={1}>{material.document.title || material.document.fileName}</Text>
                   <Text className="text-xs text-subtle" numberOfLines={1}>{material.subjectName}</Text>
                 </View>
-                <Icon name="plus" size={16} color="#18181B" />
+                <Icon name="plus" size={16} tone="ink" />
               </Pressable>
             ))
           )}

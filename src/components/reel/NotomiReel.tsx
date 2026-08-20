@@ -263,7 +263,7 @@ export function NotomiReel() {
         <View className="mx-auto w-full gap-2" style={{ maxWidth: 1080 }}>
           <View className="flex-row items-center gap-3">
             <View className="h-8 w-8 items-center justify-center rounded-lg bg-accent-soft">
-              <Icon name="sliders-horizontal" size={15} color="#B4552D" />
+              <Icon name="sliders-horizontal" size={15} tone="accent" />
             </View>
             <View className="min-w-0 flex-1">
               <ResponsiveTermPicker
@@ -277,7 +277,7 @@ export function NotomiReel() {
           </View>
 
           <View className="flex-row items-center gap-3">
-            <Icon name="layers" size={14} color="#2E6F5E" />
+            <Icon name="layers" size={14} tone="pine" />
             <Text className="text-xs font-semibold text-muted">Brain battery</Text>
             <View className="h-2 flex-1 overflow-hidden rounded-full bg-line">
               <View className="h-full rounded-full bg-pine" style={{ width: `${battery}%` }} />
@@ -360,7 +360,7 @@ export function NotomiReel() {
               />
               {sessionMastered > 0 && sessionMastered % 3 === 0 && index === activeIndex ? (
                 <View className="mt-3 flex-row items-center gap-2 rounded-full bg-accent-soft px-4 py-2">
-                  <Icon name="sparkles" size={14} color="#B4552D" />
+                  <Icon name="sparkles" size={14} tone="accent" />
                   <Text className="text-xs font-semibold text-accent">
                     Three concepts mastered this session
                   </Text>
@@ -473,7 +473,7 @@ function KnowledgeCard({
             <Icon
               name={card.format === 'diagram' ? 'layers' : card.format === 'quiz' ? 'check-circle-2' : 'book-open'}
               size={15}
-              color="#B4552D"
+              tone="accent"
             />
           </View>
           <Text className="text-xs font-bold uppercase tracking-wider text-muted">
@@ -544,7 +544,7 @@ function KnowledgeCard({
             onPress={toggleSpeech}
             className="flex-row items-center gap-2 self-start rounded-full bg-sand px-4 py-2.5"
           >
-            <Icon name="book-open" size={15} color="#1B1A17" />
+            <Icon name="book-open" size={15} tone="ink" />
             <Text className="text-xs font-semibold text-ink">
               {speaking ? 'Stop TL;DR' : 'Listen to TL;DR'}
             </Text>
@@ -575,7 +575,7 @@ function KnowledgeCard({
           onPress={card.documentId ? onSource : undefined}
           className="flex-row items-center gap-2 self-start rounded-full bg-sand px-3 py-2"
         >
-          <Icon name={card.documentId ? 'external-link' : 'book-open'} size={13} color="#6F6A5F" />
+          <Icon name={card.documentId ? 'external-link' : 'book-open'} size={13} tone="muted" />
           <Text className="max-w-[330px] text-xs font-medium text-muted" numberOfLines={1}>
             {sourceLabel}
           </Text>

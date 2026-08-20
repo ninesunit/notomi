@@ -31,7 +31,7 @@ export function BurnoutHeatmap({ semester, todos }: { semester: Semester | null;
             {semester.name} workload by week, weighted by deadline type and priority.
           </Text>
         </View>
-        <Icon name="activity" size={18} color="#B4552D" />
+        <Icon name="activity" size={18} tone="accent" />
       </View>
 
       <View className="flex-row flex-wrap gap-2">
@@ -138,14 +138,14 @@ export function AttendanceGuard({
           onPress={() => setExpanded((value) => !value)}
           className="min-w-0 flex-1 flex-row items-center gap-2.5"
         >
-          <Icon name="shield" size={15} color="#2E6F5E" />
+          <Icon name="shield" size={15} tone="pine" />
           <Text className="text-sm font-semibold text-ink">Attendance Guard</Text>
           <Text className="text-xs text-muted">{summary.held} logged</Text>
           <View className="ml-auto flex-row items-baseline gap-1">
             <Text className="text-base font-bold text-pine">{summary.safeSkips}</Text>
             <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">safe skips</Text>
           </View>
-          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#9A9488" />
+          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={14} tone="subtle" />
         </Pressable>
         <View className="mx-2 h-6 w-px bg-line" />
         <Pressable
@@ -154,7 +154,7 @@ export function AttendanceGuard({
           onPress={() => setHistoryOpen(true)}
           className="h-9 w-9 items-center justify-center rounded-lg"
         >
-          <Icon name="edit-3" size={15} color="#6F6A5F" />
+          <Icon name="edit-3" size={15} tone="muted" />
         </Pressable>
       </View>
 

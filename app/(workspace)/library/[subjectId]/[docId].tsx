@@ -157,7 +157,7 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
         <View className="mx-auto w-full" style={{ maxWidth: 820 }}>
           <Link href={`${basePath}/${subjectId}`} asChild>
             <Pressable className="mb-5 flex-row items-center gap-1.5 self-start py-1">
-              <Icon name="arrow-left" size={15} color="#6F6A5F" />
+              <Icon name="arrow-left" size={15} tone="muted" />
               <Text className="text-sm font-medium text-muted">
                 Back to {subject.data?.name ?? 'Subject'}
               </Text>
@@ -228,7 +228,7 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
           {sourcePage || sourceHighlight ? (
             <View className="mb-6 gap-3 rounded-2xl border border-amber/30 bg-amber-soft/40 p-4">
               <View className="flex-row items-center gap-2">
-                <Icon name="external-link" size={15} color="#B4832A" />
+                <Icon name="external-link" size={15} tone="amber" />
                 <Text className="text-sm font-semibold text-ink">
                   From Notomi Reel{sourcePage ? ` · Page ${sourcePage}` : ''}
                 </Text>
@@ -275,7 +275,7 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
           ) : (
             <Card className="mb-6 items-start gap-3">
               <View className="h-10 w-10 items-center justify-center rounded-full bg-accent-soft">
-                <Icon name="feather" size={17} color="#B4552D" />
+                <Icon name="feather" size={17} tone="accent" />
               </View>
               <Text className="text-base font-semibold text-ink">No notes yet</Text>
               <Text className="text-sm leading-6 text-muted">
@@ -302,7 +302,7 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
                 <Icon
                   name={showSource ? 'chevron-down' : 'chevron-right'}
                   size={14}
-                  color="#6F6A5F"
+                  tone="muted"
                 />
                 <Text className="text-sm font-medium text-muted">
                   {showSource ? 'Hide extracted text' : 'Show extracted text'}

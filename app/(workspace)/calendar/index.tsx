@@ -508,7 +508,7 @@ function DeadlineRow({
           todo.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
         }`}
       >
-        {todo.isCompleted ? <Icon name="check" size={11} color="#FFFFFF" /> : null}
+        {todo.isCompleted ? <Icon name="check" size={11} tone="inverse" /> : null}
       </Pressable>
 
       <View className="h-8 w-1 rounded-full" style={{ backgroundColor: color }} />
@@ -543,7 +543,7 @@ function DeadlineRow({
       </View>
 
       {todo.isCompleted ? (
-        <Icon name="check-circle" size={15} color="#2E6F5E" />
+        <Icon name="check-circle" size={15} tone="pine" />
       ) : value ? (
         <CountdownChip due={due} compact />
       ) : null}

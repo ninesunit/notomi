@@ -217,7 +217,7 @@ export default function Tutor() {
             onPress={() => (attempts.length > 0 ? finish(attempts) : setPhase('choosing'))}
             className="h-9 w-9 items-center justify-center rounded-lg bg-sand"
           >
-            <Icon name="x" size={15} color="#6F6A5F" />
+            <Icon name="x" size={15} tone="muted" />
           </Pressable>
 
           <View className="flex-1 gap-1.5">
@@ -473,7 +473,7 @@ export default function Tutor() {
                     {(candidate.documentCount ?? 0) === 1 ? 'source' : 'sources'}
                   </Text>
                 </View>
-                <Icon name="chevron-right" size={16} color="#9A9488" />
+                <Icon name="chevron-right" size={16} tone="subtle" />
               </Pressable>
             );
           })}
@@ -548,7 +548,7 @@ function BackLink() {
   return (
     <Link href="/knowledge" asChild>
       <Pressable className="mb-5 flex-row items-center gap-1.5 self-start py-1">
-        <Icon name="arrow-left" size={15} color="#6F6A5F" />
+        <Icon name="arrow-left" size={15} tone="muted" />
         <Text className="text-sm font-medium text-muted">Back to Knowledge</Text>
       </Pressable>
     </Link>

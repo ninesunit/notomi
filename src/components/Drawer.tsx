@@ -145,7 +145,7 @@ export function MobileTopBar({
           hitSlop={8}
           className="h-10 w-10 items-center justify-center rounded-xl"
         >
-          <Icon name="menu" size={20} color="#1B1A17" />
+          <Icon name="menu" size={20} tone="ink" />
         </Touchable>
 
         <Logo size={26} />
@@ -166,7 +166,7 @@ export function MobileTopBar({
             hitSlop={8}
             className="h-10 w-10 items-center justify-center rounded-xl"
           >
-            <Icon name="panel-left-close" size={18} color="#6F6A5F" />
+            <Icon name="panel-left-close" size={18} tone="muted" />
           </Touchable>
         ) : null}
 
@@ -181,7 +181,7 @@ export function MobileTopBar({
           hitSlop={8}
           className="h-10 w-10 items-center justify-center rounded-xl bg-ink"
         >
-          <Icon name="zap" size={17} color="#F7F5EE" />
+          <Icon name="zap" size={17} tone="inverse" />
         </Touchable>
       </View>
     </View>
@@ -310,7 +310,7 @@ export function NavDrawer({
               hitSlop={8}
               className="h-9 w-9 items-center justify-center rounded-lg"
             >
-              <Icon name="x" size={18} color="#6F6A5F" />
+              <Icon name="x" size={18} tone="muted" />
             </Touchable>
           </View>
 
@@ -347,7 +347,7 @@ export function NavDrawer({
                   {user?.isAnonymous ? 'Guest account' : (user?.email ?? '')}
                 </Text>
               </View>
-              <Icon name="chevron-right" size={15} color="#9A9488" />
+              <Icon name="chevron-right" size={15} tone="subtle" />
             </Touchable>
             </Link>
 
@@ -371,7 +371,7 @@ export function NavDrawer({
               }}
               className="flex-row items-center gap-3 rounded-xl px-3 py-3"
             >
-              <Icon name="log-out" size={16} color="#6F6A5F" />
+              <Icon name="log-out" size={16} tone="muted" />
               <Text className="text-[15px] font-medium text-muted">Sign out</Text>
             </Touchable>
           </View>

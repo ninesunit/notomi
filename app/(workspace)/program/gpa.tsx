@@ -96,7 +96,7 @@ export default function GpaCalculator() {
     <ScreenScroll>
       <Link href="/schedule?tab=terms" asChild>
         <Pressable className="mb-5 flex-row items-center gap-1.5 self-start py-1">
-          <Icon name="arrow-left" size={15} color="#6F6A5F" />
+          <Icon name="arrow-left" size={15} tone="muted" />
           <Text className="text-sm font-medium text-muted">Back to Term Management</Text>
         </Pressable>
       </Link>
@@ -298,7 +298,7 @@ function GpaRow({
             onPress={() => onCredits(Math.max(0, row.credits - 1))}
             className="h-6 w-6 items-center justify-center"
           >
-            <Icon name="minus" size={12} color="#6F6A5F" />
+            <Icon name="minus" size={12} tone="muted" />
           </Pressable>
           <Text className="min-w-[46px] text-center text-xs font-semibold text-ink">
             {row.credits} cr
@@ -309,7 +309,7 @@ function GpaRow({
             onPress={() => onCredits(Math.min(30, row.credits + 1))}
             className="h-6 w-6 items-center justify-center"
           >
-            <Icon name="plus" size={12} color="#6F6A5F" />
+            <Icon name="plus" size={12} tone="muted" />
           </Pressable>
         </View>
 
@@ -334,7 +334,7 @@ function GpaRow({
             onPress={onRemove}
             className="h-8 w-8 items-center justify-center rounded-lg"
           >
-            <Icon name="x" size={14} color="#B0443E" />
+            <Icon name="x" size={14} tone="rose" />
           </Pressable>
         ) : (
           <Badge label={row.grade ? 'Recorded' : 'Ungraded'} tone={row.grade ? 'pine' : 'neutral'} />

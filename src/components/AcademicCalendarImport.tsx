@@ -146,7 +146,7 @@ export function AcademicCalendarImport({
                   term.include ? 'border-pine bg-pine' : 'border-subtle bg-surface'
                 }`}
               >
-                {term.include ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
+                {term.include ? <Icon name="check" size={12} tone="inverse" /> : null}
               </View>
               <View className="flex-1 gap-1">
                 <Text className="text-sm font-semibold text-ink">{term.name}</Text>

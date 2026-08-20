@@ -47,7 +47,7 @@ export default function Settings() {
       <Card className="mb-8 gap-4">
         <View className="flex-row items-center gap-3">
           <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-            <Icon name={sound ? 'volume-2' : 'volume-x'} size={16} color="#6F6A5F" />
+            <Icon name={sound ? 'volume-2' : 'volume-x'} size={16} tone="muted" />
           </View>
           <View className="flex-1">
             <Text className="text-[15px] font-semibold text-ink">Sound and haptics</Text>

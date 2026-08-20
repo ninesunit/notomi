@@ -265,7 +265,7 @@ function WorkspaceShell() {
                 className="absolute z-50 h-11 w-11 items-center justify-center rounded-xl border border-line bg-surface shadow"
                 style={{ top: insets.top + 12, left: insets.left + 12 }}
               >
-                <Icon name="panel-left-open" size={19} color="#1B1A17" />
+                <Icon name="panel-left-open" size={19} tone="ink" />
               </Pressable>
             ) : null}
 

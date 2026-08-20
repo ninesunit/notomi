@@ -258,7 +258,7 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
         <View className="mx-auto w-full flex-row items-center gap-3" style={{ maxWidth: 880 }}>
           <Link href={parentHref ?? `/library/${subjectId}`} asChild>
             <Pressable accessibilityLabel="Back to subject" className="flex-row items-center gap-2 rounded-lg bg-sand px-3 py-2">
-              <Icon name="arrow-left" size={16} color="#6F6A5F" />
+              <Icon name="arrow-left" size={16} tone="muted" />
               <Text className="text-xs font-semibold text-muted">Back</Text>
             </Pressable>
           </Link>
@@ -291,7 +291,7 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
               onPress={() => void createGuide()}
               className="h-9 w-9 items-center justify-center rounded-lg"
             >
-              <Icon name="file-down" size={15} color="#6F6A5F" />
+              <Icon name="file-down" size={15} tone="muted" />
             </Pressable>
           ) : null}
 
@@ -301,7 +301,7 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
               onPress={() => setMessages([])}
               className="h-9 w-9 items-center justify-center rounded-lg"
             >
-              <Icon name="refresh-cw" size={15} color="#6F6A5F" />
+              <Icon name="refresh-cw" size={15} tone="muted" />
             </Pressable>
           ) : null}
         </View>

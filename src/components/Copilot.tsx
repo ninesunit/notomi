@@ -136,7 +136,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
                 onPress={() => void send(opener)}
                 className="flex-row items-center gap-2 rounded-xl border border-line bg-paper px-3.5 py-2.5"
               >
-                <Icon name="corner-down-right" size={13} color="#9A9488" />
+                <Icon name="corner-down-right" size={13} tone="subtle" />
                 <Text className="flex-1 text-sm text-ink">{opener}</Text>
               </Pressable>
             ))}
@@ -167,7 +167,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
                       key={action.summary}
                       className="flex-row items-center gap-2 self-start rounded-lg bg-pine-soft px-2.5 py-1.5"
                     >
-                      <Icon name="check" size={12} color="#2E6F5E" />
+                      <Icon name="check" size={12} tone="pine" />
                       <Text className="text-xs font-medium text-pine">{action.summary}</Text>
                     </View>
                   ))}

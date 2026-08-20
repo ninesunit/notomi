@@ -71,7 +71,7 @@ export function TimeField({
         <Text className={`text-[17px] font-semibold ${invalid ? 'text-rose' : 'text-ink'}`}>
           {minutesTo12h(value)}
         </Text>
-        <Icon name={open ? 'chevron-up' : 'clock'} size={16} color="#6F6A5F" />
+        <Icon name={open ? 'chevron-up' : 'clock'} size={16} tone="muted" />
       </Pressable>
 
       {hint ? <Text className="text-xs text-subtle">{hint}</Text> : null}

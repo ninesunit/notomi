@@ -256,7 +256,7 @@ function FileRow({ entry, onRemove }: { entry: FileState; onRemove: () => void }
             onPress={onRemove}
             className="h-8 w-8 items-center justify-center rounded-lg"
           >
-            <Icon name="x" size={14} color="#6F6A5F" />
+            <Icon name="x" size={14} tone="muted" />
           </Pressable>
         ) : null}
       </View>

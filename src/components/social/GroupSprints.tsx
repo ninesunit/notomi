@@ -261,13 +261,13 @@ function SprintCard({ sprint, uid }: { sprint: GroupSprint; uid: string }) {
     <Card className="gap-4">
       <Pressable onPress={() => setOpen((value) => !value)} className="flex-row items-start gap-3">
         <View className="h-10 w-10 items-center justify-center rounded-xl bg-accent-soft">
-          <Icon name="users-round" size={18} color="#B4552D" />
+          <Icon name="users-round" size={18} tone="accent" />
         </View>
         <View className="flex-1 gap-1">
           <Text className="font-heading text-lg text-ink">{sprint.title}</Text>
           <Text className="text-xs text-muted">{sprint.subjectName} · {complete}/{sprint.tasks.length} milestones</Text>
         </View>
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={17} color="#6F6A5F" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={17} tone="muted" />
       </Pressable>
       <View className="h-2 overflow-hidden rounded-full bg-sand">
         <View className="h-full rounded-full bg-pine" style={{ width: `${progress * 100}%` }} />
@@ -303,7 +303,7 @@ function SprintCard({ sprint, uid }: { sprint: GroupSprint; uid: string }) {
                       task.completed ? 'border-pine bg-pine' : 'border-line bg-surface'
                     }`}
                   >
-                    {task.completed ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
+                    {task.completed ? <Icon name="check" size={12} tone="inverse" /> : null}
                   </Pressable>
                   <View className="flex-1 gap-1">
                     <Text className={`text-sm font-semibold ${task.completed ? 'text-subtle line-through' : 'text-ink'}`}>
@@ -315,7 +315,7 @@ function SprintCard({ sprint, uid }: { sprint: GroupSprint; uid: string }) {
                     </Text>
                     {(task.attachments ?? []).map((attachment) => (
                       <View key={`${attachment.fileKey}-${attachment.attachedAtMillis}`} className="flex-row items-center gap-1.5">
-                        <Icon name="file-text" size={12} color="#6F6A5F" />
+                        <Icon name="file-text" size={12} tone="muted" />
                         <Text className="flex-1 text-[11px] text-muted" numberOfLines={1}>{attachment.fileName}</Text>
                       </View>
                     ))}

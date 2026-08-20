@@ -157,7 +157,7 @@ function UndoToast({ label, onUndo }: { label: string; onUndo: () => void }) {
       {/* Inline styles above, utilities below: NativeWind does not apply
           className to Animated components. */}
       <View className="w-full max-w-sm flex-row items-center gap-3 rounded-xl bg-ink px-4 py-3">
-        <Icon name="trash-2" size={14} color="#F7F5EE" />
+        <Icon name="trash-2" size={14} tone="inverse" />
         <Text className="flex-1 text-[13px] text-paper" numberOfLines={1}>
           {label}
         </Text>

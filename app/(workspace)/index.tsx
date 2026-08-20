@@ -171,7 +171,7 @@ function MissionStatus({ semester, todos }: { semester: Semester | null; todos: 
   if (!semester) {
     return (
       <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-        <Icon name="calendar" size={16} color="#6F6A5F" />
+        <Icon name="calendar" size={16} tone="muted" />
         <Text className="flex-1 text-sm font-semibold text-ink">No active term selected</Text>
         <Link href="/schedule?tab=terms" asChild>
           <Button label="Manage terms" icon="arrow-right" variant="ghost" size="sm" />
@@ -194,7 +194,7 @@ function MissionStatus({ semester, todos }: { semester: Semester | null; todos: 
 
   return (
     <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-      <Icon name="layout-dashboard" size={16} color="#18181B" />
+      <Icon name="layout-dashboard" size={16} tone="ink" />
       <Badge label={`${semester.name}${week ? ` • Week ${week}` : ''}`} />
       {dates ? <Text className="text-xs font-medium text-muted">{dates}</Text> : null}
       <View className="flex-1" />
@@ -489,7 +489,7 @@ function ClassDetailRow({
   return (
     <View className="flex-row items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
       <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-        <Icon name={icon} size={16} color="#6F6A5F" />
+        <Icon name={icon} size={16} tone="muted" />
       </View>
       <View className="min-w-0 flex-1">
         <Text className="text-[11px] font-bold uppercase tracking-wider text-subtle">{label}</Text>
@@ -505,7 +505,7 @@ function CompactBurnout({ semester, todos }: { semester: Semester | null; todos:
   const peak = Math.max(1, ...weeks.map((week) => week.workload));
   return (
     <View className="mb-6 flex-row items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-      <Icon name="activity" size={16} color="#B4552D" />
+      <Icon name="activity" size={16} tone="accent" />
       <View className="min-w-0 flex-1">
         <Text className="text-sm font-semibold text-ink">Burnout forecast</Text>
         <Text className="text-[11px] text-muted" numberOfLines={1}>{semester.name}</Text>
@@ -627,7 +627,7 @@ function QuickLog({
         className="flex-row items-center gap-3 rounded-2xl border border-line bg-surface p-4"
       >
         <View className="h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
-          <Icon name="edit-3" size={15} color="#B4552D" />
+          <Icon name="edit-3" size={15} tone="accent" />
         </View>
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Log a class</Text>
@@ -637,7 +637,7 @@ function QuickLog({
               : 'Say what you covered and Notomi writes the notes'}
           </Text>
         </View>
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} tone="subtle" />
       </Pressable>
 
       <Sheet
@@ -746,7 +746,7 @@ function TermProgress({
                 {credits > 0 ? ` · ${credits} credits` : ''}
               </Text>
             </View>
-            <Icon name="chevron-right" size={16} color="#9A9488" />
+            <Icon name="chevron-right" size={16} tone="subtle" />
           </View>
 
           <View className="h-2 w-full overflow-hidden rounded-full bg-sand">

@@ -196,7 +196,7 @@ export function NotebookShelf() {
                     }}
                     className="h-9 w-9 items-center justify-center rounded-lg"
                   >
-                    <Icon name="trash-2" size={16} color="#9A9488" />
+                    <Icon name="trash-2" size={16} tone="subtle" />
                   </Pressable>
                 </View>
                 <View className="flex-row items-center justify-between">
@@ -205,7 +205,7 @@ export function NotebookShelf() {
                   </Text>
                   <View className="flex-row items-center gap-1">
                     <Text className="text-xs font-semibold text-ink">Open</Text>
-                    <Icon name="arrow-right" size={14} color="#1B1A17" />
+                    <Icon name="arrow-right" size={14} tone="ink" />
                   </View>
                 </View>
               </View>
@@ -282,7 +282,7 @@ function ShelfStat({ icon, label, value }: { icon: 'notebook-pen' | 'file-text' 
   return (
     <View className="min-w-[150px] flex-1 flex-row items-center gap-3">
       <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-        <Icon name={icon} size={16} color="#6F6A5F" />
+        <Icon name={icon} size={16} tone="muted" />
       </View>
       <View>
         <Text className="text-xs text-muted">{label}</Text>

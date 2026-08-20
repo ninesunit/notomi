@@ -95,7 +95,7 @@ export function AudioOverview({
       <View className="gap-3 rounded-2xl border border-line bg-surface p-5">
         <View className="flex-row items-start gap-3">
           <View className="h-9 w-9 items-center justify-center rounded-lg bg-pine-soft">
-            <Icon name="headphones" size={16} color="#2E6F5E" />
+            <Icon name="headphones" size={16} tone="pine" />
           </View>
           <View className="flex-1 gap-1">
             <Text className="text-[15px] font-semibold text-ink">Audio Overview</Text>
@@ -123,7 +123,7 @@ export function AudioOverview({
   if (status === 'generating') {
     return (
       <View className="flex-row items-center gap-3 rounded-2xl border border-line bg-surface p-5">
-        <Icon name="loader" size={16} color="#2E6F5E" />
+        <Icon name="loader" size={16} tone="pine" />
         <Text className="flex-1 text-sm text-muted">
           Writing a two-speaker discussion of your sources…
         </Text>
@@ -142,7 +142,7 @@ export function AudioOverview({
           onPress={toggle}
           className="h-11 w-11 items-center justify-center rounded-full bg-ink"
         >
-          <Icon name={status === 'playing' ? 'pause' : 'play'} size={17} color="#F7F5EE" />
+          <Icon name={status === 'playing' ? 'pause' : 'play'} size={17} tone="inverse" />
         </Pressable>
 
         <View className="flex-1 gap-1">
@@ -158,14 +158,14 @@ export function AudioOverview({
           onPress={stop}
           className="h-9 w-9 items-center justify-center rounded-lg"
         >
-          <Icon name="square" size={14} color="#6F6A5F" />
+          <Icon name="square" size={14} tone="muted" />
         </Pressable>
         <Pressable
           accessibilityLabel={expanded ? 'Hide transcript' : 'Show transcript'}
           onPress={() => setExpanded((value) => !value)}
           className="h-9 w-9 items-center justify-center rounded-lg"
         >
-          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color="#6F6A5F" />
+          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={16} tone="muted" />
         </Pressable>
       </View>
 

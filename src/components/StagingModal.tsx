@@ -92,7 +92,7 @@ export function StagingModal({
               }`}
             >
               <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-                <Icon name="file-text" size={15} color="#6F6A5F" />
+                <Icon name="file-text" size={15} tone="muted" />
               </View>
               <View className="min-w-0 flex-1 gap-1">
                 <Text className="text-sm font-semibold text-ink" numberOfLines={1}>

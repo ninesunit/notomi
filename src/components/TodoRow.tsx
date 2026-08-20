@@ -138,7 +138,7 @@ export function TodoRow({
             todo.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
           }`}
         >
-          {todo.isCompleted ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
+          {todo.isCompleted ? <Icon name="check" size={12} tone="inverse" /> : null}
         </Pressable>
 
         <Pressable
@@ -232,7 +232,7 @@ export function TodoRow({
                   subTask.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
                 }`}
               >
-                {subTask.isCompleted ? <Icon name="check" size={9} color="#FFFFFF" /> : null}
+                {subTask.isCompleted ? <Icon name="check" size={9} tone="inverse" /> : null}
               </Pressable>
 
               <Text
@@ -257,7 +257,7 @@ export function TodoRow({
           ))}
 
           <View className="flex-row items-center gap-2">
-            <Icon name="plus" size={13} color="#9A9488" />
+            <Icon name="plus" size={13} tone="subtle" />
             <TextInput
               value={draft}
               onChangeText={setDraft}

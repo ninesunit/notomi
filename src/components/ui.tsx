@@ -289,7 +289,7 @@ export function EmptyState({
   return (
     <View className="items-center justify-center rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-12">
       <View className="mb-4 h-12 w-12 items-center justify-center rounded-full bg-sand">
-        <Icon name={icon} size={20} color="#6F6A5F" />
+        <Icon name={icon} size={20} tone="muted" />
       </View>
       <Text className="mb-1.5 text-center font-heading text-base font-semibold text-ink">{title}</Text>
       <Text className="mb-5 max-w-sm text-center text-sm leading-5 text-muted">{body}</Text>

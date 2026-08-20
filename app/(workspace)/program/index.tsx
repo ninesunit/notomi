@@ -554,7 +554,7 @@ function SubjectRow({
             onPress={() => onCredits(credits - 1)}
             className="h-6 w-6 items-center justify-center"
           >
-            <Icon name="minus" size={12} color="#6F6A5F" />
+            <Icon name="minus" size={12} tone="muted" />
           </Pressable>
           <Text className="min-w-[46px] text-center text-xs font-semibold text-ink">
             {credits} cr
@@ -565,7 +565,7 @@ function SubjectRow({
             onPress={() => onCredits(credits + 1)}
             className="h-6 w-6 items-center justify-center"
           >
-            <Icon name="plus" size={12} color="#6F6A5F" />
+            <Icon name="plus" size={12} tone="muted" />
           </Pressable>
         </View>
 

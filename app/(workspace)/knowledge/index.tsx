@@ -104,7 +104,7 @@ function ReaderDirectory() {
                     {[subject.moduleCode, `${subject.documentCount} sources`].filter(Boolean).join(' · ')}
                   </Text>
                 </View>
-                <Icon name="chevron-right" size={16} color="#9A9488" />
+                <Icon name="chevron-right" size={16} tone="subtle" />
               </Pressable>
             </Link>
           ))}
@@ -360,7 +360,7 @@ function DocumentVault({ onOpen }: { onOpen: (subjectId: string, documentId: str
                     {documents.length}
                   </Text>
                   <View className="flex-1" />
-                  <Icon name={shut ? 'chevron-right' : 'chevron-down'} size={15} color="#9A9488" />
+                  <Icon name={shut ? 'chevron-right' : 'chevron-down'} size={15} tone="subtle" />
                 </Pressable>
 
                 {shut ? null : (
@@ -397,7 +397,7 @@ function DocumentVault({ onOpen }: { onOpen: (subjectId: string, documentId: str
                             </Text>
                           </View>
                           {picking ? null : (
-                            <Icon name="chevron-right" size={15} color="#9A9488" />
+                            <Icon name="chevron-right" size={15} tone="subtle" />
                           )}
                         </Card>
                       </Touchable>

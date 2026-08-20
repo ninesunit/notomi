@@ -316,7 +316,7 @@ export default function Timetable() {
           says which week they are. */}
       {week && termInView ? (
         <View className="mb-4 flex-row items-center gap-2 self-start rounded-full border border-line bg-sand px-3 py-1.5">
-          <Icon name="calendar" size={13} color="#6F6A5F" />
+          <Icon name="calendar" size={13} tone="muted" />
           <Text className="text-xs font-semibold text-ink">Week {week}</Text>
           <Text className="text-xs text-muted">{weekRangeLabel(termInView, week)}</Text>
         </View>
@@ -545,7 +545,7 @@ export default function Timetable() {
               key={block.id}
               className="flex-row items-center gap-3 rounded-xl border border-dashed border-line p-3"
             >
-              <Icon name="link-2" size={14} color="#9A9488" />
+              <Icon name="link-2" size={14} tone="subtle" />
               <Text className="flex-1 text-sm text-ink" numberOfLines={1}>
                 {block.title}
               </Text>
@@ -868,7 +868,7 @@ function DayTimeline({
   if (blocks.length === 0 && overlays.length === 0) {
     return (
       <View className="items-center gap-2 rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-12">
-        <Icon name="calendar-days" size={24} color="#9A9488" />
+        <Icon name="calendar-days" size={24} tone="subtle" />
         <Text className="text-[15px] font-semibold text-ink">Nothing on {DAY_FULL[day]}</Text>
         <Text className="text-center text-sm text-muted">
           {isToday ? 'Your day is clear.' : 'No classes or routines scheduled.'}

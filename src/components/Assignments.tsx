@@ -220,7 +220,7 @@ function AssignmentCard({
           ) : null}
         </View>
 
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} tone="subtle" />
       </Pressable>
 
       <Reveal open={open}>
@@ -254,7 +254,7 @@ function AssignmentCard({
                       step.isCompleted ? 'border-pine bg-pine' : 'border-line bg-surface'
                     }`}
                   >
-                    {step.isCompleted ? <Icon name="check" size={11} color="#FFFFFF" /> : null}
+                    {step.isCompleted ? <Icon name="check" size={11} tone="inverse" /> : null}
                   </View>
                   <View className="flex-1 gap-0.5">
                     <Text
@@ -280,7 +280,7 @@ function AssignmentCard({
               </Text>
               {assignment.deliverables.map((item) => (
                 <View key={item} className="flex-row gap-2">
-                  <Icon name="package" size={13} color="#6F6A5F" style={{ marginTop: 3 }} />
+                  <Icon name="package" size={13} tone="muted" style={{ marginTop: 3 }} />
                   <Text className="flex-1 text-sm leading-5 text-ink">{item}</Text>
                 </View>
               ))}
@@ -489,7 +489,7 @@ function AddAssignment({
             className="flex-row items-center gap-3 rounded-xl border border-dashed border-line bg-paper p-4"
           >
             <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-              <Icon name={file ? 'file-text' : 'upload-cloud'} size={16} color="#6F6A5F" />
+              <Icon name={file ? 'file-text' : 'upload-cloud'} size={16} tone="muted" />
             </View>
             <View className="flex-1">
               <Text className="text-sm font-semibold text-ink" numberOfLines={1}>

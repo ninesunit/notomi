@@ -529,7 +529,7 @@ function Metric({
       className="flex-1 grow gap-2 rounded-2xl border border-line bg-surface p-4"
       style={{ minWidth: 150, flexBasis: 150 }}
     >
-      <Icon name={icon} size={15} color="#9A9488" />
+      <Icon name={icon} size={15} tone="subtle" />
       <Text className="text-2xl font-bold text-ink">{value}</Text>
       <Text className="text-[13px] text-muted">{label}</Text>
     </View>
@@ -614,7 +614,7 @@ function AmbientControl() {
   return (
     <Card className="mb-6 flex-row items-center gap-3">
       <View className="h-10 w-10 items-center justify-center rounded-xl bg-sand">
-        <Icon name={playing ? 'volume-2' : 'volume-x'} size={17} color="#18181B" />
+        <Icon name={playing ? 'volume-2' : 'volume-x'} size={17} tone="ink" />
       </View>
       <View className="min-w-0 flex-1">
         <Text className="text-sm font-semibold text-ink">Ambient focus audio</Text>

@@ -126,7 +126,7 @@ export function SwipeableRow({
         {onSwipeRight ? (
           <Animated.View style={{ opacity: completeOpacity, flex: 1, height: '100%' }}>
             <View className="h-full flex-row items-center gap-2 bg-pine px-5">
-              <Icon name="check" size={16} color="#FFFFFF" />
+              <Icon name="check" size={16} tone="inverse" />
               <Text className="text-sm font-semibold text-paper">{rightLabel}</Text>
             </View>
           </Animated.View>
@@ -138,7 +138,7 @@ export function SwipeableRow({
           <Animated.View style={{ opacity: deleteOpacity, flex: 1, height: '100%' }}>
             <View className="h-full flex-row items-center justify-end gap-2 bg-rose px-5">
               <Text className="text-sm font-semibold text-paper">{leftLabel}</Text>
-              <Icon name="trash-2" size={16} color="#FFFFFF" />
+              <Icon name="trash-2" size={16} tone="inverse" />
             </View>
           </Animated.View>
         ) : (

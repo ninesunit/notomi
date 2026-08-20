@@ -176,7 +176,7 @@ export function DocumentChat({
     <View className="min-h-0 flex-1">
       <View className="flex-row items-center gap-2 border-b border-line px-3 py-2.5">
         <View className="h-7 w-7 items-center justify-center rounded-lg bg-accent-soft">
-          <Icon name="message-circle" size={13} color="#B4552D" />
+          <Icon name="message-circle" size={13} tone="accent" />
         </View>
         <View className="flex-1">
           <Text className="text-[13px] font-semibold text-ink" numberOfLines={1}>
@@ -299,7 +299,7 @@ export function DocumentChat({
             thinking || !draft.trim() ? 'opacity-40' : ''
           }`}
         >
-          <Icon name="arrow-up" size={16} color="#F7F5EE" />
+          <Icon name="arrow-up" size={16} tone="inverse" />
         </Pressable>
       </View>
     </View>

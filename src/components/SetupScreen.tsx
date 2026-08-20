@@ -35,7 +35,7 @@ export function SetupScreen() {
           <View className="gap-2">
             {missingFirebaseConfigKeys.map((key) => (
               <View key={key} className="flex-row items-center gap-2">
-                <Icon name="x-circle" size={14} color="#B0443E" />
+                <Icon name="x-circle" size={14} tone="rose" />
                 <Text className="font-mono text-[13px] text-rose">{key}</Text>
               </View>
             ))}

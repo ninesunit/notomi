@@ -112,7 +112,7 @@ export function DatePicker({
             onPress={() => onChange(null)}
             hitSlop={8}
           >
-            <Icon name="x" size={14} color="#9A9488" />
+            <Icon name="x" size={14} tone="subtle" />
           </Pressable>
         ) : null}
       </Pressable>
@@ -128,7 +128,7 @@ export function DatePicker({
                 onPress={() => setOpen(false)}
                 className="h-8 w-8 items-center justify-center rounded-lg"
               >
-                <Icon name="x" size={16} color="#6F6A5F" />
+                <Icon name="x" size={16} tone="muted" />
               </Pressable>
             </View>
 

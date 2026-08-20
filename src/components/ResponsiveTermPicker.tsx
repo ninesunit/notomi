@@ -57,7 +57,7 @@ export function ResponsiveTermPicker({
             <Text className="ml-2 text-xs text-subtle">{selected.count}</Text>
           ) : null}
           <View className="ml-2">
-            <Icon name="chevron-down" size={16} color="#6F6A5F" />
+            <Icon name="chevron-down" size={16} tone="muted" />
           </View>
         </Pressable>
       </View>
@@ -95,7 +95,7 @@ export function ResponsiveTermPicker({
                     </Text>
                   ) : null}
                 </View>
-                {active ? <Icon name="check" size={17} color="#18181B" /> : null}
+                {active ? <Icon name="check" size={17} tone="ink" /> : null}
               </Pressable>
             );
           })}

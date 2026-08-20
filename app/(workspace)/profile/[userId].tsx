@@ -80,7 +80,7 @@ export default function PublicProfilePage() {
         <View className="h-px bg-line" />
         <View className="gap-2">
           <View className="flex-row items-center gap-2">
-            <Icon name="user" size={15} color="#6F6A5F" />
+            <Icon name="user" size={15} tone="muted" />
             <Text className="text-xs font-bold uppercase tracking-wider text-muted">Bio</Text>
           </View>
           <Text className="text-sm leading-6 text-ink">
@@ -91,7 +91,7 @@ export default function PublicProfilePage() {
         {courses.length ? (
           <View className="gap-2">
             <View className="flex-row items-center gap-2">
-              <Icon name="book-open" size={15} color="#6F6A5F" />
+              <Icon name="book-open" size={15} tone="muted" />
               <Text className="text-xs font-bold uppercase tracking-wider text-muted">Shared courses</Text>
             </View>
             <View className="flex-row flex-wrap gap-2">
@@ -107,7 +107,7 @@ export default function PublicProfilePage() {
 
       <Card className="mt-5 gap-5 p-6">
         <View className="flex-row items-center gap-2">
-          <Icon name="trending-up" size={17} color="#B4552D" />
+          <Icon name="trending-up" size={17} tone="accent" />
           <Text className="font-heading text-lg font-semibold text-ink">Learning stats</Text>
         </View>
         <View className="flex-row flex-wrap gap-3">
@@ -123,7 +123,7 @@ export default function PublicProfilePage() {
             <View className="flex-row flex-wrap gap-2">
               {achievements.map((label) => (
                 <View key={label} className="flex-row items-center gap-2 rounded-full bg-amber-soft px-3 py-2">
-                  <Icon name="award" size={14} color="#B4832A" />
+                  <Icon name="award" size={14} tone="amber" />
                   <Text className="text-xs font-semibold text-ink">{label}</Text>
                 </View>
               ))}
@@ -170,7 +170,7 @@ function PublicStat({
 }) {
   return (
     <View className="min-w-[130px] flex-1 rounded-xl bg-sand p-3">
-      <Icon name={icon} size={15} color="#6F6A5F" />
+      <Icon name={icon} size={15} tone="muted" />
       <Text className="mt-2 font-heading text-xl font-bold text-ink">{value}</Text>
       <Text className="mt-0.5 text-xs text-muted">{label}</Text>
     </View>

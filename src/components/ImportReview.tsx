@@ -334,7 +334,7 @@ function SubjectCard({
             group.include ? 'border-pine bg-pine' : 'border-subtle bg-surface'
           }`}
         >
-          {group.include ? <Icon name="check" size={12} color="#FFFFFF" /> : null}
+          {group.include ? <Icon name="check" size={12} tone="inverse" /> : null}
         </Pressable>
 
         <Pressable
@@ -353,7 +353,7 @@ function SubjectCard({
           </Text>
         </Pressable>
 
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#6F6A5F" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} tone="muted" />
       </View>
 
       <Reveal open={open}>
@@ -427,7 +427,7 @@ function SessionRow({
             session.include ? 'border-pine bg-pine' : 'border-subtle bg-surface'
           }`}
         >
-          {session.include ? <Icon name="check" size={10} color="#FFFFFF" /> : null}
+          {session.include ? <Icon name="check" size={10} tone="inverse" /> : null}
         </Pressable>
 
         <Text className="flex-1 text-xs font-medium text-ink" numberOfLines={1}>
@@ -442,7 +442,7 @@ function SessionRow({
       {session.conflicts.length > 0 ? (
         <View className="gap-1 rounded-lg bg-amber-soft px-3 py-2">
           <View className="flex-row items-center gap-2">
-            <Icon name="alert-triangle" size={12} color="#B4832A" />
+            <Icon name="alert-triangle" size={12} tone="amber" />
             <Text className="text-xs font-semibold text-amber">Schedule conflict</Text>
           </View>
           {session.conflicts.map((conflict) => (

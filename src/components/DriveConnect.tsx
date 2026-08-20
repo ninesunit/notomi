@@ -90,7 +90,7 @@ export function DriveConnect({
     <Card className="gap-3">
       <View className="flex-row items-center gap-3">
         <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-          <Icon name="upload-cloud" size={16} color="#6F6A5F" />
+          <Icon name="upload-cloud" size={16} tone="muted" />
         </View>
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Your Google Drive</Text>
@@ -191,7 +191,7 @@ export function DriveUploadProgress({
   return (
     <View className="gap-1.5 rounded-xl bg-sand px-3 py-2.5">
       <View className="flex-row items-center gap-2">
-        <Icon name="upload-cloud" size={13} color="#6F6A5F" />
+        <Icon name="upload-cloud" size={13} tone="muted" />
         <Text className="flex-1 text-xs font-medium text-ink">
           Uploading {Math.min(index, total)} of {total}{' '}
           {total === 1 ? 'file' : 'files'} to Google Drive…

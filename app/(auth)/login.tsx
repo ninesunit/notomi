@@ -149,7 +149,7 @@ export default function Login() {
           <FadeIn key={promise.title} index={index + 1}>
             <View className="flex-row items-start gap-3">
               <View className="mt-0.5 h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft">
-                <Icon name={promise.icon} size={17} color="#B4552D" />
+                <Icon name={promise.icon} size={17} tone="accent" />
               </View>
               <View className="min-w-0 flex-1 gap-0.5">
                 <Text className="text-[15px] font-semibold text-ink">{promise.title}</Text>

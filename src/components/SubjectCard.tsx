@@ -58,7 +58,7 @@ export function SubjectCard({
             {/* Space reserved for the overlaid menu button so the arrow never
                 sits underneath it. */}
             <View className="flex-row items-center gap-1" style={{ paddingRight: onEdit ? 30 : 0 }}>
-              <Icon name="arrow-up-right" size={16} color="#9A9488" />
+              <Icon name="arrow-up-right" size={16} tone="subtle" />
             </View>
           </View>
 
@@ -79,7 +79,7 @@ export function SubjectCard({
 
           <View className="flex-row flex-wrap items-center gap-2">
             <View className="flex-row items-center gap-1.5">
-              <Icon name="file-text" size={13} color="#9A9488" />
+              <Icon name="file-text" size={13} tone="subtle" />
               <Text className="text-[13px] text-muted">
                 {count} {count === 1 ? 'source' : 'sources'}
               </Text>
@@ -113,7 +113,7 @@ export function SubjectCard({
           onPress={onEdit}
           className="absolute right-3.5 top-6 h-8 w-8 items-center justify-center rounded-lg"
         >
-          <Icon name="more-horizontal" size={16} color="#6F6A5F" />
+          <Icon name="more-horizontal" size={16} tone="muted" />
         </Touchable>
       ) : null}
     </View>

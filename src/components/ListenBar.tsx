@@ -137,7 +137,7 @@ export function ListenBar({ markdown }: { markdown: string }) {
           onPress={() => (playing ? stop() : start(index))}
           className="h-10 w-10 items-center justify-center rounded-full bg-ink"
         >
-          <Icon name={playing ? 'square' : 'play'} size={15} color="#F7F5EE" />
+          <Icon name={playing ? 'square' : 'play'} size={15} tone="inverse" />
         </Pressable>
 
         <View className="flex-1 gap-1">

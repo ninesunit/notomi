@@ -212,7 +212,7 @@ export default function Capture() {
           {saved ? (
             <Card className="gap-3 bg-pine-soft">
               <View className="flex-row items-center gap-2">
-                <Icon name="check-circle" size={16} color="#2E6F5E" />
+                <Icon name="check-circle" size={16} tone="pine" />
                 <Text className="text-[15px] font-semibold text-ink">Captured</Text>
               </View>
               <Text className="text-sm leading-5 text-ink/75">

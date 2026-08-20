@@ -97,7 +97,7 @@ export function DriveDropZone({
       style={{ backgroundColor: 'rgba(27,26,23,0.45)' }}
     >
       <View className="items-center gap-3 rounded-3xl border-2 border-dashed border-paper bg-ink/80 px-8 py-7">
-        <Icon name="upload-cloud" size={26} color="#F7F5EE" />
+        <Icon name="upload-cloud" size={26} tone="inverse" />
         <Text className="text-center text-base font-semibold text-paper">{label}</Text>
         <Text className="text-center text-xs text-paper/70">
           PDFs, images and slides go straight into your Notomi Workspace

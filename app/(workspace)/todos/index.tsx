@@ -347,7 +347,7 @@ export default function Todos() {
                 <Icon
                   name={showCompleted ? 'chevron-down' : 'chevron-right'}
                   size={15}
-                  color="#6F6A5F"
+                  tone="muted"
                 />
                 <Text className="text-sm font-medium text-muted">
                   Completed ({completed.length})

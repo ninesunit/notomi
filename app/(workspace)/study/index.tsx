@@ -182,7 +182,7 @@ export default function StudyCenter() {
       <ScreenScroll maxWidth={760}>
         <View className="mb-6 flex-row items-center gap-3">
           <Pressable onPress={reset} className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-            <Icon name="x" size={15} color="#6F6A5F" />
+            <Icon name="x" size={15} tone="muted" />
           </Pressable>
           <View className="flex-1 gap-1.5">
             <Text className="text-xs font-medium text-muted">
@@ -235,7 +235,7 @@ export default function StudyCenter() {
                     }`}
                   >
                     {revealed && (isCorrect || isPicked) ? (
-                      <Icon name={isCorrect ? 'check' : 'x'} size={12} color="#FFFFFF" />
+                      <Icon name={isCorrect ? 'check' : 'x'} size={12} tone="inverse" />
                     ) : (
                       <Text className="text-[11px] font-bold text-muted">
                         {String.fromCharCode(65 + optionIndex)}
@@ -420,7 +420,7 @@ export default function StudyCenter() {
       {dueConcepts.length > 0 ? (
         <Card className="mb-8 gap-4 border-accent/25 bg-accent-soft">
           <View className="flex-row items-start gap-3">
-            <Icon name="target" size={18} color="#B4552D" style={{ marginTop: 2 }} />
+            <Icon name="target" size={18} tone="accent" style={{ marginTop: 2 }} />
             <View className="flex-1 gap-1">
               <Text className="text-[15px] font-semibold text-ink">
                 {dueConcepts.length} concept{dueConcepts.length === 1 ? '' : 's'} due for review
@@ -496,7 +496,7 @@ export default function StudyCenter() {
                   </Text>
                 </View>
 
-                <Icon name="chevron-right" size={16} color="#9A9488" />
+                <Icon name="chevron-right" size={16} tone="subtle" />
               </Pressable>
             );
           })}
@@ -526,7 +526,7 @@ function ModeCard({
           accessibilityLabel={title}
           className="h-full gap-2 rounded-2xl border border-line bg-surface p-4"
         >
-          <Icon name={icon} size={22} color="#B4552D" />
+          <Icon name={icon} size={22} tone="accent" />
           <Text className="text-[15px] font-semibold text-ink">{title}</Text>
           <Text className="text-[13px] leading-5 text-muted">{body}</Text>
         </Pressable>

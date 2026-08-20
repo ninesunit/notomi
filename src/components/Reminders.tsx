@@ -43,7 +43,7 @@ export function RemindersCard() {
     <Card className="mb-8 gap-4">
       <View className="flex-row items-center gap-3">
         <View className="h-9 w-9 items-center justify-center rounded-lg bg-accent-soft">
-          <Icon name="bell" size={16} color="#B4552D" />
+          <Icon name="bell" size={16} tone="accent" />
         </View>
         <View className="flex-1">
           <Text className="text-[15px] font-semibold text-ink">Reminders</Text>
@@ -64,7 +64,7 @@ export function RemindersCard() {
             }}
             className="h-9 w-9 items-center justify-center rounded-lg bg-sand"
           >
-            <Icon name={settings ? 'x' : 'settings'} size={15} color="#6F6A5F" />
+            <Icon name={settings ? 'x' : 'settings'} size={15} tone="muted" />
           </Pressable>
         ) : null}
       </View>
@@ -195,7 +195,7 @@ export function RemindersCard() {
                       }`}
                     >
                       {prefs[option.key] ? (
-                        <Icon name="check" size={11} color="#FFFFFF" />
+                        <Icon name="check" size={11} tone="inverse" />
                       ) : null}
                     </View>
                     <View className="flex-1">

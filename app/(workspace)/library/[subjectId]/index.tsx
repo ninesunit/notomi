@@ -266,7 +266,7 @@ export default function SubjectFolder({
     <ScreenScroll>
       <Link href={parentHref} asChild>
         <Pressable className="mb-5 flex-row items-center gap-1.5 self-start py-1">
-          <Icon name="arrow-left" size={15} color="#6F6A5F" />
+          <Icon name="arrow-left" size={15} tone="muted" />
           <Text className="text-sm font-medium text-muted">Back to Knowledge</Text>
         </Pressable>
       </Link>
@@ -341,14 +341,14 @@ export default function SubjectFolder({
           and the study centre; this is where a student sees it back. */}
       <View className="mb-6 flex-row flex-wrap items-center gap-2">
         <View className="flex-row items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2">
-          <Icon name="clock" size={13} color="#9A9488" />
+          <Icon name="clock" size={13} tone="subtle" />
           <Text className="text-sm font-bold text-ink">{formatMinutes(study?.minutes ?? 0)}</Text>
           <Text className="text-[13px] text-muted">studied</Text>
         </View>
 
         {study?.minutesThisWeek ? (
           <View className="flex-row items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2">
-            <Icon name="trending-up" size={13} color="#2E6F5E" />
+            <Icon name="trending-up" size={13} tone="pine" />
             <Text className="text-sm font-bold text-pine">
               {formatMinutes(study.minutesThisWeek)}
             </Text>
@@ -369,7 +369,7 @@ export default function SubjectFolder({
 
       {driveBusy ? (
         <View className="mb-3 flex-row items-center gap-2 rounded-xl bg-sand px-3 py-2.5">
-          <Icon name="upload-cloud" size={13} color="#6F6A5F" />
+          <Icon name="upload-cloud" size={13} tone="muted" />
           <Text className="flex-1 text-xs font-medium text-ink">{driveBusy}</Text>
         </View>
       ) : null}
@@ -490,7 +490,7 @@ export default function SubjectFolder({
                             <Icon
                               name={document.mimeType?.includes('pdf') ? 'file-text' : 'file'}
                               size={15}
-                              color="#6F6A5F"
+                              tone="muted"
                             />
                           </View>
 
@@ -696,7 +696,7 @@ function ChapterHeading({
           onPress={commit}
           className="h-8 w-8 items-center justify-center rounded-lg bg-ink"
         >
-          <Icon name="check" size={14} color="#F7F5EE" />
+          <Icon name="check" size={14} tone="inverse" />
         </Pressable>
       </View>
     );
@@ -714,7 +714,7 @@ function ChapterHeading({
         }}
         className="h-6 w-6 items-center justify-center rounded"
       >
-        <Icon name="pencil" size={12} color="#9A9488" />
+        <Icon name="pencil" size={12} tone="subtle" />
       </Pressable>
       <View className="h-px flex-1 bg-line" />
       <Text className="text-xs text-subtle">{count}</Text>
@@ -808,7 +808,7 @@ function FileIntoSubjectSheet({
               <Icon
                 name={moving === entry.id ? 'loader' : 'chevron-right'}
                 size={15}
-                color="#9A9488"
+                tone="subtle"
               />
             </Pressable>
           ))}
@@ -853,7 +853,7 @@ function ThisWeekPanel({
   return (
     <Card className="mb-6 gap-2">
       <View className="flex-row items-center gap-2">
-        <Icon name="calendar" size={14} color="#2E6F5E" />
+        <Icon name="calendar" size={14} tone="pine" />
         <Text className="text-xs font-bold uppercase tracking-wider text-muted">
           {current ? `Week ${current}` : 'Teaching plan'}
         </Text>
@@ -867,7 +867,7 @@ function ThisWeekPanel({
           {row.activity ? <Text className="text-xs text-muted">{row.activity}</Text> : null}
           {row.assessment ? (
             <View className="mt-1 flex-row items-center gap-2 rounded-lg bg-accent-soft px-2.5 py-1.5">
-              <Icon name="alert-circle" size={12} color="#B4552D" />
+              <Icon name="alert-circle" size={12} tone="accent" />
               <Text className="flex-1 text-xs font-medium text-accent">{row.assessment}</Text>
             </View>
           ) : null}

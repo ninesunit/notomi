@@ -53,7 +53,7 @@ export function FloatingAction({
           extended ? 'gap-2 px-5' : 'w-14'
         }`}
       >
-        <Icon name={icon} size={22} color="#F7F5EE" />
+        <Icon name={icon} size={22} tone="inverse" />
         {extended ? (
           <Text className="text-[15px] font-semibold text-paper">{label}</Text>
         ) : null}

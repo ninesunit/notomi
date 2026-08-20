@@ -220,7 +220,7 @@ function ReviewClassCard({
           onPress={() => onPatch({ include: !row.include })}
           className={`h-6 w-6 items-center justify-center rounded-lg border ${row.include ? 'border-ink bg-ink' : 'border-line'}`}
         >
-          {row.include ? <Icon name="check" size={13} color="#FFFFFF" /> : null}
+          {row.include ? <Icon name="check" size={13} tone="inverse" /> : null}
         </Pressable>
         <View className="min-w-0 flex-1">
           <Text className="text-sm font-bold text-ink">Class {index + 1}</Text>

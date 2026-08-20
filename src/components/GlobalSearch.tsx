@@ -224,7 +224,7 @@ export function GlobalSearch() {
         onPress={() => setOpen(true)}
         className="flex-row items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2"
       >
-        <Icon name="search" size={14} color="#9A9488" />
+        <Icon name="search" size={14} tone="subtle" />
         <Text className="flex-1 text-xs text-subtle">Search everything</Text>
         {/* Only advertise the shortcut where a keyboard is likely. */}
         {Platform.OS === 'web' && width >= 900 ? (
@@ -250,7 +250,7 @@ export function GlobalSearch() {
 
           <View className="w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-surface">
             <View className="flex-row items-center gap-3 border-b border-line px-4 py-3">
-              <Icon name="search" size={16} color="#6F6A5F" />
+              <Icon name="search" size={16} tone="muted" />
               <TextInput
                 ref={inputRef}
                 value={term}
@@ -269,7 +269,7 @@ export function GlobalSearch() {
                 onPress={() => setOpen(false)}
                 className="h-7 w-7 items-center justify-center rounded-lg"
               >
-                <Icon name="x" size={14} color="#6F6A5F" />
+                <Icon name="x" size={14} tone="muted" />
               </Pressable>
             </View>
 
@@ -298,7 +298,7 @@ export function GlobalSearch() {
                     }`}
                   >
                     <View className="mt-0.5 h-7 w-7 items-center justify-center rounded-lg bg-sand">
-                      <Icon name={KIND_META[hit.kind].icon} size={13} color="#6F6A5F" />
+                      <Icon name={KIND_META[hit.kind].icon} size={13} tone="muted" />
                     </View>
 
                     <View className="flex-1 gap-0.5">
@@ -315,7 +315,7 @@ export function GlobalSearch() {
                       ) : null}
                     </View>
 
-                    <Icon name="corner-down-left" size={13} color="#9A9488" />
+                    <Icon name="corner-down-left" size={13} tone="subtle" />
                   </Pressable>
                 ))
               )}

@@ -48,7 +48,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
               hitSlop={8}
               className="h-9 w-9 items-center justify-center rounded-lg"
             >
-              <Icon name="panel-left-close" size={17} color="#6F6A5F" />
+              <Icon name="panel-left-close" size={17} tone="muted" />
             </Touchable>
           </View>
 
@@ -60,7 +60,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
             onPress={onAsk}
             className="flex-row items-center gap-2.5 rounded-xl bg-ink px-3 py-2.5"
           >
-            <Icon name="zap" size={15} color="#F7F5EE" />
+            <Icon name="zap" size={15} tone="inverse" />
             <Text className="text-[15px] font-semibold text-paper">Ask Notomi</Text>
           </Touchable>
 
@@ -108,7 +108,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
               <Text className="flex-1 text-sm font-medium text-ink" numberOfLines={1}>
                 {displayName}
               </Text>
-              <Icon name="chevron-right" size={14} color="#9A9488" />
+              <Icon name="chevron-right" size={14} tone="subtle" />
             </Touchable>
           </Link>
           <Link href={SETTINGS_ITEM.href} asChild>
@@ -146,7 +146,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
             }}
             className="flex-row items-center gap-3 rounded-xl px-3 py-2"
           >
-            <Icon name={sound ? 'volume-2' : 'volume-x'} size={15} color="#6F6A5F" />
+            <Icon name={sound ? 'volume-2' : 'volume-x'} size={15} tone="muted" />
             <Text className="text-sm font-medium text-muted">
               {sound ? 'Sound on' : 'Sound off'}
             </Text>
@@ -164,7 +164,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
             }}
             className="flex-row items-center gap-3 rounded-xl px-3 py-2"
           >
-            <Icon name="log-out" size={15} color="#6F6A5F" />
+            <Icon name="log-out" size={15} tone="muted" />
             <Text className="text-sm font-medium text-muted">Sign out</Text>
           </Touchable>
         </View>

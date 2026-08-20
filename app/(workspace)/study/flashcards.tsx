@@ -176,7 +176,7 @@ export default function Flashcards() {
                     {(candidate.documentCount ?? 0) === 1 ? 'source' : 'sources'}
                   </Text>
                 </View>
-                <Icon name="chevron-right" size={16} color="#9A9488" />
+                <Icon name="chevron-right" size={16} tone="subtle" />
               </Pressable>
             ))}
           </View>
@@ -272,7 +272,7 @@ export default function Flashcards() {
               onPress={() => setDeck([])}
               className="h-9 w-9 items-center justify-center rounded-lg bg-sand"
             >
-              <Icon name="x" size={15} color="#6F6A5F" />
+              <Icon name="x" size={15} tone="muted" />
             </Pressable>
             <View className="flex-1 gap-1.5">
               <Text className="text-xs font-medium text-muted">
@@ -321,7 +321,7 @@ export default function Flashcards() {
         </View>
       ) : finished ? (
         <Card className="items-center gap-4 py-10">
-          <Icon name="check-circle" size={36} color="#2E6F5E" />
+          <Icon name="check-circle" size={36} tone="pine" />
           <Text className="text-lg font-semibold text-ink">Deck complete</Text>
           <Text className="max-w-sm text-center text-sm leading-6 text-muted">
             You went through {reviewed} card{reviewed === 1 ? '' : 's'}. {stats.review} card
@@ -406,7 +406,7 @@ function BackLink() {
   return (
     <Link href="/knowledge" asChild>
       <Pressable className="mb-5 flex-row items-center gap-1.5 self-start py-1">
-        <Icon name="arrow-left" size={15} color="#6F6A5F" />
+        <Icon name="arrow-left" size={15} tone="muted" />
         <Text className="text-sm font-medium text-muted">Back to Knowledge</Text>
       </Pressable>
     </Link>

@@ -249,7 +249,7 @@ export default function Friends() {
 
       <Card className="mb-6 gap-4 p-4 sm:p-5">
         <View className="flex-row items-center gap-3 rounded-xl border border-line bg-paper px-4">
-          <Icon name="search" size={18} color="#6F6A5F" />
+          <Icon name="search" size={18} tone="muted" />
           <TextInput
             value={lookup}
             onChangeText={setLookup}
@@ -259,7 +259,7 @@ export default function Friends() {
             autoCorrect={false}
             className="min-w-0 flex-1 py-3.5 text-[15px] text-ink"
           />
-          {searching ? <Icon name="loader" size={16} color="#B4552D" /> : null}
+          {searching ? <Icon name="loader" size={16} tone="accent" /> : null}
         </View>
         <View className="flex-row flex-wrap gap-2">
           {FILTERS.map((entry) => (
@@ -420,7 +420,7 @@ export default function Friends() {
                         onPress={() => void removeFriend(uid, friend.id)}
                         className="h-9 w-9 items-center justify-center rounded-lg"
                       >
-                        <Icon name="user-minus" size={15} color="#9A9488" />
+                        <Icon name="user-minus" size={15} tone="subtle" />
                       </Pressable>
                     </>
                   }
@@ -553,7 +553,7 @@ function ScheduleOverlap({
     <Card className="gap-4 p-5">
       <View className="flex-row items-start gap-3">
         <View className="h-10 w-10 items-center justify-center rounded-xl bg-pine-soft">
-          <Icon name="clock" size={18} color="#2E6F5E" />
+          <Icon name="clock" size={18} tone="pine" />
         </View>
         <View className="min-w-0 flex-1 gap-1">
           <Text className="font-heading text-lg font-semibold text-ink">Find Shared Free Time</Text>
@@ -572,7 +572,7 @@ function ScheduleOverlap({
               selected.includes(friend.id) ? 'border-ink bg-ink' : 'border-line bg-paper'
             }`}
           >
-            {selected.includes(friend.id) ? <Icon name="check" size={13} color="#FFFFFF" /> : null}
+            {selected.includes(friend.id) ? <Icon name="check" size={13} tone="inverse" /> : null}
             <Text className={`text-xs font-semibold ${selected.includes(friend.id) ? 'text-paper' : 'text-muted'}`}>
               {friend.displayName.split(' ')[0]}
             </Text>
@@ -724,7 +724,7 @@ function FilterPill({
 function SectionTitle({ icon, label }: { icon: 'search' | 'users' | 'user-plus'; label: string }) {
   return (
     <View className="flex-row items-center gap-2">
-      <Icon name={icon} size={15} color="#6F6A5F" />
+      <Icon name={icon} size={15} tone="muted" />
       <Text className="text-xs font-bold uppercase tracking-wider text-muted">{label}</Text>
     </View>
   );

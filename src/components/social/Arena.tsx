@@ -185,7 +185,7 @@ export function Arena() {
             />
             {!documents.loading && selected && !hasReadableMaterial ? (
               <View className="flex-row flex-wrap items-center gap-2 rounded-xl bg-amber-soft px-3 py-2.5">
-                <Icon name="book-open" size={15} color="#B4832A" />
+                <Icon name="book-open" size={15} tone="amber" />
                 <Text className="flex-1 text-xs leading-5 text-ink/80">
                   Upload at least one readable material for this subject before creating a room.
                 </Text>
@@ -225,7 +225,7 @@ export function Arena() {
 
           <View className="gap-3">
             <View className="flex-row items-center gap-2">
-              <Icon name="trophy" size={18} color="#B4552D" />
+              <Icon name="trophy" size={18} tone="accent" />
               <Text className="font-heading text-lg text-ink">Ghost battles</Text>
             </View>
             {ghosts.data.length === 0 ? (
@@ -234,7 +234,7 @@ export function Arena() {
               ghosts.data.map((ghost) => (
                 <Card key={ghost.id} className="flex-row items-center gap-3">
                   <View className="h-10 w-10 items-center justify-center rounded-xl bg-sand">
-                    <Icon name="trophy" size={18} color="#6F6A5F" />
+                    <Icon name="trophy" size={18} tone="muted" />
                   </View>
                   <View className="flex-1">
                     <Text className="text-sm font-semibold text-ink">{ghost.ownerName}</Text>
@@ -373,14 +373,14 @@ function BattleRoom({
           .sort((a, b) => b.score - a.score)
           .map((player) => (
             <View key={player.id} className="flex-row items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
-              {player.onFire ? <Icon name="flame" size={15} color="#B4552D" /> : null}
+              {player.onFire ? <Icon name="flame" size={15} tone="accent" /> : null}
               <Text className="text-xs font-semibold text-ink">{player.displayName}</Text>
               <Badge label={`${player.score}`} tone={player.id === me.id ? 'accent' : 'neutral'} />
             </View>
           ))}
         {room.mode === 'ghost' ? (
           <View className="flex-row items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
-            <Icon name="trophy" size={15} color="#6F6A5F" />
+            <Icon name="trophy" size={15} tone="muted" />
             <Text className="text-xs font-semibold text-ink">{room.ghostName}</Text>
             <Badge label={`${room.ghostScore ?? 0}`} />
           </View>
@@ -388,7 +388,7 @@ function BattleRoom({
       </View>
 
       <Card className="mb-5 flex-row items-start gap-3 border-accent/20 bg-accent-soft">
-        <Icon name="message-circle" size={18} color="#B4552D" />
+        <Icon name="message-circle" size={18} tone="accent" />
         <Text className="flex-1 text-sm leading-6 text-ink">{room.commentary}</Text>
       </Card>
 
@@ -401,7 +401,7 @@ function BattleRoom({
           <View className="gap-2">
             {players.map((player) => (
               <View key={player.id} className="flex-row items-center gap-3 rounded-xl bg-sand px-3 py-2.5">
-                <Icon name="user-check" size={16} color="#2E6F5E" />
+                <Icon name="user-check" size={16} tone="pine" />
                 <Text className="flex-1 text-sm font-medium text-ink">{player.displayName}</Text>
                 <Text className="text-xs text-muted">{player.subjectName}</Text>
               </View>
@@ -425,7 +425,7 @@ function BattleRoom({
             <Badge label={`Question ${room.currentQuestion + 1} of ${deck.length || 5}`} tone="accent" />
             {me.onFire ? (
               <View className="flex-row items-center gap-1.5">
-                <Icon name="flame" size={16} color="#B4552D" />
+                <Icon name="flame" size={16} tone="accent" />
                 <Text className="text-xs font-semibold text-accent">On Fire</Text>
               </View>
             ) : null}
@@ -514,7 +514,7 @@ function BattleRoom({
             {me.missedConcepts.length ? (
               me.missedConcepts.map((concept) => (
                 <View key={concept} className="flex-row items-center gap-2 rounded-xl bg-rose-soft px-3 py-2">
-                  <Icon name="target" size={15} color="#B0443E" />
+                  <Icon name="target" size={15} tone="rose" />
                   <Text className="flex-1 text-sm text-ink">{concept}</Text>
                 </View>
               ))

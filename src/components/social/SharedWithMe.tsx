@@ -25,7 +25,7 @@ export function SharedWithMe() {
   return (
     <View className="mb-8 gap-3">
       <View className="flex-row items-center gap-2">
-        <Icon name="share-2" size={17} color="#B4552D" />
+        <Icon name="share-2" size={17} tone="accent" />
         <Text className="font-heading text-lg text-ink">Shared with Me</Text>
       </View>
       <View className="flex-row flex-wrap gap-3">
@@ -33,7 +33,7 @@ export function SharedWithMe() {
           <Pressable key={share.id} onPress={() => setSelected(share)} className="min-w-[240px] max-w-sm flex-1">
             <Card className="gap-3">
               <View className="flex-row items-center gap-2">
-                <Icon name={share.kind === 'flashcards' ? 'layers' : share.kind === 'summary' ? 'file-text' : 'book-open'} size={16} color="#6F6A5F" />
+                <Icon name={share.kind === 'flashcards' ? 'layers' : share.kind === 'summary' ? 'file-text' : 'book-open'} size={16} tone="muted" />
                 <Text className="text-xs font-semibold uppercase tracking-wider text-muted">{share.kind}</Text>
               </View>
               <Text className="text-base font-semibold text-ink" numberOfLines={2}>{share.title}</Text>

@@ -82,7 +82,7 @@ export function ProgramMap({
       {/* Root */}
       <View className="flex-row items-center gap-3 rounded-2xl border border-line bg-ink px-4 py-3.5">
         <View className="h-9 w-9 items-center justify-center rounded-xl bg-paper/15">
-          <Icon name="award" size={16} color="#F7F5EE" />
+          <Icon name="award" size={16} tone="inverse" />
         </View>
         <View className="flex-1">
           <Text className="text-[15px] font-bold text-paper" numberOfLines={1}>
@@ -123,7 +123,7 @@ export function ProgramMap({
                 <Icon
                   name={expanded ? 'chevron-down' : 'chevron-right'}
                   size={15}
-                  color="#6F6A5F"
+                  tone="muted"
                 />
                 <View className="flex-1">
                   <View className="flex-row flex-wrap items-center gap-2">
@@ -181,7 +181,7 @@ export function ProgramMap({
                             <Text className="text-[11px] font-bold text-pine">{subject.grade}</Text>
                           </View>
                         ) : (
-                          <Icon name="circle" size={12} color="#C9C4B8" />
+                          <Icon name="circle" size={12} tone="line" />
                         )}
                       </Pressable>
                     ))
@@ -365,7 +365,7 @@ function GpaSimulator({ subjects }: { subjects: Subject[] }) {
         onPress={() => setOpen((value) => !value)}
         className="flex-row items-center gap-3 px-4 py-3.5"
       >
-        <Icon name="target" size={18} color="#B4552D" />
+        <Icon name="target" size={18} tone="accent" />
         <View className="flex-1">
           <Text className="text-sm font-semibold text-ink">GPA target simulator</Text>
           <Text className="text-[11px] text-muted">
@@ -376,7 +376,7 @@ function GpaSimulator({ subjects }: { subjects: Subject[] }) {
                 }`}
           </Text>
         </View>
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={15} color="#6F6A5F" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={15} tone="muted" />
       </Pressable>
 
       {open ? (

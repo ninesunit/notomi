@@ -178,7 +178,7 @@ function ClassChip({
         </Text>
       ) : null}
       <View className="mt-0.5 flex-row items-center gap-1.5">
-        <Icon name="map" size={11} color="#6F6A5F" />
+        <Icon name="map" size={11} tone="muted" />
         <Text className="min-w-0 flex-1 text-[11px] leading-4 text-muted" numberOfLines={1}>
           {venue}
         </Text>
@@ -258,7 +258,7 @@ export function NowLine({ classes }: { classes: ResolvedClass[] }) {
             ? `in ${away} min`
             : minutesToLabel(block.startMinute)}
       </Text>
-      <Icon name="chevron-right" size={14} color="#9A9488" />
+      <Icon name="chevron-right" size={14} tone="subtle" />
     </View>
   );
 }

@@ -115,7 +115,7 @@ export default function ProfilePage() {
 
         <View className="gap-2">
           <View className="flex-row items-center gap-2">
-            <Icon name="user" size={15} color="#6F6A5F" />
+            <Icon name="user" size={15} tone="muted" />
             <Text className="text-xs font-bold uppercase tracking-wider text-muted">Bio</Text>
           </View>
           <Text className="text-sm leading-6 text-ink">
@@ -126,7 +126,7 @@ export default function ProfilePage() {
 
       <Card className="mt-5 gap-5 p-6">
         <View className="flex-row items-center gap-2">
-          <Icon name="trending-up" size={17} color="#B4552D" />
+          <Icon name="trending-up" size={17} tone="accent" />
           <Text className="font-heading text-lg font-semibold text-ink">Learning stats</Text>
         </View>
         <View className="flex-row flex-wrap gap-3">
@@ -142,7 +142,7 @@ export default function ProfilePage() {
             <View className="flex-row flex-wrap gap-2">
               {achievements.map((achievement) => (
                 <View key={achievement.label} className="flex-row items-center gap-2 rounded-full bg-amber-soft px-3 py-2">
-                  <Icon name="award" size={14} color="#B4832A" />
+                  <Icon name="award" size={14} tone="amber" />
                   <Text className="text-xs font-semibold text-ink">{achievement.label}</Text>
                 </View>
               ))}
@@ -462,7 +462,7 @@ function EditProfileModal({
                 }}
                 className="flex-row items-center gap-3 border-b border-line px-3 py-3 last:border-b-0"
               >
-                <Icon name="graduation-cap" size={16} color="#6F6A5F" />
+                <Icon name="graduation-cap" size={16} tone="muted" />
                 <View className="min-w-0 flex-1">
                   <Text className="text-sm font-semibold text-ink" numberOfLines={1}>{entry.name}</Text>
                   <Text className="text-xs text-muted" numberOfLines={1}>{entry.abbreviation} · {entry.country}</Text>
@@ -472,7 +472,7 @@ function EditProfileModal({
           </View>
         ) : universityId ? (
           <View className="flex-row items-center gap-2 rounded-xl bg-pine-soft px-3 py-2">
-            <Icon name="check" size={14} color="#2E6F5E" />
+            <Icon name="check" size={14} tone="pine" />
             <Text className="text-xs font-semibold text-pine">Verified university selected</Text>
           </View>
         ) : null}
@@ -520,7 +520,7 @@ function profileImageMimeType(asset: DocumentPicker.DocumentPickerAsset): string
 function ProfilePill({ icon, label }: { icon: 'book-open' | 'activity'; label: string }) {
   return (
     <View className="flex-row items-center gap-1.5 rounded-full bg-pine-soft px-2.5 py-1">
-      <Icon name={icon} size={12} color="#2E6F5E" />
+      <Icon name={icon} size={12} tone="pine" />
       <Text className="text-[11px] font-semibold text-pine">{label}</Text>
     </View>
   );
@@ -571,7 +571,7 @@ function ProfileStat({
 }) {
   return (
     <View className="min-w-[130px] flex-1 rounded-xl bg-sand p-3">
-      <Icon name={icon} size={15} color="#6F6A5F" />
+      <Icon name={icon} size={15} tone="muted" />
       <Text className="mt-2 font-heading text-xl font-bold text-ink">{value}</Text>
       <Text className="mt-0.5 text-xs text-muted">{label}</Text>
     </View>

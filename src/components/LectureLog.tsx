@@ -231,7 +231,7 @@ export function LogComposer({
         {answer ? (
           <View className="gap-2 rounded-xl border border-line bg-paper p-4">
             <View className="flex-row items-center gap-2">
-              <Icon name="zap" size={12} color="#B4552D" />
+              <Icon name="zap" size={12} tone="accent" />
               <Text className="text-xs font-bold uppercase tracking-wider text-accent">Answer</Text>
             </View>
             <Markdown source={answer} />
@@ -292,7 +292,7 @@ function LogEntry({
         className="flex-row items-start gap-3"
       >
         <View className="mt-0.5 h-9 w-9 items-center justify-center rounded-lg bg-sand">
-          <Icon name="book-open" size={15} color="#6F6A5F" />
+          <Icon name="book-open" size={15} tone="muted" />
         </View>
 
         <View className="flex-1 gap-1">
@@ -304,7 +304,7 @@ function LogEntry({
           </Text>
         </View>
 
-        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color="#9A9488" />
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} tone="subtle" />
       </Pressable>
 
       {pending ? (
@@ -357,7 +357,7 @@ function LogEntry({
               </Text>
               {log.followUps.map((item) => (
                 <View key={item} className="flex-row gap-2">
-                  <Icon name="arrow-right" size={13} color="#B4832A" style={{ marginTop: 3 }} />
+                  <Icon name="arrow-right" size={13} tone="amber" style={{ marginTop: 3 }} />
                   <Text className="flex-1 text-sm leading-5 text-ink">{item}</Text>
                 </View>
               ))}
