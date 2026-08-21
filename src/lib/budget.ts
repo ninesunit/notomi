@@ -117,14 +117,17 @@ export type QuotaCode =
  */
 export class QuotaError extends Error {
   readonly name = 'QuotaError';
+  readonly code: QuotaCode;
+  /** Whole seconds until this particular refusal stops applying. */
+  readonly retryAfterSeconds: number;
 
-  constructor(
-    readonly code: QuotaCode,
-    message: string,
-    /** Whole seconds until this particular refusal stops applying. */
-    readonly retryAfterSeconds: number
-  ) {
+  // Assigned in the body rather than declared as constructor parameters, so
+  // this file runs under `node --experimental-strip-types` and its tests need
+  // no build step and no test dependency to execute.
+  constructor(code: QuotaCode, message: string, retryAfterSeconds: number) {
     super(message);
+    this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -153,8 +156,16 @@ type DayRecord = {
   breakerUntil: number;
 };
 
+/**
+ * Today, as the device reckons it.
+ *
+ * Built from Date.now() rather than `new Date()` so the whole module reads one
+ * clock. They agree in a browser, and they do not agree under a test that
+ * moves time forward — which meant the one behaviour most worth proving, that
+ * a spent allowance comes back tomorrow, was the one that could not be.
+ */
 function today(): string {
-  const now = new Date();
+  const now = new Date(Date.now());
   const month = `${now.getMonth() + 1}`.padStart(2, '0');
   const day = `${now.getDate()}`.padStart(2, '0');
   return `${now.getFullYear()}-${month}-${day}`;
@@ -215,7 +226,7 @@ function save(): void {
 
 /** Seconds until the local day rolls over and the allowance returns. */
 function secondsUntilReset(): number {
-  const midnight = new Date();
+  const midnight = new Date(Date.now());
   midnight.setHours(24, 0, 0, 0);
   return Math.max(1, Math.ceil((midnight.getTime() - Date.now()) / 1000));
 }

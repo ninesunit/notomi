@@ -54,6 +54,7 @@
     "android": "expo start --android",
     "build:web": "node scripts/copy-pdf-worker.mjs && expo export --platform web --clear && node scripts/patch-html.mjs",
     "typecheck": "tsc --noEmit",
+    "test:budget": "node --experimental-strip-types --no-warnings scripts/budget.test.mjs",
     "deploy:hosting": "npm run build:web && firebase deploy --only hosting",
     "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes",
     "postinstall": "node scripts/copy-pdf-worker.mjs",
