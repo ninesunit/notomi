@@ -82,6 +82,11 @@ export function Tabs<T extends string>({
               key={tab.id}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
+              // Icon-only below `sm`, so the name has to come from here rather
+              // than from the text beside it.
+              accessibilityLabel={
+                tab.count === undefined ? tab.label : `${tab.label}, ${tab.count}`
+              }
               onLayout={(event) => {
                 const { x: left, width: measured } = event.nativeEvent.layout;
                 frames.current[position] = { x: left + 4, width: measured };
@@ -96,7 +101,7 @@ export function Tabs<T extends string>({
                 feedback('toggle');
                 onChange(tab.id);
               }}
-              className="h-10 min-w-0 flex-1 flex-row items-center justify-center rounded-xl sm:h-auto sm:flex-none sm:px-3.5 sm:py-2.5"
+              className="h-11 min-w-0 flex-1 flex-row items-center justify-center rounded-xl sm:h-auto sm:flex-none sm:px-3.5 sm:py-2.5"
             >
               <Icon name={tab.icon} size={14} tone={active ? 'accent' : 'muted'} />
               <Text

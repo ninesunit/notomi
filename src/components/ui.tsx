@@ -355,7 +355,20 @@ export function PageHeader({
   return (
     <View className="mb-5 flex-row flex-wrap items-end justify-between gap-4">
       <View className="flex-1 gap-1.5" style={{ minWidth: 220 }}>
-        <Text className="font-heading text-[28px] font-bold leading-8 tracking-tight text-ink">{title}</Text>
+        {/*
+          A real heading, not text that happens to be large.
+
+          React Native renders every Text as a plain box, so a screen reader
+          arriving on any screen in this app found no landmark to jump to and
+          had to read from the top. Every screen goes through this component,
+          so one role here gives all of them a heading to navigate by.
+        */}
+        <Text
+          accessibilityRole="header"
+          className="font-heading text-[28px] font-bold leading-8 tracking-tight text-ink"
+        >
+          {title}
+        </Text>
         {subtitle ? <Text className="text-[15px] leading-6 text-muted">{subtitle}</Text> : null}
       </View>
       {/*

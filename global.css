@@ -136,6 +136,44 @@
 }
 
 /*
+ * A visible focus ring, for anyone driving this with a keyboard.
+ *
+ * react-native-web clears the outline on every pressable so taps do not leave
+ * a halo behind, which is right for a finger and leaves a keyboard user with
+ * no idea where they are. `:focus-visible` is the distinction the platform
+ * already draws: it fires for keyboard and assistive navigation and stays
+ * quiet for pointers, so both cases get what they need.
+ *
+ * Two colours rather than one, because the ring has to be visible on a cream
+ * page and on a near-black one, and `accent` moves between the themes.
+ */
+:where(a, button, [role='button'], [role='tab'], [role='link'], [role='switch'], [role='checkbox'], [role='radio'], input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/*
+ * Honour the system setting rather than deciding for people.
+ *
+ * Motion is a comfort for most and a genuine problem for some — vestibular
+ * disorders make a sliding sheet or a scaling button nauseating. The app's own
+ * animations already check this through src/components/motion.tsx; this
+ * catches the CSS transitions react-native-web emits, which that hook never
+ * sees.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
  * React Native Web filters a few browser-only style keys from View/ScrollView,
  * so the canvas states its own gesture boundary by class name.
  */

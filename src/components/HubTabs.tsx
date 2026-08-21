@@ -29,6 +29,11 @@ export function HubTabs<T extends string>({
                 key={tab.id}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
+                // The label beside the icon is hidden below `sm`, which leaves
+                // this with no accessible name on the device most likely to be
+                // driven by a screen reader. Naming it here covers both widths;
+                // the visible text is decorative once this exists.
+                accessibilityLabel={tab.label}
                 // This tab plays its own cue, and only when the selection
                 // actually changes. Touchable contributes the press animation
                 // and stays quiet rather than doubling the sound.
@@ -38,7 +43,7 @@ export function HubTabs<T extends string>({
                   feedback('toggle');
                   onChange(tab.id);
                 }}
-                className={`h-10 min-w-0 flex-1 flex-row items-center justify-center rounded-xl sm:h-auto sm:flex-none sm:px-3.5 sm:py-2.5 ${
+                className={`h-11 min-w-0 flex-1 flex-row items-center justify-center rounded-xl sm:h-auto sm:flex-none sm:px-3.5 sm:py-2.5 ${
                   active ? 'bg-ink' : 'bg-transparent'
                 }`}
               >
