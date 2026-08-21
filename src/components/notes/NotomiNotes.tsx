@@ -95,6 +95,15 @@ const TOOLS: { id: Tool; label: string; icon: IconName }[] = [
   { id: 'lasso', label: 'Lasso', icon: 'lasso' },
 ];
 
+/**
+ * How often the canvas is checkpointed to the cloud while someone is drawing.
+ *
+ * Sixty seconds is the number the free-tier review landed on, and the arithmetic
+ * is the argument: at three seconds, twenty students drawing for an hour would
+ * spend the whole project's daily write allowance between them.
+ */
+const CLOUD_CHECKPOINT_MS = 60_000;
+
 const PEN_COLORS = ['#18181B', '#B4552D', '#2E6F5E', '#4C5FA8'];
 
 const BRUSHES: { id: NoteBrush; label: string; icon: IconName; size: number; opacity: number }[] = [
@@ -213,6 +222,8 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
   const undoRef = useRef<NoteNode[][]>([]);
   const redoRef = useRef<NoteNode[][]>([]);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCloudSyncRef = useRef(0);
+  const cloudPendingRef = useRef(false);
   const objectUrlsRef = useRef(new Set<string>());
   const touchTapRef = useRef({ fingers: 0, moved: false, startedAt: 0, lastTapAt: 0, lastFingers: 0 });
   const undoActionRef = useRef<() => void>(() => undefined);
@@ -275,24 +286,76 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
     [notebook?.pages, pageId]
   );
 
-  const scheduleCloudSync = useCallback(
-    (nextNodes = nodesRef.current, nextCamera = cameraRef.current) => {
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-      setSyncState('local');
-      setSyncError(null);
-      const snapshot = stateSnapshot(nextNodes, nextCamera);
-      syncTimerRef.current = setTimeout(() => {
-        setSyncState('syncing');
-        void syncNoteCanvasCloud(userId, notebookId, snapshot)
-          .then(() => setSyncState('synced'))
-          .catch((error) => {
-            setSyncError(error instanceof Error ? error.message : String(error));
-            setSyncState('error');
-          });
-      }, 3000);
-    },
-    [notebookId, stateSnapshot, userId]
-  );
+  /**
+   * Writes the canvas to the cloud now, from whatever is on screen at the
+   * moment it runs rather than whatever was on screen when it was booked.
+   */
+  const flushCloud = useCallback(() => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = null;
+    if (!cloudPendingRef.current) return;
+    cloudPendingRef.current = false;
+    lastCloudSyncRef.current = Date.now();
+
+    setSyncState('syncing');
+    void syncNoteCanvasCloud(userId, notebookId, stateSnapshot(nodesRef.current, cameraRef.current))
+      .then(() => setSyncState('synced'))
+      .catch((error) => {
+        setSyncError(error instanceof Error ? error.message : String(error));
+        setSyncState('error');
+      });
+  }, [notebookId, stateSnapshot, userId]);
+
+  /**
+   * A checkpoint, not a debounce.
+   *
+   * This used to reset a three-second timer on every edit, which sounds
+   * cautious and is not: draw, pause, draw, pause is how anyone writes, so it
+   * wrote every three or four seconds for as long as the notebook was open.
+   * An hour of that is close to a thousand writes from one student, against a
+   * daily allowance shared by everyone using Notomi.
+   *
+   * The timer is deliberately not restarted by later edits, so continuous
+   * drawing checkpoints once a minute instead of never or constantly. Every
+   * stroke is still on the device the instant it is drawn — that is what
+   * `storeNow` does, and it is the copy that matters if the tab dies.
+   */
+  const scheduleCloudSync = useCallback(() => {
+    cloudPendingRef.current = true;
+    setSyncState('local');
+    setSyncError(null);
+    if (syncTimerRef.current) return;
+
+    const since = Date.now() - lastCloudSyncRef.current;
+    syncTimerRef.current = setTimeout(
+      flushCloud,
+      Math.max(0, CLOUD_CHECKPOINT_MS - since)
+    );
+  }, [flushCloud]);
+
+  /*
+   * The moments a checkpoint cannot wait for: the tab going away, and the
+   * notebook closing. `hidden` rather than `beforeunload` because iOS Safari
+   * frequently never fires the latter — a phone switching apps is the single
+   * most likely way for an unsaved minute to be lost.
+   */
+  // Through a ref so the listener is attached once. Depending on `flushCloud`
+  // directly would re-run this whenever the notebook's metadata changed, and
+  // the cleanup would spend a write each time.
+  const flushRef = useRef(flushCloud);
+  flushRef.current = flushCloud;
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushRef.current();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      flushRef.current();
+    };
+  }, []);
 
   const storeNow = useCallback(
     (nextNodes = nodesRef.current, nextCamera = cameraRef.current) => {
@@ -302,7 +365,7 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
         setSyncError(error instanceof Error ? error.message : String(error));
         setSyncState('error');
       });
-      scheduleCloudSync(nextNodes, nextCamera);
+      scheduleCloudSync();
     },
     [notebookId, scheduleCloudSync, stateSnapshot, userId]
   );
@@ -846,23 +909,26 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
   const switchPage = useCallback(
     (nextPageId: string, persistCurrent = true) => {
       if (!nextPageId || nextPageId === pageId) return;
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-      syncTimerRef.current = null;
       if (persistCurrent) {
-        const snapshot = stateSnapshot(nodesRef.current, cameraRef.current);
-        void saveNoteCanvasLocal(userId, notebookId, snapshot).catch((error) => {
+        void saveNoteCanvasLocal(
+          userId,
+          notebookId,
+          stateSnapshot(nodesRef.current, cameraRef.current)
+        ).catch((error) => {
           setSyncError(error instanceof Error ? error.message : String(error));
           setSyncState('error');
         });
-        void syncNoteCanvasCloud(userId, notebookId, snapshot).catch((error) => {
-          setSyncError(error instanceof Error ? error.message : String(error));
-          setSyncState('error');
-        });
+        // Leaving a page is one of the moments worth spending a write on.
+        cloudPendingRef.current = true;
+        flushCloud();
+      } else if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
       }
       setPageId(nextPageId);
       router.replace(`/knowledge/notes/${notebookId}?page=${nextPageId}` as never);
     },
-    [notebookId, pageId, router, stateSnapshot, userId]
+    [flushCloud, notebookId, pageId, router, stateSnapshot, userId]
   );
 
   const addPage = useCallback(() => {
