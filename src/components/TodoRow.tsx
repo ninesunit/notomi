@@ -8,6 +8,7 @@ import { Sheet } from './Sheet';
 import { formatDue, toDate } from '@/lib/dates';
 import type { Priority, SubTask, Todo } from '@/lib/schema';
 import { PHONE } from '@/lib/breakpoints';
+import { feedback } from '@/lib/sound';
 
 const PRIORITY_TONE: Record<Priority, 'rose' | 'amber' | 'neutral'> = {
   high: 'rose',
@@ -95,7 +96,10 @@ export function TodoRow({
             accessibilityRole="checkbox"
             accessibilityState={{ checked: todo.isCompleted }}
             accessibilityLabel={`Mark ${todo.title} ${todo.isCompleted ? 'incomplete' : 'complete'}`}
-            onPress={() => actions.toggle(todo)}
+            onPress={() => {
+              feedback(todo.isCompleted ? 'toggle' : 'complete', 12);
+              actions.toggle(todo);
+            }}
             hitSlop={8}
             className={`h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
               todo.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
@@ -198,7 +202,10 @@ export function TodoRow({
           accessibilityRole="checkbox"
           accessibilityState={{ checked: todo.isCompleted }}
           accessibilityLabel={`Mark ${todo.title} ${todo.isCompleted ? 'incomplete' : 'complete'}`}
-          onPress={() => actions.toggle(todo)}
+          onPress={() => {
+            feedback(todo.isCompleted ? 'toggle' : 'complete', 12);
+            actions.toggle(todo);
+          }}
           className={`mt-0.5 h-5 w-5 items-center justify-center rounded-md border ${
             todo.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
           }`}
@@ -355,7 +362,10 @@ function TaskDetailSheet({
           <Pressable
             accessibilityRole="checkbox"
             accessibilityState={{ checked: todo.isCompleted }}
-            onPress={() => actions.toggle(todo)}
+            onPress={() => {
+              feedback(todo.isCompleted ? 'toggle' : 'complete', 12);
+              actions.toggle(todo);
+            }}
             className={`flex-row items-center gap-2 rounded-xl border px-3 py-2.5 ${
               todo.isCompleted ? 'border-pine bg-pine-soft' : 'border-line bg-surface'
             }`}

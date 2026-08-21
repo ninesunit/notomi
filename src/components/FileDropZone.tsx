@@ -3,6 +3,7 @@ import { Platform, Pressable, Text, View } from 'react-native';
 import { Icon } from '@/components/Icon';
 import {
   materialFilesFromWeb,
+  capturePhotoFromWeb,
   pickMaterials,
   validateMaterialBatch,
   type MaterialFile,
@@ -12,7 +13,7 @@ export function FileDropZone({
   onFiles,
   busy = false,
   title = 'Drop files here',
-  body = 'PDF, PNG, JPG or PPTX. Up to 10 files and 25 MB total.',
+  body = 'PDF, PNG, JPG, PPTX or ICS. Up to 10 files and 25 MB total.',
   compact = false,
 }: {
   onFiles: (files: MaterialFile[]) => void | Promise<void>;
@@ -69,20 +70,37 @@ export function FileDropZone({
           <Text className="text-sm font-semibold text-ink">{title}</Text>
           <Text className="text-center text-xs leading-5 text-muted">{body}</Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          disabled={busy}
-          onPress={() =>
-            void pickMaterials()
-              .then(accept)
-              .catch((caught) => setError(String(caught)))
-          }
-          className={`rounded-lg bg-ink px-4 py-2 ${busy ? 'opacity-50' : ''}`}
-        >
-          <Text className="text-xs font-semibold text-paper">
-            {busy ? 'Working…' : 'Choose files'}
-          </Text>
-        </Pressable>
+        <View className="flex-row flex-wrap items-center justify-center gap-2">
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={() =>
+              void pickMaterials()
+                .then(accept)
+                .catch((caught) => setError(String(caught)))
+            }
+            className={`rounded-lg bg-ink px-4 py-2 ${busy ? 'opacity-50' : ''}`}
+          >
+            <Text className="text-xs font-semibold text-paper">
+              {busy ? 'Working…' : 'Choose files'}
+            </Text>
+          </Pressable>
+          {Platform.OS === 'web' ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() =>
+                void capturePhotoFromWeb()
+                  .then(accept)
+                  .catch((caught) => setError(String(caught)))
+              }
+              className={`flex-row items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 ${busy ? 'opacity-50' : ''}`}
+            >
+              <Icon name="camera" size={13} tone="ink" />
+              <Text className="text-xs font-semibold text-ink">Take photo</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
       {error ? <Text className="text-xs leading-5 text-rose">{error}</Text> : null}
     </View>

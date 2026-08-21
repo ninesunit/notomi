@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Icon } from '@/components/Icon';
+import { CelebrationBurst } from '@/components/CelebrationBurst';
 import { ResponsiveTermPicker } from '@/components/ResponsiveTermPicker';
 import { orderBy, query } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -26,6 +27,7 @@ import {
 import { TINT, subjectTint } from '@/lib/color';
 import { AMBIENT, startAmbient, type AmbientHandle, type AmbientId } from '@/lib/ambient';
 import { useAmbientChoice } from '@/hooks/useAmbient';
+import { feedback, haptic } from '@/lib/sound';
 
 /**
  * Pomodoro timer.
@@ -66,6 +68,7 @@ export default function Focus() {
   const [taskId, setTaskId] = useState<string | null>(params.taskId ?? null);
   const [error, setError] = useState<string | null>(null);
   const [justLogged, setJustLogged] = useState<number | null>(null);
+  const [burst, setBurst] = useState(0);
 
   /** Wall-clock instant the current phase ends; null whenever paused. */
   const deadline = useRef<number | null>(null);
@@ -175,6 +178,7 @@ export default function Focus() {
       if (phase === 'focus') {
         const next = completed + 1;
         setCompleted(next);
+        setBurst((value) => value + 1);
         setPhase('break');
         setRemaining(next % CYCLES_TO_LONG_BREAK === 0 ? LONG_BREAK : LENGTHS.break);
       } else {
@@ -185,7 +189,7 @@ export default function Focus() {
       setRunning(false);
       deadline.current = null;
       worked.current = 0;
-      chime();
+      feedback('chime', [16, 36, 16]);
     },
     [completed, finish, phase]
   );
@@ -216,6 +220,9 @@ export default function Focus() {
 
   function start() {
     setJustLogged(null);
+    // Buttons supply the audible tap; this slightly firmer pulse says the
+    // timer itself is now running rather than merely that a control moved.
+    haptic(12);
     deadline.current = Date.now() + remaining * 1000;
     lastTick.current = Date.now();
     setRunning(true);
@@ -383,6 +390,7 @@ export default function Focus() {
       <FocusRoom friends={room} onJoin={join} />
 
       <AmbientControl />
+      <CelebrationBurst burstKey={burst} />
 
 
       {/*
@@ -550,33 +558,6 @@ function Metric({
  * A short tone at the end of a block, synthesised rather than fetched so there
  * is no audio asset to ship and nothing to load before it can play.
  */
-function chime(): void {
-  if (Platform.OS !== 'web') return;
-  try {
-    const Context =
-      window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Context) return;
-
-    const context = new Context();
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-
-    oscillator.type = 'sine';
-    oscillator.frequency.value = 660;
-    // Ramp down rather than cutting off: an abrupt stop clicks.
-    gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.2, context.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.6);
-
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.6);
-    oscillator.onended = () => void context.close();
-  } catch {
-    /* Audio is a nicety; a blocked AudioContext must not break the timer. */
-  }
-}
-
 /**
  * Six soundscapes, one at a time, chosen and remembered.
  *

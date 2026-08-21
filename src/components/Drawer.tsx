@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
   Animated,
-  Easing,
   PanResponder,
   Platform,
   Pressable,
@@ -219,10 +218,12 @@ export function MobileTopBar({
 export function NavDrawer({
   open,
   onClose,
+  onHelp,
   pathname,
 }: {
   open: boolean;
   onClose: () => void;
+  onHelp: () => void;
   pathname: string;
 }) {
   const { width } = useWindowDimensions();
@@ -240,10 +241,11 @@ export function NavDrawer({
   useEffect(() => {
     if (open) setMounted(true);
 
-    const animation = Animated.timing(progress, {
+    const animation = Animated.spring(progress, {
       toValue: open ? 1 : 0,
-      duration: open ? 240 : 190,
-      easing: open ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      stiffness: 400,
+      damping: 25,
+      mass: 1,
       useNativeDriver: Platform.OS !== 'web',
     });
     animation.start(({ finished }) => {
@@ -267,8 +269,9 @@ export function NavDrawer({
         else {
           Animated.spring(progress, {
             toValue: 1,
-            speed: 30,
-            bounciness: 0,
+            stiffness: 400,
+            damping: 25,
+            mass: 1,
             useNativeDriver: Platform.OS !== 'web',
           }).start();
         }
@@ -381,6 +384,19 @@ export function NavDrawer({
               icon="settings"
               active={isActive(pathname, '/settings')}
             />
+
+            <Touchable
+              accessibilityRole="button"
+              accessibilityLabel="Open help and tips"
+              onPress={() => {
+                onClose();
+                onHelp();
+              }}
+              className="flex-row items-center gap-3 rounded-xl px-3 py-3"
+            >
+              <Icon name="help-circle" size={16} tone="muted" />
+              <Text className="text-[15px] font-medium text-muted">Help & tips</Text>
+            </Touchable>
 
             <Touchable
               accessibilityRole="button"

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -13,6 +14,11 @@ import { paths } from '@/lib/paths';
 import type { ClassBlock, RoutineBlock, Subject, Todo } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { resolveClasses } from '@/services/timetable';
+import {
+  removeBackgroundReminders,
+  syncBackgroundReminders,
+  type BackgroundReminderState,
+} from '@/services/pushReminders';
 import {
   DEFAULT_PREFS,
   fireDue,
@@ -45,6 +51,8 @@ type ReminderState = {
   enable: () => Promise<PermissionState>;
   /** Everything due in the next day and a half, soonest first. */
   upcoming: Reminder[];
+  /** Whether reminders can continue after the app has been closed. */
+  background: BackgroundReminderState;
 };
 
 const Context = createContext<ReminderState | null>(null);
@@ -58,6 +66,7 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
 
   const [prefs, setPrefs] = useState<ReminderPrefs>(() => loadPrefs());
   const [permission, setPermission] = useState<PermissionState>(() => permissionState());
+  const [background, setBackground] = useState<BackgroundReminderState>('checking');
   /** Bumped on every tick so `upcoming` recomputes against the wall clock. */
   const [now, setNow] = useState(() => new Date());
 
@@ -85,6 +94,39 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
       ),
     [named, routines.data, todos.data, prefs, now]
   );
+
+  const backgroundUpcoming = useMemo(
+    () =>
+      upcomingReminders(
+        { classes: named, routines: routines.data, todos: todos.data },
+        prefs,
+        now,
+        28 * 24
+      ),
+    [named, routines.data, todos.data, prefs, now]
+  );
+
+  const lastBackgroundSignature = useRef('');
+
+  useEffect(() => {
+    if (!prefs.enabled || permission !== 'granted') {
+      if (lastBackgroundSignature.current) void removeBackgroundReminders();
+      lastBackgroundSignature.current = '';
+      setBackground('local-only');
+      return;
+    }
+
+    // The provider's wall clock updates every 30 seconds, but the signature
+    // changes only when the actual four-week queue changes. This keeps the
+    // Worker at one compact sync per schedule edit rather than 2,880/day/user.
+    const signature = JSON.stringify(
+      backgroundUpcoming.map(({ id, title, body, at }) => [id, title, body, at.getTime()])
+    );
+    if (signature === lastBackgroundSignature.current) return;
+    lastBackgroundSignature.current = signature;
+    setBackground('checking');
+    void syncBackgroundReminders(backgroundUpcoming).then(setBackground);
+  }, [backgroundUpcoming, permission, prefs.enabled]);
 
   // The clock, kept separate from the firing so that a page showing "in 12 min"
   // stays honest even when notifications are switched off.
@@ -127,8 +169,8 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
   }, [update]);
 
   const value = useMemo<ReminderState>(
-    () => ({ prefs, update, permission, enable, upcoming }),
-    [prefs, update, permission, enable, upcoming]
+    () => ({ prefs, update, permission, enable, upcoming, background }),
+    [prefs, update, permission, enable, upcoming, background]
   );
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
@@ -146,5 +188,6 @@ export function useReminders(): ReminderState {
     permission: 'unsupported',
     enable: async () => 'unsupported',
     upcoming: [],
+    background: 'local-only',
   };
 }

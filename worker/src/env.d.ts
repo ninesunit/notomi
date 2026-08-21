@@ -18,4 +18,11 @@ interface Env {
   GOOGLE_CLIENT_SECRET: string;
   /** Refresh tokens, keyed by Firebase uid. */
   DRIVE_TOKENS: KVNamespace;
+  /** Small, bounded queue for installed-PWA background reminders. */
+  REMINDERS_DB: D1Database;
+  /** Public half is also embedded in the client bundle. */
+  VAPID_PUBLIC_KEY: string;
+  /** Set only with `wrangler secret put`. */
+  VAPID_PRIVATE_KEY: string;
+  VAPID_SUBJECT: string;
 }

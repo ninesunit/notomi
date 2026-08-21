@@ -157,6 +157,33 @@ export function materialFilesFromWeb(files: FileList | File[]): MaterialFile[] {
   }));
 }
 
+/** Opens the phone camera directly instead of making a student save a photo first. */
+export function capturePhotoFromWeb(): Promise<MaterialFile[]> {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return Promise.resolve([]);
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.style.display = 'none';
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('focus', handleFocus);
+      const files = input.files?.length ? materialFilesFromWeb(input.files) : [];
+      input.remove();
+      resolve(files);
+    };
+    const handleFocus = () => window.setTimeout(finish, 500);
+    input.addEventListener('change', finish, { once: true });
+    input.addEventListener('cancel', finish, { once: true });
+    window.addEventListener('focus', handleFocus, { once: true });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
 /**
  * A parse, done once. Extraction for images and A/V costs a Gemini call, so the
  * result is threaded through the pipeline rather than recomputed when a file
@@ -474,6 +501,7 @@ function pickMaterialsFromWeb(): Promise<MaterialFile[]> {
       '.mp4',
       '.mp3',
       '.m4a',
+      '.ics',
     ].join(',');
     input.style.display = 'none';
 

@@ -2,16 +2,7 @@ import { Platform } from 'react-native';
 import { toDate } from '@/lib/dates';
 import { DAY_FULL, minutesToLabel, type ClassBlock, type RoutineBlock, type Todo } from '@/lib/schema';
 
-/**
- * Class and deadline reminders.
- *
- * These are local notifications, not server push: Notomi has no backend to send
- * from, so a reminder is scheduled and fired by the app itself. In an installed
- * PWA that still means a real system notification — iOS 16.4+, Android and
- * desktop all show one through the service worker — but only while the app is
- * running or in the background, not after the browser has been killed for days.
- * The settings card says so rather than implying otherwise.
- */
+/** Class and deadline reminder calculation shared by local and push delivery. */
 
 export type ReminderPrefs = {
   enabled: boolean;
@@ -183,18 +174,25 @@ export function upcomingReminders(
     kind: 'class' | 'routine',
     body: string
   ) => {
-    const starts = nextOccurrence(block, now);
-    const at = new Date(starts.getTime() - lead);
-    if (at.getTime() > horizon) return;
-    out.push({
-      id: `${kind}:${block.id}:${starts.getTime()}`,
-      // subjectName is the joined value where the caller resolved it.
-      title: ('subjectName' in block && block.subjectName) || block.title,
-      body,
-      at,
-      starts,
-      kind,
-    });
+    const first = nextOccurrence(block, now);
+
+    // Local delivery asks for 36 hours and normally produces one occurrence.
+    // Background push asks for four weeks, so expand the same recurring block
+    // here instead of making extra Firestore documents or scheduled functions.
+    for (let startsAt = first.getTime(); startsAt - lead <= horizon; startsAt += 7 * 86_400_000) {
+      const starts = new Date(startsAt);
+      const at = new Date(startsAt - lead);
+      if (at.getTime() < now.getTime() - 10 * 60_000) continue;
+      out.push({
+        id: `${kind}:${block.id}:${starts.getTime()}`,
+        // subjectName is the joined value where the caller resolved it.
+        title: ('subjectName' in block && block.subjectName) || block.title,
+        body,
+        at,
+        starts,
+        kind,
+      });
+    }
   };
 
   if (prefs.classes) {

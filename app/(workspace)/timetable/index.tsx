@@ -338,7 +338,7 @@ export default function Timetable() {
           <FileDropZone
             busy={importer.scanning}
             title="Add schedule files"
-            body="Drop or choose up to 10 PDFs, images or PPTX slide decks. Select several together with Ctrl, Command or Shift on desktop. Maximum 25 MB per batch."
+            body="Drop or choose up to 10 PDF schedules, screenshots, slide decks or ICS calendar exports. Maximum 25 MB per batch."
             onFiles={async (files) => {
               await importer.scanFiles(files);
             }}

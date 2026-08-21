@@ -24,7 +24,7 @@ export function RemindersCard({
    */
   settingsOpen = false,
 }: { settingsOpen?: boolean } = {}) {
-  const { prefs, update, permission, enable, upcoming } = useReminders();
+  const { prefs, update, permission, enable, upcoming, background } = useReminders();
   const [settings, setSettings] = useState(settingsOpen);
   const [busy, setBusy] = useState(false);
   const [denied, setDenied] = useState(false);
@@ -56,7 +56,9 @@ export function RemindersCard({
           <Text className="text-[15px] font-semibold text-ink">Reminders</Text>
           <Text className="text-xs text-muted">
             {prefs.enabled && permission === 'granted'
-              ? `${prefs.leadMinutes} min before each class`
+              ? background === 'ready'
+                ? `${prefs.leadMinutes} min before · works when closed`
+                : `${prefs.leadMinutes} min before each class`
               : 'Off — no notifications will be sent'}
           </Text>
         </View>
@@ -91,9 +93,8 @@ export function RemindersCard({
       ) : !prefs.enabled || permission !== 'granted' ? (
         <View className="gap-3">
           <Text className="text-sm leading-5 text-muted">
-            Get a nudge before every class and twice before every deadline. Notomi schedules these
-            on your device, so they arrive while the app is installed or open — nothing is sent from
-            a server.
+            Get a nudge before every class and twice before every deadline. Installed apps can keep
+            receiving them after Notomi is closed; other browsers use an in-app fallback.
           </Text>
           <View className="flex-row">
             <Button
@@ -237,9 +238,15 @@ export function RemindersCard({
               </View>
 
               <Text className="text-[11px] leading-4 text-subtle">
-                Reminders are scheduled on this device, not pushed from a server, so they arrive
-                while Notomi is open or installed to your home screen. They do not follow you to
-                another phone.
+                {background === 'ready'
+                  ? 'Background reminders are active on this device. Only the next four weeks are queued, and any schedule edit replaces that compact queue.'
+                  : background === 'install-required'
+                    ? 'On iPhone or iPad, add Notomi to the Home Screen to receive reminders after the browser closes.'
+                    : background === 'unconfigured'
+                      ? 'Background delivery is not configured yet. In-app reminders continue to work while Notomi is open.'
+                      : background === 'error'
+                        ? 'Background sync could not finish. In-app reminders remain active and Notomi will retry after the schedule changes.'
+                        : 'Reminders are local to this device and do not follow you to another phone.'}
               </Text>
             </View>
           </Reveal>

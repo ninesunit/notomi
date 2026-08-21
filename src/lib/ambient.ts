@@ -41,14 +41,18 @@ function audioContext(): Ctx | null {
  * `beta` is the integrator coefficient: zero is white, and the closer to one
  * the more the signal remembers, which is what turns hiss into rumble.
  */
-function noiseBuffer(context: Ctx, beta: number, seconds = 2): AudioBuffer {
+function noiseBuffer(context: Ctx, beta: number, seconds = 8): AudioBuffer {
   const buffer = context.createBuffer(1, Math.floor(context.sampleRate * seconds), context.sampleRate);
   const data = buffer.getChannelData(0);
   let last = 0;
   let peak = 0.0001;
   for (let index = 0; index < data.length; index += 1) {
     const white = Math.random() * 2 - 1;
-    last = (last + beta * white) / (1 + beta);
+    // beta=0 is white noise; values near one retain the previous sample and
+    // become progressively warmer. The old equation multiplied the *new*
+    // sample by beta, so beta=0 produced a buffer of literal silence — which
+    // is why rain, vinyl and the café bed sounded missing or thin.
+    last = beta * last + (1 - beta) * white;
     data[index] = last;
     peak = Math.max(peak, Math.abs(last));
   }
@@ -134,7 +138,7 @@ type Builder = (
 
 const BUILDERS: Record<AmbientId, Builder> = {
   brown(context, out, stops) {
-    const source = noiseSource(context, 0.02);
+    const source = noiseSource(context, 0.985);
     const filter = context.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = 800;
@@ -165,7 +169,7 @@ const BUILDERS: Record<AmbientId, Builder> = {
     stops.push(() => gust.oscillator.stop());
 
     // Distant body underneath, so it has a room rather than a speaker.
-    const rumble = noiseSource(context, 0.03);
+    const rumble = noiseSource(context, 0.96);
     const rumbleFilter = context.createBiquadFilter();
     rumbleFilter.type = 'lowpass';
     rumbleFilter.frequency.value = 400;
@@ -175,11 +179,39 @@ const BUILDERS: Record<AmbientId, Builder> = {
     rumble.start();
     stops.push(() => rumble.stop());
 
-    return 0.3;
+    // Individual droplets keep the bed from reading as radio static.
+    const drop = noiseBuffer(context, 0, 0.08);
+    let cancelled = false;
+    let dropTimer: ReturnType<typeof setTimeout> | null = null;
+    const sprinkle = () => {
+      if (cancelled) return;
+      const source = context.createBufferSource();
+      const filter = context.createBiquadFilter();
+      const gain = context.createGain();
+      const when = context.currentTime + 0.04;
+      source.buffer = drop;
+      filter.type = 'bandpass';
+      filter.frequency.value = 1700 + Math.random() * 2600;
+      filter.Q.value = 1.8;
+      gain.gain.setValueAtTime(0.0001, when);
+      gain.gain.exponentialRampToValueAtTime(0.035 + Math.random() * 0.055, when + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
+      source.connect(filter).connect(gain).connect(out);
+      source.start(when);
+      source.stop(when + 0.08);
+      dropTimer = setTimeout(sprinkle, 90 + Math.random() * 360);
+    };
+    sprinkle();
+    stops.push(() => {
+      cancelled = true;
+      if (dropTimer) clearTimeout(dropTimer);
+    });
+
+    return 0.27;
   },
 
   fire(context, out, stops, timers) {
-    const bed = noiseSource(context, 0.05);
+    const bed = noiseSource(context, 0.9);
     const bedFilter = context.createBiquadFilter();
     bedFilter.type = 'lowpass';
     bedFilter.frequency.value = 320;
@@ -228,7 +260,7 @@ const BUILDERS: Record<AmbientId, Builder> = {
   },
 
   waves(context, out, stops) {
-    const source = noiseSource(context, 0.015);
+    const source = noiseSource(context, 0.35);
     const filter = context.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = 600;
@@ -302,6 +334,22 @@ const BUILDERS: Record<AmbientId, Builder> = {
       while (bar * BAR + startedAt < horizon) {
         const when = startedAt + bar * BAR;
         for (const semitone of CHORDS[bar % CHORDS.length]) voice(semitone, when, BAR + 0.6);
+
+        // A soft kick and brushed backbeat give the loop a pulse without
+        // turning it into a song that competes with reading.
+        for (const beat of [0, 2]) {
+          const kick = context.createOscillator();
+          const kickGain = context.createGain();
+          const at = when + beat;
+          kick.type = 'sine';
+          kick.frequency.setValueAtTime(105, at);
+          kick.frequency.exponentialRampToValueAtTime(48, at + 0.13);
+          kickGain.gain.setValueAtTime(0.08, at);
+          kickGain.gain.exponentialRampToValueAtTime(0.0001, at + 0.16);
+          kick.connect(kickGain).connect(out);
+          kick.start(at);
+          kick.stop(at + 0.18);
+        }
         bar += 1;
       }
     };
@@ -327,7 +375,7 @@ const BUILDERS: Record<AmbientId, Builder> = {
   cafe(context, out, stops) {
     // Room tone: band-limited noise with no top and no bottom, which is what a
     // full room sounds like from a corner table.
-    const room = noiseSource(context, 0.01);
+    const room = noiseSource(context, 0.15);
     const high = context.createBiquadFilter();
     high.type = 'highpass';
     high.frequency.value = 180;
@@ -349,6 +397,32 @@ const BUILDERS: Record<AmbientId, Builder> = {
     drift.gain.connect(low.frequency);
     stops.push(() => drift.oscillator.stop());
 
-    return 0.3;
+    // Occasional porcelain/glass clinks are recognisable café detail. Sparse
+    // enough that they never become a metronome.
+    let cancelled = false;
+    let clinkTimer: ReturnType<typeof setTimeout> | null = null;
+    const clink = () => {
+      if (cancelled) return;
+      const when = context.currentTime + 0.04;
+      for (const [frequency, level] of [[1760, 0.018], [2380, 0.012]] as const) {
+        const oscillator = context.createOscillator();
+        const bellGain = context.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency * (0.94 + Math.random() * 0.12);
+        bellGain.gain.setValueAtTime(level, when);
+        bellGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.24);
+        oscillator.connect(bellGain).connect(out);
+        oscillator.start(when);
+        oscillator.stop(when + 0.26);
+      }
+      clinkTimer = setTimeout(clink, 6500 + Math.random() * 10500);
+    };
+    clinkTimer = setTimeout(clink, 3200 + Math.random() * 5000);
+    stops.push(() => {
+      cancelled = true;
+      if (clinkTimer) clearTimeout(clinkTimer);
+    });
+
+    return 0.27;
   },
 };

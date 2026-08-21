@@ -12,6 +12,8 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { FloatingAction } from '@/components/FloatingAction';
+import { CelebrationBurst } from '@/components/CelebrationBurst';
+import { FadeIn } from '@/components/motion';
 import { ResponsiveTermPicker } from '@/components/ResponsiveTermPicker';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
@@ -28,6 +30,7 @@ import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { SubTask, Subject, Todo } from '@/lib/schema';
 import { sweepOrphanedTodos } from '@/services/ingestion';
+import { feedback } from '@/lib/sound';
 
 /**
  * The cuts a student actually asks for.
@@ -114,6 +117,7 @@ export default function Todos() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [burst, setBurst] = useState(0);
 
   /**
    * Deleting a material now takes its deadlines with it, but accounts that
@@ -261,6 +265,8 @@ export default function Todos() {
           await batch.commit();
         }
         setNotice(`Cleared ${items.length} ${describe}${items.length === 1 ? '' : 's'}.`);
+        feedback('complete', [12, 30, 12]);
+        setBurst((value) => value + 1);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       } finally {
@@ -277,6 +283,7 @@ export default function Todos() {
       );
     },
     toggle: (todo) => {
+      if (!todo.isCompleted) setBurst((value) => value + 1);
       void updateDoc(paths.todo(db, uid, todo.id), {
         isCompleted: !todo.isCompleted,
         completedAt: todo.isCompleted ? null : serverTimestamp(),
@@ -482,15 +489,16 @@ export default function Todos() {
                 </View>
 
                 <View className="overflow-hidden rounded-2xl border border-line bg-surface">
-                  {items.map((todo) => (
-                    <SwipeableRow
-                      key={todo.id}
-                      onSwipeLeft={() => actions.remove(todo)}
-                      onSwipeRight={() => actions.toggle(todo)}
-                      rightLabel="Complete"
-                    >
-                      <TodoRow todo={todo} actions={actions} overdue={group.key === 'overdue'} />
-                    </SwipeableRow>
+                  {items.map((todo, index) => (
+                    <FadeIn key={todo.id} index={index} distance={8}>
+                      <SwipeableRow
+                        onSwipeLeft={() => actions.remove(todo)}
+                        onSwipeRight={() => actions.toggle(todo)}
+                        rightLabel="Complete"
+                      >
+                        <TodoRow todo={todo} actions={actions} overdue={group.key === 'overdue'} />
+                      </SwipeableRow>
+                    </FadeIn>
                   ))}
                 </View>
               </View>
@@ -515,15 +523,16 @@ export default function Todos() {
 
               {showCompleted ? (
                 <View className="overflow-hidden rounded-2xl border border-line bg-surface">
-                  {completed.map((todo) => (
-                    <SwipeableRow
-                      key={todo.id}
-                      onSwipeLeft={() => actions.remove(todo)}
-                      onSwipeRight={() => actions.toggle(todo)}
-                      rightLabel="Reopen"
-                    >
-                      <TodoRow todo={todo} actions={actions} overdue={false} />
-                    </SwipeableRow>
+                  {completed.map((todo, index) => (
+                    <FadeIn key={todo.id} index={index} distance={8}>
+                      <SwipeableRow
+                        onSwipeLeft={() => actions.remove(todo)}
+                        onSwipeRight={() => actions.toggle(todo)}
+                        rightLabel="Reopen"
+                      >
+                        <TodoRow todo={todo} actions={actions} overdue={false} />
+                      </SwipeableRow>
+                    </FadeIn>
                   ))}
                 </View>
               ) : null}
@@ -552,6 +561,7 @@ export default function Todos() {
           onSubmit={addTodo}
         />
       </Sheet>
+      <CelebrationBurst burstKey={burst} />
     </ScreenScroll>
   );
 }

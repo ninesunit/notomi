@@ -37,6 +37,7 @@ import { buildBurnoutWeeks, findActiveSemester } from '@/services/academicPlanne
 import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
 import { pickMaterials, type MaterialFile } from '@/services/ingestion';
 import { subjectTint, workloadTint } from '@/lib/color';
+import { SemesterSetup } from '@/components/SemesterSetup';
 
 /**
  * The dashboard.
@@ -126,6 +127,15 @@ export default function Dashboard() {
       )}
 
       <MissionStatus semester={activeSemester} todos={open} />
+
+      <SemesterSetup
+        uid={uid}
+        classCount={classes.data.length}
+        subjects={subjects.data}
+        todos={todos.data}
+        busy={ingest.busy}
+        onUpload={(files) => ingest.startFiles(files).then(() => undefined)}
+      />
 
       {subjects.error ? (
         <View className="mb-6">

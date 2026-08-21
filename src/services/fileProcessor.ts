@@ -30,6 +30,7 @@ export const ACCEPTED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
   'text/markdown',
+  'text/calendar',
   'image/png',
   'image/jpeg',
   'image/webp',
@@ -92,7 +93,7 @@ export function classify(fileName: string, mimeType: string): FileKind | 'unknow
   if (type.startsWith('audio/') || ['mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(extension)) {
     return 'audio';
   }
-  if (type.startsWith('text/') || ['txt', 'md', 'markdown', 'csv'].includes(extension)) {
+  if (type.startsWith('text/') || ['txt', 'md', 'markdown', 'csv', 'ics'].includes(extension)) {
     return 'text';
   }
   return 'unknown';
@@ -113,7 +114,7 @@ export async function extractText(
   if (kind === 'unknown') {
     throw new ParseError(
       `Notomi cannot read "${fileName}". Supported: PDF, DOCX, PPTX, TXT, Markdown, ` +
-        'PNG/JPG/WEBP images, MP4 video, and MP3/M4A audio.'
+        'ICS calendars, PNG/JPG/WEBP images, MP4 video, and MP3/M4A audio.'
     );
   }
 

@@ -43,13 +43,14 @@ export function Tabs<T extends string>({
     const frame = frames.current[target];
     if (!frame) return;
     const config = {
-      duration: 220,
-      easing: Easing.out(Easing.cubic),
+      stiffness: 400,
+      damping: 25,
+      mass: 1,
       useNativeDriver: false,
     };
     Animated.parallel([
-      Animated.timing(x, { toValue: frame.x, ...config }),
-      Animated.timing(width, { toValue: frame.width, ...config }),
+      Animated.spring(x, { toValue: frame.x, ...config }),
+      Animated.spring(width, { toValue: frame.width, ...config }),
     ]).start();
   };
 

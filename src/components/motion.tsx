@@ -118,8 +118,9 @@ export function Tappable({
   const spring = (toValue: number) =>
     Animated.spring(scale, {
       toValue,
-      speed: 40,
-      bounciness: 0,
+      stiffness: 400,
+      damping: 25,
+      mass: 1,
       useNativeDriver: Platform.OS !== 'web',
     }).start();
 

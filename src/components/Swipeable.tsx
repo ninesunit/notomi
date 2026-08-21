@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from 'react';
 import { Animated, PanResponder, Platform, Text, View } from 'react-native';
 import { Icon } from '@/components/Icon';
+import { feedback } from '@/lib/sound';
 
 /**
  * Swipe a row left to delete, right to complete.
@@ -76,15 +77,21 @@ export function SwipeableRow({
           Animated.spring(translate, {
             toValue: 0,
             useNativeDriver: Platform.OS !== 'web',
-            bounciness: 0,
-            speed: 18,
+            stiffness: 400,
+            damping: 25,
+            mass: 1,
           }).start();
           callback?.();
         };
 
         const { onSwipeLeft: left, onSwipeRight: right } = latest.current;
-        if (distance <= -TRIGGER && left) settle(left);
-        else if (distance >= TRIGGER && right) settle(right);
+        if (distance <= -TRIGGER && left) {
+          feedback('toggle', 12);
+          settle(left);
+        } else if (distance >= TRIGGER && right) {
+          feedback('complete', 12);
+          settle(right);
+        }
         else settle();
 
         // gesture is unused beyond the guard above but kept for clarity when
@@ -96,8 +103,9 @@ export function SwipeableRow({
         Animated.spring(translate, {
           toValue: 0,
           useNativeDriver: Platform.OS !== 'web',
-          bounciness: 0,
-          speed: 18,
+          stiffness: 400,
+          damping: 25,
+          mass: 1,
         }).start();
       },
     })

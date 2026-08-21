@@ -112,6 +112,7 @@ import Share2 from 'lucide-react-native/icons/share-2';
 import Shield from 'lucide-react-native/icons/shield';
 import SlidersHorizontal from 'lucide-react-native/icons/sliders-horizontal';
 import Sparkles from 'lucide-react-native/icons/sparkles';
+import Smartphone from 'lucide-react-native/icons/smartphone';
 import Square from 'lucide-react-native/icons/square';
 import SquarePen from 'lucide-react-native/icons/square-pen';
 import Star from 'lucide-react-native/icons/star';
@@ -242,6 +243,7 @@ const ICONS = {
   shield: Shield,
   'sliders-horizontal': SlidersHorizontal,
   sparkles: Sparkles,
+  smartphone: Smartphone,
   sun: Sun,
   square: Square,
   'square-pen': SquarePen,

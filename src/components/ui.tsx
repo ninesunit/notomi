@@ -70,8 +70,9 @@ export const Touchable = forwardRef<View, TouchableProps>(function Touchable(
   const spring = (toValue: number) =>
     Animated.spring(scale, {
       toValue,
-      speed: 40,
-      bounciness: 0,
+      stiffness: 400,
+      damping: 25,
+      mass: 1,
       useNativeDriver: Platform.OS !== 'web',
     }).start();
 
@@ -160,8 +161,9 @@ export function Button({
   const spring = (toValue: number) =>
     Animated.spring(scale, {
       toValue,
-      speed: 40,
-      bounciness: 0,
+      stiffness: 400,
+      damping: 25,
+      mass: 1,
       useNativeDriver: Platform.OS !== 'web',
     }).start();
 
@@ -282,11 +284,13 @@ export function EmptyState({
   icon,
   title,
   body,
+  badges,
   action,
 }: {
   icon: IconName;
   title: string;
   body: string;
+  badges?: { label: string; icon: IconName }[];
   action?: ReactNode;
 }) {
   return (
@@ -296,6 +300,16 @@ export function EmptyState({
       </View>
       <Text className="mb-1.5 text-center font-heading text-base font-semibold text-ink">{title}</Text>
       <Text className="mb-5 max-w-sm text-center text-sm leading-5 text-muted">{body}</Text>
+      {badges?.length ? (
+        <View className="mb-5 flex-row flex-wrap items-center justify-center gap-2">
+          {badges.map((badge) => (
+            <View key={badge.label} className="flex-row items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5">
+              <Icon name={badge.icon} size={12} tone="muted" />
+              <Text className="text-xs font-medium text-muted">{badge.label}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
       {action}
     </View>
   );

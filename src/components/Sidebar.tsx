@@ -14,7 +14,15 @@ import { Touchable } from '@/components/ui';
  * the workspace layout depends on it holding exactly w-64 so the main pane can
  * own the remaining width.
  */
-export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: () => void }) {
+export function Sidebar({
+  onAsk,
+  onCollapse,
+  onHelp,
+}: {
+  onAsk: () => void;
+  onCollapse: () => void;
+  onHelp: () => void;
+}) {
   const pathname = usePathname();
   const { user, logOut } = useAuth();
   const insets = useSafeArea();
@@ -132,6 +140,15 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
               </Text>
             </Touchable>
           </Link>
+          <Touchable
+            accessibilityRole="button"
+            accessibilityLabel="Open help and tips"
+            onPress={onHelp}
+            className="flex-row items-center gap-3 rounded-xl px-3 py-2.5"
+          >
+            <Icon name="help-circle" size={15} tone="muted" />
+            <Text className="text-sm font-medium text-muted">Help & tips</Text>
+          </Touchable>
           <Touchable
             accessibilityRole="switch"
             accessibilityState={{ checked: sound }}

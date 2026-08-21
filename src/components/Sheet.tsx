@@ -1,7 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import {
   Animated,
-  Easing,
   Modal,
   Platform,
   Pressable,
@@ -15,6 +14,7 @@ import { useSafeArea } from '@/hooks/useSafeArea';
 import { Icon } from '@/components/Icon';
 import { SHEET as SHEET_BREAKPOINT } from '@/lib/breakpoints';
 import { useVisualViewport } from '@/lib/viewport';
+import { feedback } from '@/lib/sound';
 
 /**
  * One container, four presentations.
@@ -128,13 +128,15 @@ export function Sheet({
       slide.setValue(0);
       return;
     }
-    Animated.timing(slide, {
+    if (sheet) feedback('tap', 4);
+    Animated.spring(slide, {
       toValue: 1,
-      duration: 260,
-      easing: Easing.out(Easing.cubic),
+      stiffness: 400,
+      damping: 25,
+      mass: 1,
       useNativeDriver: Platform.OS !== 'web',
     }).start();
-  }, [visible, slide]);
+  }, [visible, slide, sheet]);
 
   const translateY = slide.interpolate({ inputRange: [0, 1], outputRange: [40, 0] });
 

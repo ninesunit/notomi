@@ -14,6 +14,7 @@ import { getDocs } from 'firebase/firestore';
 import { lazyScreen } from '@/components/lazyScreen';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
+import { HelpTips } from '@/components/HelpTips';
 import { resumeDrive, setDriveIdentity } from '@/lib/driveUtils';
 import { useSafeArea } from '@/hooks/useSafeArea';
 import { Sidebar } from '@/components/Sidebar';
@@ -98,6 +99,7 @@ function WorkspaceShell() {
 
   const [drawer, setDrawer] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [helping, setHelping] = useState(false);
   const [classBlocks, setClassBlocks] = useState<ClassBlock[]>([]);
   const [sharePresence, setSharePresence] = useState(false);
 
@@ -226,7 +228,11 @@ function WorkspaceShell() {
                   overflow: 'hidden',
                 }}
               >
-                <Sidebar onAsk={() => setAsking(true)} onCollapse={() => chrome.setHidden(true)} />
+                <Sidebar
+                  onAsk={() => setAsking(true)}
+                  onCollapse={() => chrome.setHidden(true)}
+                  onHelp={() => setHelping(true)}
+                />
               </Animated.View>
             ) : null}
 
@@ -295,10 +301,16 @@ function WorkspaceShell() {
             ) : null}
 
             {showRail ? null : (
-              <NavDrawer open={drawer} onClose={() => setDrawer(false)} pathname={pathname} />
+              <NavDrawer
+                open={drawer}
+                onClose={() => setDrawer(false)}
+                onHelp={() => setHelping(true)}
+                pathname={pathname}
+              />
             )}
 
             {asking ? <Copilot visible onClose={() => setAsking(false)} /> : null}
+            <HelpTips visible={helping} onClose={() => setHelping(false)} />
           </View>
         </ReminderProvider>
       </UndoProvider>

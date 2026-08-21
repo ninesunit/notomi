@@ -16,7 +16,7 @@
  * cache-first and safe to keep forever.
  */
 
-const VERSION = 'notomi-v15';
+const VERSION = 'notomi-v16';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -75,6 +75,26 @@ self.addEventListener('notificationclick', (event) => {
       }
       return self.clients.openWindow(target);
     })()
+  );
+});
+
+/** Cloudflare sends only user-visible reminder pushes — never silent data. */
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data?.json() ?? {};
+  } catch {
+    payload = { body: event.data?.text() ?? '' };
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title || 'Notomi reminder', {
+      body: payload.body || 'You have something coming up.',
+      tag: payload.tag || 'notomi-reminder',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { url: payload.url || '/' },
+    })
   );
 });
 

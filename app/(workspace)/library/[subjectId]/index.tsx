@@ -560,7 +560,13 @@ export default function SubjectFolder({
             <EmptyState
               icon="file-plus"
               title="No sources in this subject"
-              body="Add lecture slides, notes or a syllabus and they will show up here."
+              body="Add course material and Notomi will file it here, extract the text and make it available to Reader and quizzes."
+              badges={[
+                { label: 'Course outline', icon: 'file-text' },
+                { label: 'Lecture slides', icon: 'layers' },
+                { label: 'Past exam', icon: 'check-square' },
+              ]}
+              action={<Button label="Add material" icon="upload-cloud" onPress={() => setAddOpen(true)} />}
             />
           ) : (
             <View className="gap-8">

@@ -15,6 +15,7 @@ import { paths } from '@/lib/paths';
 import type { Semester } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { useVisibleDays } from '@/hooks/useVisibleDays';
+import { useUISound } from '@/hooks/useUISound';
 import {
   ATTENDANCE_THRESHOLDS,
   GRADE_SCALES,
@@ -25,7 +26,7 @@ import {
   type GradeScaleId,
 } from '@/lib/academicRules';
 import { isDriveConfigured } from '@/lib/driveUtils';
-import { play, soundPreference } from '@/lib/sound';
+import { play } from '@/lib/sound';
 import { useThemeChoice, type ThemeChoice } from '@/lib/theme';
 import { exportAcademicData } from '@/services/dataExport';
 import { exportTermCalendar } from '@/services/calendarExport';
@@ -121,7 +122,7 @@ const GROUPS: {
 
 export default function Settings() {
   const { user, logOut } = useAuth();
-  const [sound, setSound] = soundPreference.use();
+  const uiSound = useUISound();
   const [theme, setTheme] = useThemeChoice();
   const [migrating, setMigrating] = useState(false);
   const [open, setOpen] = useState<GroupId | null>(null);
@@ -156,12 +157,16 @@ export default function Settings() {
               />
             </SettingCard>
             <SoundCard
-              sound={sound}
+              sound={uiSound.sound}
+              volume={uiSound.volume}
+              haptics={uiSound.haptics}
               onChange={(next) => {
-                setSound(next);
+                uiSound.setSound(next);
                 // Played after enabling so the switch confirms itself audibly.
                 if (next) play('toggle');
               }}
+              onVolume={uiSound.setVolume}
+              onHaptics={uiSound.setHaptics}
             />
           </>
         );
@@ -493,7 +498,21 @@ function RulesCard() {
   );
 }
 
-function SoundCard({ sound, onChange }: { sound: boolean; onChange: (next: boolean) => void }) {
+function SoundCard({
+  sound,
+  volume,
+  haptics,
+  onChange,
+  onVolume,
+  onHaptics,
+}: {
+  sound: boolean;
+  volume: number;
+  haptics: boolean;
+  onChange: (next: boolean) => void;
+  onVolume: (next: number) => void;
+  onHaptics: (next: boolean) => void;
+}) {
   return (
     <Card className="mb-8 gap-4">
       <View className="flex-row items-center gap-3">
@@ -501,7 +520,7 @@ function SoundCard({ sound, onChange }: { sound: boolean; onChange: (next: boole
           <Icon name={sound ? 'volume-2' : 'volume-x'} size={16} tone="muted" />
         </View>
         <View className="flex-1">
-          <Text className="text-[15px] font-semibold text-ink">Sound and haptics</Text>
+          <Text className="text-[15px] font-semibold text-ink">Interface sound</Text>
           <Text className="text-xs text-muted">
             Short cues when something saves, finishes or fails.
           </Text>
@@ -514,6 +533,40 @@ function SoundCard({ sound, onChange }: { sound: boolean; onChange: (next: boole
           className={`h-7 w-12 justify-center rounded-full px-0.5 ${sound ? 'bg-pine' : 'bg-line'}`}
         >
           <View className={`h-6 w-6 rounded-full bg-surface ${sound ? 'self-end' : 'self-start'}`} />
+        </Pressable>
+      </View>
+
+      {sound ? (
+        <View className="gap-2 border-t border-line pt-4">
+          <Text className="text-xs font-medium text-muted">Cue volume</Text>
+          <Segment
+            options={[
+              { id: 0.35, label: 'Quiet' },
+              { id: 0.65, label: 'Balanced' },
+              { id: 1, label: 'Clear' },
+            ]}
+            value={volume <= 0.45 ? 0.35 : volume >= 0.85 ? 1 : 0.65}
+            onChange={onVolume}
+          />
+        </View>
+      ) : null}
+
+      <View className="flex-row items-center gap-3 border-t border-line pt-4">
+        <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
+          <Icon name="smartphone" size={16} tone="muted" />
+        </View>
+        <View className="flex-1">
+          <Text className="text-sm font-semibold text-ink">Touch feedback</Text>
+          <Text className="text-xs text-muted">Short vibrations where the device supports them.</Text>
+        </View>
+        <Pressable
+          accessibilityRole="switch"
+          accessibilityState={{ checked: haptics }}
+          accessibilityLabel={haptics ? 'Turn touch feedback off' : 'Turn touch feedback on'}
+          onPress={() => onHaptics(!haptics)}
+          className={`h-7 w-12 justify-center rounded-full px-0.5 ${haptics ? 'bg-pine' : 'bg-line'}`}
+        >
+          <View className={`h-6 w-6 rounded-full bg-surface ${haptics ? 'self-end' : 'self-start'}`} />
         </Pressable>
       </View>
     </Card>

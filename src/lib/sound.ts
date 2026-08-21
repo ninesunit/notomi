@@ -60,8 +60,9 @@ const CUES: Record<Cue, Note[]> = {
     { frequency: 300, at: 0.1, duration: 0.18, gain: 0.06, type: 'triangle' },
   ],
   chime: [
-    { frequency: 880, at: 0, duration: 0.25, gain: 0.09, type: 'sine' },
-    { frequency: 1320, at: 0.06, duration: 0.3, gain: 0.05, type: 'sine' },
+    { frequency: 523.25, at: 0, duration: 0.75, gain: 0.09, type: 'sine' },
+    { frequency: 784.88, at: 0.03, duration: 0.92, gain: 0.045, type: 'sine' },
+    { frequency: 1046.5, at: 0.08, duration: 0.65, gain: 0.025, type: 'sine' },
   ],
 };
 
@@ -89,14 +90,42 @@ export const soundPreference = createPreference<boolean>({
   },
 });
 
+/**
+ * Cue loudness is separate from ambient audio. A student can keep a quiet
+ * confirmation pop without turning their rain down with it.
+ */
+export const soundVolumePreference = createPreference<number>({
+  key: 'notomi:sound-volume',
+  fallback: 0.65,
+  parse: (raw) => {
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isFinite(value) ? Math.max(0.2, Math.min(1, value)) : null;
+  },
+});
+
+/** Haptics are useful with the phone muted, so they must not share Sound's switch. */
+export const hapticsPreference = createPreference<boolean>({
+  key: 'notomi:haptics',
+  fallback: true,
+  parse: (raw) => (typeof raw === 'boolean' ? raw : null),
+});
+
 let context: AudioContext | null = null;
 
 // Cached rather than read through: play() consults this on every tap, and a
 // storage read per tap is a strange price for a boolean that changes twice a
 // year.
 let enabled = soundPreference.get();
+let volume = soundVolumePreference.get();
+let hapticsEnabled = hapticsPreference.get();
 soundPreference.subscribe((next) => {
   enabled = next;
+});
+soundVolumePreference.subscribe((next) => {
+  volume = next;
+});
+hapticsPreference.subscribe((next) => {
+  hapticsEnabled = next;
 });
 
 export function isSoundEnabled(): boolean {
@@ -154,7 +183,10 @@ export function play(cue: Cue): void {
       // Exponential ramps cannot touch zero, hence the epsilons. A linear cut
       // to silence clicks; this fades.
       gain.gain.setValueAtTime(0.0001, start + note.at);
-      gain.gain.exponentialRampToValueAtTime(note.gain, start + note.at + 0.012);
+      gain.gain.exponentialRampToValueAtTime(
+        Math.max(0.0002, note.gain * volume),
+        start + note.at + 0.012
+      );
       gain.gain.exponentialRampToValueAtTime(0.0001, start + note.at + note.duration);
 
       oscillator.connect(gain).connect(ctx.destination);
@@ -172,7 +204,7 @@ export function play(cue: Cue): void {
  * fallback — a fake haptic is worse than none.
  */
 export function haptic(pattern: number | number[] = 8): void {
-  if (!enabled || Platform.OS !== 'web') return;
+  if (!hapticsEnabled || Platform.OS !== 'web') return;
   try {
     navigator.vibrate?.(pattern);
   } catch {
