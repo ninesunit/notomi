@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { router, Slot, usePathname } from 'expo-router';
 import { getDocs } from 'firebase/firestore';
-import { Copilot } from '@/components/Copilot';
+import { lazyScreen } from '@/components/lazyScreen';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
 import { resumeDrive, setDriveIdentity } from '@/lib/driveUtils';
@@ -24,6 +24,18 @@ import { UndoProvider } from '@/hooks/useUndo';
 import { useWorkspaceChrome, WorkspaceChromeProvider } from '@/hooks/useWorkspaceChrome';
 import { Icon, useTones } from '@/components/Icon';
 import { isDetailRoute } from '@/components/nav';
+
+/**
+ * Mounted in the shell, so it would otherwise sit in the first bundle of every
+ * cold load — including the ones where nobody asks it anything. Rendered only
+ * once opened, because a lazy component that is always rendered fetches its
+ * chunk immediately and saves nothing.
+ */
+const Copilot = lazyScreen<{ visible: boolean; onClose: () => void }>(
+  () => import('@/components/Copilot'),
+  'Copilot',
+  'Waking up…'
+);
 import { paths } from '@/lib/paths';
 import type { ClassBlock } from '@/lib/schema';
 import { getDb, getFirebaseAuth } from '@/services/firebase';
@@ -274,7 +286,7 @@ function WorkspaceShell() {
               <NavDrawer open={drawer} onClose={() => setDrawer(false)} pathname={pathname} />
             )}
 
-            <Copilot visible={asking} onClose={() => setAsking(false)} />
+            {asking ? <Copilot visible onClose={() => setAsking(false)} /> : null}
           </View>
         </ReminderProvider>
       </UndoProvider>

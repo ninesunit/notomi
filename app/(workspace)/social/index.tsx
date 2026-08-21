@@ -2,8 +2,14 @@ import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { HubTabs } from '@/components/HubTabs';
 import Friends from '../friends';
-import { Arena } from '@/components/social/Arena';
-import { GroupSprints } from '@/components/social/GroupSprints';
+import { lazyScreen } from '@/components/lazyScreen';
+
+const Arena = lazyScreen(() => import('@/components/social/Arena'), 'Arena', 'Opening the arena…');
+const GroupSprints = lazyScreen(
+  () => import('@/components/social/GroupSprints'),
+  'GroupSprints',
+  'Opening your sprints…'
+);
 
 type SocialTab = 'search' | 'arena' | 'sprints';
 

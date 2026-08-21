@@ -4,7 +4,7 @@ import { Link } from 'expo-router';
 
 import { DayFilter } from '@/components/DayFilter';
 import { DriveConnect } from '@/components/DriveConnect';
-import { DriveMigrationModal } from '@/components/DriveMigrationModal';
+import { lazyScreen } from '@/components/lazyScreen';
 import { Icon, type IconName } from '@/components/Icon';
 import { RemindersCard } from '@/components/Reminders';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -25,6 +25,13 @@ import { isDriveConfigured } from '@/lib/driveUtils';
 import { play, soundPreference } from '@/lib/sound';
 import { useThemeChoice, type ThemeChoice } from '@/lib/theme';
 import { exportAcademicData } from '@/services/dataExport';
+
+// Opened once a term at most, and it drags the migration machinery with it.
+const DriveMigrationModal = lazyScreen<{ visible: boolean; onClose: () => void }>(
+  () => import('@/components/DriveMigrationModal'),
+  'DriveMigrationModal',
+  'Preparing…'
+);
 
 /**
  * Settings.
@@ -90,7 +97,7 @@ export default function Settings() {
           />
         ) : null}
       </View>
-      <DriveMigrationModal visible={migrating} onClose={() => setMigrating(false)} />
+      {migrating ? <DriveMigrationModal visible onClose={() => setMigrating(false)} /> : null}
 
       <DataCard />
 

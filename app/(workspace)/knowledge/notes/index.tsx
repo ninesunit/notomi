@@ -1,6 +1,13 @@
 import { View } from 'react-native';
+
 import { KnowledgeTabs } from '@/components/KnowledgeTabs';
-import { NotebookShelf } from '@/components/notes/NotebookShelf';
+import { lazyScreen } from '@/components/lazyScreen';
+
+const NotebookShelf = lazyScreen(
+  () => import('@/components/notes/NotebookShelf'),
+  'NotebookShelf',
+  'Opening your notebooks…'
+);
 
 export default function NotesShelfSurface() {
   return (
