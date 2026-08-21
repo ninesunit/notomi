@@ -304,6 +304,11 @@ export async function processUploadedMaterial(
     rawText: text,
     charCount: text.length,
     sourceKind: kind,
+    // Recorded rather than inferred: the vault should be able to say where a
+    // file is without re-deriving it from which id happens to be set, and a
+    // failed upload should read as failed rather than as "no Drive id".
+    storageProvider: driveFileId ? 'google_drive' : r2FileKey ? 'r2' : 'none',
+    storageState: driveFileId || r2FileKey ? 'ready' : 'failed',
     r2FileKey,
     r2FileUrl,
     driveFileId,

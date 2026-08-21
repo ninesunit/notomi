@@ -30,7 +30,7 @@ import { getDb } from '@/services/firebase';
 import { UNGROUPED, groupMaterials, moveMaterialToSubject, renameChapter } from '@/services/materials';
 import { weekOf } from '@/services/teachingPlan';
 import { isDriveConfigured, pickFromDrive } from '@/lib/driveUtils';
-import { rememberPickedFiles } from '@/services/driveStorage';
+import { rememberPickedFiles, storageOf } from '@/services/driveStorage';
 import {
   materialFilesFromWeb,
   processUploadedMaterial,
@@ -507,7 +507,7 @@ export default function SubjectFolder({
                                   // Where the original actually lives, so a
                                   // student can tell at a glance that Drive is
                                   // holding their work rather than guess.
-                                  document.driveFileId ? 'In your Drive' : null,
+                                  storageOf(document) === 'google_drive' ? 'In your Drive' : null,
                                   formatDateTime(document.createdAt),
                                   document.charCount ? formatChars(document.charCount) : null,
                                   document.sizeBytes

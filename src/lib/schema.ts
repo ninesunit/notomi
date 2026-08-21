@@ -275,6 +275,15 @@ export const SUBJECT_ICONS = [
 export const DEFAULT_SUBJECT_ICON = SUBJECT_ICONS[0];
 
 /** users/{uid}/subjects/{subjectId}/documents/{documentId} */
+export type StorageProvider = 'google_drive' | 'r2' | 'none';
+/**
+ * No `migration_pending`. Moving a file to Drive records the new home and the
+ * ready state in the same write, so the document is never in a state where it
+ * does not know where its original is — only the emptied bucket lags, and that
+ * is the bucket's business rather than the document's.
+ */
+export type StorageState = 'uploading' | 'ready' | 'failed';
+
 export type SourceDocument = {
   id: string;
   title: string;
@@ -284,6 +293,19 @@ export type SourceDocument = {
   /** Full extracted text. Passed wholesale into Gemini's long context window. */
   rawText: string;
   charCount: number;
+  /**
+   * Which store actually holds the original, and whether it got there.
+   *
+   * The precedence — Drive if there is a Drive id, otherwise R2 — was correct
+   * but implied, spelled out in three places and written down nowhere. Two
+   * fields the vault can read directly mean the database and the store cannot
+   * quietly come to different conclusions about where a file lives.
+   *
+   * Optional because documents written before this existed do not carry them,
+   * and `storageOf()` derives the same answer from the ids for those.
+   */
+  storageProvider?: StorageProvider | null;
+  storageState?: StorageState | null;
   /** R2 object key: users/{userId}/{subjectId}/{fileName} */
   r2FileKey: string;
   /** Public or presigned viewing URL for the original file. */

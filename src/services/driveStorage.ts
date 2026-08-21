@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { paths } from '@/lib/paths';
-import type { Subject } from '@/lib/schema';
+import type { StorageProvider, Subject } from '@/lib/schema';
 import {
   DriveError,
   WORKSPACE_FOLDER_NAME,
@@ -152,12 +152,41 @@ export async function blobFromDriveKey(key: string | null | undefined): Promise<
   return fetchDriveBlob(fileId);
 }
 
+/**
+ * Where a document's original actually is, in one place.
+ *
+ * The rule — Drive if there is a Drive id, otherwise R2, otherwise nowhere —
+ * used to be written out separately everywhere it was needed, which is three
+ * chances for them to drift apart. It reads the recorded field when there is
+ * one and falls back to the ids for documents saved before that field existed,
+ * so no backfill is required and both kinds answer the same.
+ */
+export function storageOf(document: {
+  storageProvider?: StorageProvider | null;
+  driveFileId?: string | null;
+  r2FileKey?: string | null;
+}): StorageProvider {
+  if (document.storageProvider) return document.storageProvider;
+  if (document.driveFileId) return 'google_drive';
+  return document.r2FileKey ? 'r2' : 'none';
+}
+
+/** How a student should hear it. */
+export const STORAGE_LABELS: Record<StorageProvider, string> = {
+  google_drive: 'Your Google Drive',
+  r2: 'Notomi storage',
+  none: 'Not stored',
+};
+
 /** A document's original, as the fields actually recorded on it. */
 export function sourceKeyOf(document: {
+  storageProvider?: StorageProvider | null;
   driveFileId?: string | null;
   r2FileKey?: string | null;
 }): string {
-  return document.driveFileId ? driveKey(document.driveFileId) : (document.r2FileKey ?? '');
+  return storageOf(document) === 'google_drive'
+    ? driveKey(document.driveFileId as string)
+    : (document.r2FileKey ?? '');
 }
 
 /**
@@ -169,12 +198,13 @@ export function sourceKeyOf(document: {
  * the original, which every caller already has to handle.
  */
 export async function originalBytes(document: {
+  storageProvider?: StorageProvider | null;
   driveFileId?: string | null;
   r2FileKey?: string | null;
   r2FileUrl?: string | null;
 }): Promise<Blob | null> {
-  if (document.driveFileId) {
-    return fetchDriveBlob(document.driveFileId).catch(() => null);
+  if (storageOf(document) === 'google_drive') {
+    return fetchDriveBlob(document.driveFileId as string).catch(() => null);
   }
 
   const url = document.r2FileKey

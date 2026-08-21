@@ -29,6 +29,7 @@ import {
 } from '@/services/materials';
 import Library from '../library';
 import { subjectInk, subjectTint } from '@/lib/color';
+import { STORAGE_LABELS, storageOf } from '@/services/driveStorage';
 
 const VALID_TABS: KnowledgeTab[] = ['folders', 'reader', 'review', 'vault'];
 
@@ -400,6 +401,10 @@ function DocumentVault({ onOpen }: { onOpen: (subjectId: string, documentId: str
                                 (entry) => entry.key === materialKind(document)
                               )?.label ?? 'Other'}
                               {document.chapter ? ` · ${document.chapter}` : ''}
+                              {/* The vault's job is answering where the original
+                                  is, so it should say so rather than leave the
+                                  student to open it and find out. */}
+                              {` · ${STORAGE_LABELS[storageOf(document)]}`}
                             </Text>
                           </View>
                           {picking ? null : (

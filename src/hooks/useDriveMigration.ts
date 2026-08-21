@@ -226,10 +226,19 @@ export function useDriveMigration(uid: string) {
             );
           }
 
-          /* Phase 4a: record it. From here the app reads from Drive. */
+          /*
+           * Phase 4a: record it. From here the app reads from Drive.
+           *
+           * Provider and state move in the same write as the id, so a tab that
+           * dies between here and 4b leaves a document that still knows where
+           * its original is — the stale R2 key beside it is then obviously
+           * stale rather than a second, contradictory answer.
+           */
           await updateDoc(reference, {
             driveFileId: uploaded.fileId,
             r2FileUrl: uploaded.webViewLink ?? '',
+            storageProvider: 'google_drive',
+            storageState: 'ready',
           });
         }
 
