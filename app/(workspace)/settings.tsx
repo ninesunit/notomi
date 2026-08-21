@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
-import { Link } from 'expo-router';
 
 import { DayFilter } from '@/components/DayFilter';
 import { DriveConnect } from '@/components/DriveConnect';
@@ -8,7 +7,7 @@ import { lazyScreen } from '@/components/lazyScreen';
 import { Icon, type IconName } from '@/components/Icon';
 import { RemindersCard } from '@/components/Reminders';
 import { ScreenScroll } from '@/components/ScreenScroll';
-import { Button, Card, PageHeader, Touchable } from '@/components/ui';
+import { Button, Card, PageHeader } from '@/components/ui';
 import { WeekStyleToggle } from '@/components/WeekStyleToggle';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useQueryOnce } from '@/hooks/useFirestore';
@@ -31,6 +30,7 @@ import { useThemeChoice, type ThemeChoice } from '@/lib/theme';
 import { exportAcademicData } from '@/services/dataExport';
 import { exportTermCalendar } from '@/services/calendarExport';
 import { myProfile, privacyOf, savePrivacy, type PrivacySettings } from '@/services/social';
+import { SafetyRows } from '@/components/social/SafetyRows';
 import { AI_LIMITS, budgetStatus, subscribeToBudget } from '@/lib/aiBudget';
 
 // Opened once a term at most, and it drags the migration machinery with it.
@@ -448,6 +448,14 @@ function PrivacyCard() {
       )}
 
       {error ? <Text className="text-[11px] text-rose">{error}</Text> : null}
+
+      {/*
+        The switches say what will happen. These say what already has — and a
+        student who has just turned something off is exactly the person who
+        wants to check who already has a copy.
+      */}
+      <View className="mt-1 h-px bg-line" />
+      <SafetyRows privacy={privacy} />
     </SettingCard>
   );
 }
@@ -465,7 +473,7 @@ function DataCard() {
     <SettingCard
       icon="shield"
       title="Your data"
-      subtitle="Take a copy, or change who can see what."
+      subtitle="Take a copy of everything you have put into Notomi."
     >
       <View className="flex-row flex-wrap gap-2">
         <Button
@@ -525,18 +533,6 @@ function DataCard() {
         {done ??
           'JSON is everything: subjects, notes, flashcards, timetable, deadlines, teaching plans. The calendar file is this term’s classes and deadlines, for the calendar app you already use. Uploaded files stay where they are — in your own storage.'}
       </Text>
-
-      <Link href="/profile" asChild>
-        <Touchable
-          accessibilityRole="link"
-          accessibilityLabel="Privacy settings, in your profile"
-          className="flex-row items-center gap-3 rounded-xl border border-line px-3 py-2.5"
-        >
-          <Icon name="eye" size={15} tone="muted" />
-          <Text className="flex-1 text-sm font-medium text-ink">Who can see your courses</Text>
-          <Icon name="chevron-right" size={15} tone="subtle" />
-        </Touchable>
-      </Link>
     </SettingCard>
   );
 }

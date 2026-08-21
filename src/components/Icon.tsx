@@ -49,6 +49,7 @@ import Eraser from 'lucide-react-native/icons/eraser';
 import ExternalLink from 'lucide-react-native/icons/external-link';
 import Eye from 'lucide-react-native/icons/eye';
 import EyeOff from 'lucide-react-native/icons/eye-off';
+import Lock from 'lucide-react-native/icons/lock';
 import Feather from 'lucide-react-native/icons/feather';
 import File from 'lucide-react-native/icons/file';
 import FileDown from 'lucide-react-native/icons/file-down';
@@ -169,6 +170,7 @@ const ICONS = {
   'external-link': ExternalLink,
   eye: Eye,
   'eye-off': EyeOff,
+  lock: Lock,
   feather: Feather,
   file: File,
   'file-down': FileDown,

@@ -58,6 +58,16 @@ const social = {
   friends: (db: Firestore, uid: string) => collection(db, 'users', uid, 'friends'),
   friend: (db: Firestore, uid: string, friendId: string) =>
     doc(db, 'users', uid, 'friends', friendId),
+  /**
+   * users/{uid}/blocked/{theirId} — private to the person who wrote it.
+   *
+   * Under the blocker rather than in a shared collection on purpose: someone
+   * blocking another student should not need permission to write anything the
+   * other student can read, and should not leave a trace they can look up.
+   */
+  blocked: (db: Firestore, uid: string) => collection(db, 'users', uid, 'blocked'),
+  block: (db: Firestore, uid: string, theirId: string) =>
+    doc(db, 'users', uid, 'blocked', theirId),
 };
 
 export type Profile = {
@@ -277,7 +287,7 @@ export function searchProfilesQuery(raw: string): Query<DocumentData> | null {
 const profileSearchCache = new Map<string, { expiresAt: number; profiles: Profile[] }>();
 
 /** Bounded, cached lookup used by the debounced typeahead. */
-export async function searchProfiles(raw: string): Promise<Profile[]> {
+export async function searchProfiles(raw: string, viewerId?: string): Promise<Profile[]> {
   const clean = universitySearchKey(raw.replace(/^@/, ''));
   if (clean.length < 2) return [];
   const remembered = profileSearchCache.get(clean);
@@ -304,9 +314,55 @@ export async function searchProfiles(raw: string): Promise<Profile[]> {
   for (const entry of [...indexed.docs, ...(legacy?.docs ?? [])]) {
     profiles.set(entry.id, { id: entry.id, ...entry.data() } as Profile);
   }
-  const result = [...profiles.values()].slice(0, 12);
+  // Blocked people do not appear in results. Filtered after the query rather
+  // than in it, because Firestore cannot express "not in this set" alongside
+  // the prefix match, and the set is a handful of ids read once.
+  const hidden = viewerId ? await blockedIds(viewerId).catch(() => new Set<string>()) : new Set<string>();
+  const result = [...profiles.values()].filter((entry) => !hidden.has(entry.id)).slice(0, 12);
+
   profileSearchCache.set(clean, { expiresAt: Date.now() + 5 * 60_000, profiles: result });
   return result;
+}
+
+/**
+ * People taking a course you take.
+ *
+ * One `array-contains-any` against the same automatic index the search uses,
+ * capped at the twelve documents the rules allow and cached for the session,
+ * because the answer changes when somebody enrols — not while a student is
+ * looking at it. Nothing here is a listener.
+ *
+ * Codes come from the student's own subjects, not from their published
+ * profile: you should be able to find your classmates whether or not you have
+ * chosen to be findable yourself. The people who appear are only those who
+ * turned course sharing on, since that flag is what publishes `courseCodes`
+ * in the first place.
+ */
+const classmateCache = new Map<string, { expiresAt: number; profiles: Profile[] }>();
+
+export async function suggestClassmates(
+  viewerId: string,
+  courseCodes: string[]
+): Promise<Profile[]> {
+  // array-contains-any takes at most thirty values, and a student with more
+  // than ten distinct module codes has bigger problems than this list.
+  const codes = [...new Set(courseCodes.map((code) => code.trim().toUpperCase()).filter(Boolean))].slice(0, 10);
+  if (!codes.length) return [];
+
+  const key = `${viewerId}:${codes.join(',')}`;
+  const remembered = classmateCache.get(key);
+  if (remembered && remembered.expiresAt > Date.now()) return remembered.profiles;
+
+  const found = await getDocs(
+    query(social.profiles(getDb()), where('courseCodes', 'array-contains-any', codes), limit(12))
+  );
+  const hidden = await blockedIds(viewerId).catch(() => new Set<string>());
+  const profiles = found.docs
+    .map((entry) => ({ id: entry.id, ...entry.data() }) as Profile)
+    .filter((entry) => entry.id !== viewerId && !hidden.has(entry.id));
+
+  classmateCache.set(key, { expiresAt: Date.now() + 15 * 60_000, profiles });
+  return profiles;
 }
 
 const publicProfileCache = new Map<string, { expiresAt: number; profile: Profile }>();
@@ -434,6 +490,62 @@ export async function savePrivacy(uid: string, next: PrivacySettings): Promise<v
   } catch {
     /* The setting still lives in Firestore. */
   }
+}
+
+/* ------------------------------- Safety -------------------------------- */
+
+export type BlockedUser = {
+  id: string;
+  displayName: string;
+  username: string;
+  /** Only set when the student chose to report as well as block. */
+  reason: string | null;
+  createdAt: Timestamp | null;
+};
+
+/**
+ * Blocks someone, and optionally records why.
+ *
+ * The friendship goes with it in the same action, because a block that leaves
+ * a connection standing is not a block — and the person doing it is rarely in
+ * a frame of mind to remember a second step.
+ *
+ * The reason is stored for the student's own record. There is no moderation
+ * queue behind it, and pretending otherwise would be worse than saying so: the
+ * UI tells them it is kept locally to their account.
+ */
+export async function blockUser(
+  uid: string,
+  them: { id: string; displayName?: string; username?: string },
+  reason?: string
+): Promise<void> {
+  const db = getDb();
+  await setDoc(social.block(db, uid, them.id), {
+    displayName: them.displayName ?? '',
+    username: them.username ?? '',
+    reason: reason?.trim().slice(0, 500) || null,
+    createdAt: serverTimestamp(),
+  });
+  await removeFriend(uid, them.id).catch(() => undefined);
+  // Results are cached for five minutes and were filtered before this block
+  // existed, so the person could still be found by repeating the search that
+  // found them. A safety control that a stale cache can undo is not one.
+  profileSearchCache.clear();
+}
+
+export async function unblockUser(uid: string, theirId: string): Promise<void> {
+  await deleteDoc(social.block(getDb(), uid, theirId));
+}
+
+export async function blockedUsers(uid: string): Promise<BlockedUser[]> {
+  const snapshot = await getDocs(social.blocked(getDb(), uid));
+  return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as BlockedUser);
+}
+
+/** Ids only, for filtering a search result list without a second round trip. */
+export async function blockedIds(uid: string): Promise<Set<string>> {
+  const snapshot = await getDocs(social.blocked(getDb(), uid));
+  return new Set(snapshot.docs.map((entry) => entry.id));
 }
 
 export async function myProfile(uid: string): Promise<Profile | null> {

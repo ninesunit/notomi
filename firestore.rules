@@ -198,13 +198,43 @@ service cloud.firestore {
       // recipient's account. This avoids a global inbox query and keeps reads
       // under the same owner-scoped tree as the rest of the Library.
       match /shared_materials/{shareId} {
-        allow read, delete: if isOwner(userId);
+        allow read: if isOwner(userId);
         allow create: if request.auth != null
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.recipientId == userId
           && isAcceptedFriend(userId)
           && request.resource.data.content is string
           && request.resource.data.content.size() < 900000;
+        allow update: if false;
+        // Either end may destroy a shared copy: the recipient because it is in
+        // their Library, and the sender because sharing the wrong file is a
+        // mistake that has to be undoable. The sender is named in the document
+        // itself, so this grants nothing beyond what they already wrote.
+        allow delete: if isOwner(userId)
+          || (request.auth != null && request.auth.uid == resource.data.senderId);
+      }
+
+      // The sender's receipts — an id, a name and a title per share, and never
+      // the content, which lives only in the recipient's copy.
+      match /shares_sent/{shareId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && request.resource.data.recipientId is string
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 200;
+        allow update: if false;
+      }
+
+      // Who this student has blocked, and why if they said. Private to them:
+      // filed under the blocker so blocking needs no permission on anything
+      // the blocked account can read, and leaves them nothing to look up.
+      match /blocked/{blockedId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && blockedId != userId
+          && (request.resource.data.reason == null
+            || (request.resource.data.reason is string
+              && request.resource.data.reason.size() <= 500));
         allow update: if false;
       }
 

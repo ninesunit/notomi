@@ -23,6 +23,8 @@ const USER_COLLECTIONS = [
   'weak_concepts',
   'attendance_logs',
   'shared_materials',
+  'shares_sent',
+  'blocked',
   'reelCards',
   'reel_cards',
   'note_canvases',

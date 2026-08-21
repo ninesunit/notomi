@@ -90,6 +90,19 @@ export const paths = {
     doc(db, 'users', uid, 'shared_materials', shareId),
 
   /**
+   * The sender's own record of what they have sent.
+   *
+   * A share is written straight into the recipient's tree, which is what keeps
+   * the inbox a single owner-scoped query. The cost is that the sender has no
+   * way to find their own sent copies again — and "you cannot take back what
+   * you shared" is not an acceptable answer to a student who shared the wrong
+   * file. This is a pointer, not a second copy: an id, a name and a title.
+   */
+  sentShares: (db: Firestore, uid: string) => collection(db, 'users', uid, 'shares_sent'),
+  sentShare: (db: Firestore, uid: string, shareId: string) =>
+    doc(db, 'users', uid, 'shares_sent', shareId),
+
+  /**
    * Review cards. Still named for the feed they were built for, because
    * renaming the collection would mean migrating every card a student already
    * has to gain nothing this comment cannot say.

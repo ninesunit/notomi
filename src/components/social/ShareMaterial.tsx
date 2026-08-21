@@ -11,11 +11,37 @@ import { getDb } from '@/services/firebase';
 import { shareWithFriend, type ShareKind } from '@/services/sharing';
 import type { Friend } from '@/services/social';
 
-export function ShareMaterial({ friend }: { friend: Friend }) {
+/**
+ * Sharing a copy of something with one friend.
+ *
+ * Works two ways on purpose. Left alone it renders its own Share button, which
+ * is what the inbox and the profile page want. Passed `open`, the button
+ * disappears and the caller drives it — the friends list moved sharing into an
+ * overflow sheet, and a button inside a menu item that opens a second sheet is
+ * one tap more than the menu item itself should have cost.
+ */
+export function ShareMaterial({
+  friend,
+  open,
+  onClose,
+}: {
+  friend: Friend;
+  open?: boolean;
+  onClose?: () => void;
+}) {
   const uid = useUid();
   const { user } = useAuth();
   const db = getDb();
-  const [visible, setVisible] = useState(false);
+  const controlled = open !== undefined;
+  const [own, setOwn] = useState(false);
+  const visible = controlled ? open === true : own;
+  const setVisible = (next: boolean) => {
+    if (controlled) {
+      if (!next) onClose?.();
+      return;
+    }
+    setOwn(next);
+  };
   const subjects = useCollection<Subject>(visible ? query(paths.subjects(db, uid), orderBy('name')) : null, [uid, visible]);
   const [subjectId, setSubjectId] = useState<string | null>(null);
   const selected = subjects.data.find((subject) => subject.id === subjectId) ?? subjects.data[0] ?? null;
@@ -84,7 +110,9 @@ export function ShareMaterial({ friend }: { friend: Friend }) {
 
   return (
     <>
-      <Button label="Share" icon="share-2" size="sm" variant="ghost" onPress={() => setVisible(true)} />
+      {controlled ? null : (
+        <Button label="Share" icon="share-2" size="sm" variant="ghost" onPress={() => setVisible(true)} />
+      )}
       <Sheet
         visible={visible}
         onClose={() => setVisible(false)}
