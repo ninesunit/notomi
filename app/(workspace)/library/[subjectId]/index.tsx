@@ -690,7 +690,7 @@ function ChapterHeading({
           placeholderTextColor={tones.subtle}
           onSubmitEditing={commit}
           onBlur={commit}
-          className="flex-1 rounded-lg border border-line bg-paper px-3 py-1.5 text-sm text-ink"
+          className="flex-1 rounded-lg border border-line bg-paper px-3 py-1.5 text-base text-ink"
         />
         <Pressable
           accessibilityRole="button"

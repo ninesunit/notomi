@@ -419,7 +419,7 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
             placeholder="Ask about your sources…"
             placeholderTextColor={tones.subtle}
             multiline
-            className="max-h-32 flex-1 px-3 py-2.5 text-[15px] text-ink"
+            className="max-h-32 flex-1 px-3 py-2.5 text-base text-ink"
             onSubmitEditing={() => void send(draft)}
             blurOnSubmit={false}
             editable={!thinking}

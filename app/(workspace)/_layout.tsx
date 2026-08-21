@@ -23,7 +23,7 @@ import { ReminderProvider } from '@/hooks/useReminders';
 import { UndoProvider } from '@/hooks/useUndo';
 import { useWorkspaceChrome, WorkspaceChromeProvider } from '@/hooks/useWorkspaceChrome';
 import { Icon, useTones } from '@/components/Icon';
-import { isDetailRoute } from '@/components/nav';
+import { isActive, isDetailRoute, NAV_ITEMS, SETTINGS_ITEM } from '@/components/nav';
 
 /**
  * Mounted in the shell, so it would otherwise sit in the first bundle of every
@@ -147,6 +147,17 @@ function WorkspaceShell() {
    */
   useEffect(() => setDrawer(false), [pathname]);
 
+  /*
+   * Which of the five surfaces is on screen, for the header to say so.
+   *
+   * Derived from the nav rather than kept per screen, because a title held in
+   * thirty-odd components is thirty-odd chances for one to disagree with the
+   * drawer about where the student is.
+   */
+  const currentSurface =
+    NAV_ITEMS.find((item) => isActive(pathname, item.href, item.legacyPaths))?.shortLabel ??
+    (isActive(pathname, SETTINGS_ITEM.href) ? SETTINGS_ITEM.shortLabel : undefined);
+
   /**
    * A student who linked Drive should not be asked again on every reload.
    *
@@ -240,6 +251,7 @@ function WorkspaceShell() {
                     onMenu={() => setDrawer(true)}
                     onAsk={() => setAsking(true)}
                     onHide={() => chrome.setHidden(true)}
+                    title={currentSurface}
                   />
                 </Animated.View>
               )}

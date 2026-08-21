@@ -268,7 +268,7 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
       <TextInput
         ref={ref}
         placeholderTextColor={tones.subtle}
-        className={`rounded-xl border border-line bg-surface px-4 py-3 text-[15px] text-ink ${className}`}
+        className={`rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink ${className}`}
         {...props}
       />
       {hint ? <Text className="text-xs text-subtle">{hint}</Text> : null}

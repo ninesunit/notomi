@@ -54,6 +54,28 @@ export default function Todos() {
 
   const [showCompleted, setShowCompleted] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
+
+  /*
+   * The composer's submit, lifted into the sheet's header.
+   *
+   * Held in state rather than a ref because the header has to re-render when
+   * the task becomes submittable — a ref would keep the button greyed out
+   * until something else happened to redraw.
+   */
+  const [composerState, setComposerState] = useState<{
+    submit: () => void;
+    canSubmit: boolean;
+    busy: boolean;
+  } | null>(null);
+  const onComposerReady = useCallback(setComposerState, []);
+  const composer = composerState
+    ? {
+        label: 'Add task',
+        onPress: composerState.submit,
+        disabled: !composerState.canSubmit,
+        loading: composerState.busy,
+      }
+    : undefined;
   const { width } = useWindowDimensions();
   const phone = width < PHONE;
   const [error, setError] = useState<string | null>(null);
@@ -383,12 +405,14 @@ export default function Todos() {
         title="New task"
         icon="plus"
         dismissOnScrim={false}
+        variant="form"
+        primaryAction={composer}
       >
         <TaskComposer
+          onReady={onComposerReady}
           subjects={subjects.data}
           markers={markers}
           onSubmit={addTodo}
-          autoFocus
         />
       </Sheet>
     </ScreenScroll>

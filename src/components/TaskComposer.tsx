@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { DatePicker } from '@/components/DatePicker';
 import { Reveal } from '@/components/motion';
@@ -35,6 +35,13 @@ export function TaskComposer({
   initialDueDate = null,
   submitLabel = 'Add task',
   autoFocus = false,
+  /**
+   * Hands the submit out to a host that can keep it above the keyboard.
+   *
+   * A sheet's footer is the one control iOS is guaranteed to cover, so the
+   * form stops drawing its own button when a host says it will present one.
+   */
+  onReady,
 }: {
   subjects: Subject[];
   markers?: Map<string, { color: string; overdue?: boolean }[]>;
@@ -43,12 +50,15 @@ export function TaskComposer({
   initialDueDate?: Date | null;
   submitLabel?: string;
   autoFocus?: boolean;
+  onReady?: (state: { submit: () => void; canSubmit: boolean; busy: boolean }) => void;
 }) {
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState<Date | null>(initialDueDate);
   const [priority, setPriority] = useState<Priority>('medium');
   const [subjectId, setSubjectId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const canSubmit = title.trim().length > 0;
 
   /**
    * Collapsed by default, and not only to save room.
@@ -77,6 +87,18 @@ export function TaskComposer({
       setBusy(false);
     }
   };
+
+  /*
+   * Through a ref so the host always calls the current closure. Handing the
+   * function itself up would freeze `title` at whatever it was on the render
+   * that published it, and the header would submit an empty task.
+   */
+  const saveRef = useRef(save);
+  saveRef.current = save;
+
+  useEffect(() => {
+    onReady?.({ submit: () => void saveRef.current(), canSubmit, busy });
+  }, [onReady, canSubmit, busy]);
 
   return (
     <View className="gap-4">
@@ -164,14 +186,16 @@ export function TaskComposer({
         </View>
       ) : null}
 
-      <Button
-        label={submitLabel}
-        icon="plus"
-        onPress={() => void save()}
-        disabled={!title.trim()}
-        loading={busy}
-        className="self-start"
-      />
+      {onReady ? null : (
+        <Button
+          label={submitLabel}
+          icon="plus"
+          onPress={() => void save()}
+          disabled={!title.trim()}
+          loading={busy}
+          className="self-start"
+        />
+      )}
     </View>
   );
 }

@@ -273,7 +273,7 @@ export default function Tutor() {
             placeholderTextColor={tones.subtle}
             multiline
             editable={!grading}
-            className="min-h-[140px] rounded-xl border border-line bg-paper px-4 py-3 text-[15px] leading-6 text-ink"
+            className="min-h-[140px] rounded-xl border border-line bg-paper px-4 py-3 text-base leading-6 text-ink"
             style={{ textAlignVertical: 'top' }}
           />
 

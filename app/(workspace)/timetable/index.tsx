@@ -62,6 +62,7 @@ import { findActiveSemester } from '@/services/academicPlanner';
 import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
 import { GRID as GRID_BREAKPOINT, PHONE } from '@/lib/breakpoints';
 import { TINT, subjectInk, subjectTint } from '@/lib/color';
+import { useChromeOffset } from '@/hooks/useChromeOffset';
 
 /**
  * The timetable.
@@ -719,10 +720,11 @@ function useNowMinute(): number {
  * makes it a scroll plus a tap. `position: sticky` is a web-only style, so it
  * is applied through a cast and simply not set anywhere else.
  */
-const STICKY: ViewStyle | undefined =
-  Platform.OS === 'web'
-    ? ({ position: 'sticky', top: 0, zIndex: 20 } as unknown as ViewStyle)
+function stickyTop(offset: number): ViewStyle | undefined {
+  return Platform.OS === 'web'
+    ? ({ position: 'sticky', top: offset, zIndex: 20 } as unknown as ViewStyle)
     : undefined;
+}
 
 function WeekStrip({
   day,
@@ -738,9 +740,19 @@ function WeekStrip({
   dates?: Date[] | null;
 }) {
   const today = todayIndex();
+  /*
+   * Pinned below the chrome rather than at zero.
+   *
+   * `top: 0` sticks this to the top of the scrollport, which is underneath the
+   * header and the tab row — so the strip and whatever it was meant to sit
+   * below end up occupying the same band. The offset comes from the one place
+   * that knows how tall the chrome is, so this cannot drift out of step with
+   * a header that changes height.
+   */
+  const chrome = useChromeOffset();
 
   return (
-    <View style={STICKY} className="-mx-1 bg-paper pb-2 pt-1">
+    <View style={stickyTop(chrome)} className="-mx-1 bg-paper pb-2 pt-1">
       <View className="flex-row gap-1 px-1">
         {DAY_LABELS.map((label, index) => {
           const active = index === day;

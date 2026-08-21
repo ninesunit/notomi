@@ -17,6 +17,7 @@ import { Icon } from '@/components/Icon';
 import { useAuth } from '@/hooks/useAuth';
 import { useSafeArea } from '@/hooks/useSafeArea';
 import { feedback } from '@/lib/sound';
+import { PHONE } from '@/lib/breakpoints';
 import { GlobalSearch } from './GlobalSearch';
 import { Logo } from './Logo';
 import { DRAWER_SECTIONS, isActive } from './nav';
@@ -112,17 +113,31 @@ export function EdgeSwipeArea({
  * Top bar
  * ------------------------------------------------------------------ */
 
+/**
+ * One row, and only one.
+ *
+ * This used to carry a menu button, the mark, a full-width search field and
+ * Ask — which on a 390pt screen leaves the search field about a third of the
+ * row and no space for anything to say which page you are on. The field is now
+ * a 44pt icon that opens the same palette full-screen, and the space it gives
+ * back goes to the page title, so the header answers "where am I" instead of
+ * offering a box nobody was about to type in.
+ */
 export function MobileTopBar({
   onMenu,
   onAsk,
   onHide,
+  title,
 }: {
   onMenu: () => void;
   onAsk: () => void;
   onHide: () => void;
+  /** The current page, shown instead of a search field below `PHONE`. */
+  title?: string;
 }) {
   const insets = useSafeArea();
   const { width } = useWindowDimensions();
+  const phone = width < PHONE;
 
   return (
     <View
@@ -143,16 +158,25 @@ export function MobileTopBar({
             onMenu();
           }}
           hitSlop={8}
-          className="h-10 w-10 items-center justify-center rounded-xl"
+          className="h-11 w-11 items-center justify-center rounded-xl"
         >
           <Icon name="menu" size={20} tone="ink" />
         </Touchable>
 
         <Logo size={26} />
 
-        <View className="flex-1">
-          <GlobalSearch />
-        </View>
+        {phone ? (
+          <>
+            <Text className="flex-1 text-[15px] font-semibold text-ink" numberOfLines={1}>
+              {title ?? 'Notomi'}
+            </Text>
+            <GlobalSearch compact />
+          </>
+        ) : (
+          <View className="flex-1">
+            <GlobalSearch />
+          </View>
+        )}
 
         {width >= 640 ? (
           <Touchable
@@ -179,7 +203,7 @@ export function MobileTopBar({
             onAsk();
           }}
           hitSlop={8}
-          className="h-10 w-10 items-center justify-center rounded-xl bg-ink"
+          className="h-11 w-11 items-center justify-center rounded-xl bg-ink"
         >
           <Icon name="zap" size={17} tone="inverse" />
         </Touchable>

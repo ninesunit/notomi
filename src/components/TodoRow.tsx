@@ -155,7 +155,7 @@ export function TodoRow({
               returnKeyType="done"
               onSubmitEditing={commitTitle}
               onBlur={commitTitle}
-              className="rounded-lg border border-line bg-surface px-2 py-1 text-[15px] text-ink"
+              className="rounded-lg border border-line bg-surface px-2 py-1 text-base text-ink"
             />
           ) : (
             <Text
@@ -266,7 +266,7 @@ export function TodoRow({
               placeholder="Break this into a step…"
               placeholderTextColor={tones.subtle}
               returnKeyType="done"
-              className="flex-1 py-1.5 text-sm text-ink"
+              className="flex-1 py-1.5 text-base text-ink"
             />
           </View>
 

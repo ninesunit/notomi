@@ -259,7 +259,7 @@ export default function Friends() {
             placeholderTextColor={tones.subtle}
             autoCapitalize="none"
             autoCorrect={false}
-            className="min-w-0 flex-1 py-3.5 text-[15px] text-ink"
+            className="min-w-0 flex-1 py-3.5 text-base text-ink"
           />
           {searching ? <Icon name="loader" size={16} tone="accent" /> : null}
         </View>

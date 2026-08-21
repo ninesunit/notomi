@@ -205,7 +205,7 @@ export function LogComposer({
             : 'Why does 3NF still allow redundancy?'
         }
         placeholderTextColor={tones.subtle}
-        className="min-h-[76px] rounded-xl border border-line bg-paper px-4 py-3 text-[15px] leading-6 text-ink"
+        className="min-h-[76px] rounded-xl border border-line bg-paper px-4 py-3 text-base leading-6 text-ink"
         style={{ textAlignVertical: 'top' }}
       />
 

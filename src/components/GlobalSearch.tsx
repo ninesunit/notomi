@@ -55,7 +55,15 @@ const KIND_META: Record<Hit['kind'], { icon: 'folder' | 'file-text' | 'feather' 
   todo: { icon: 'check-square', label: 'To-do' },
 };
 
-export function GlobalSearch() {
+/**
+ * A field on desktop; a button on a phone.
+ *
+ * A permanently visible search field costs a whole row of an iPhone header to
+ * advertise something a student uses occasionally. `compact` renders the same
+ * palette behind a 44pt icon instead, which is what leaves room for a title in
+ * that row.
+ */
+export function GlobalSearch({ compact = false }: { compact?: boolean } = {}) {
   const tones = useTones();
   const uid = useUid();
   const router = useRouter();
@@ -219,21 +227,33 @@ export function GlobalSearch() {
 
   return (
     <>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Search everything"
-        onPress={() => setOpen(true)}
-        className="flex-row items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2"
-      >
-        <Icon name="search" size={14} tone="subtle" />
-        <Text className="flex-1 text-xs text-subtle">Search everything</Text>
-        {/* Only advertise the shortcut where a keyboard is likely. */}
-        {Platform.OS === 'web' && width >= 900 ? (
-          <View className="rounded bg-sand px-1.5 py-0.5">
-            <Text className="text-[10px] font-semibold text-muted">⌘K</Text>
-          </View>
-        ) : null}
-      </Pressable>
+      {compact ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Search everything"
+          onPress={() => setOpen(true)}
+          hitSlop={8}
+          className="h-11 w-11 items-center justify-center rounded-xl"
+        >
+          <Icon name="search" size={19} tone="ink" />
+        </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Search everything"
+          onPress={() => setOpen(true)}
+          className="flex-row items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2"
+        >
+          <Icon name="search" size={14} tone="subtle" />
+          <Text className="flex-1 text-xs text-subtle">Search everything</Text>
+          {/* Only advertise the shortcut where a keyboard is likely. */}
+          {Platform.OS === 'web' && width >= 900 ? (
+            <View className="rounded bg-sand px-1.5 py-0.5">
+              <Text className="text-[10px] font-semibold text-muted">⌘K</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      )}
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         {/* Scrim behind, panel beside it — never nested. A Pressable is a
@@ -261,7 +281,7 @@ export function GlobalSearch() {
                 autoCorrect={false}
                 autoCapitalize="none"
                 onSubmitEditing={() => hits[selected] && go(hits[selected])}
-                className="flex-1 text-[15px] text-ink"
+                className="flex-1 text-base text-ink"
               />
               {loading ? <ActivityIndicator size="small" color={tones.accent} /> : null}
               <Pressable

@@ -135,6 +135,15 @@ function SubjectForm({
       onClose={onClose}
       title={subject ? 'Edit subject' : 'New subject'}
       icon="folder"
+      // Name, colour, icon, code and term: more fields than a panel with a
+      // scroll bar in it should carry on a phone.
+      variant="fullscreen-mobile"
+      primaryAction={{
+        label: subject ? 'Save' : 'Create',
+        onPress: () => void save(),
+        disabled: !valid,
+        loading: saving,
+      }}
       footer={
         <>
           <View className="flex-1" />

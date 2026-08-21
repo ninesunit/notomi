@@ -60,8 +60,8 @@ export function Tabs<T extends string>({
   }, [index, tabs.length]);
 
   return (
-    <View className="mb-6 w-full overflow-hidden">
-      <View className="w-full flex-row rounded-2xl border border-line bg-sand p-1 sm:w-auto sm:self-start">
+    <View className="mb-6 w-full items-center overflow-hidden sm:items-start">
+      <View className="flex-row self-center rounded-2xl border border-line bg-sand p-1 sm:self-start">
         <Animated.View
           pointerEvents="none"
           style={{
@@ -101,7 +101,7 @@ export function Tabs<T extends string>({
                 feedback('toggle');
                 onChange(tab.id);
               }}
-              className="h-11 min-w-0 flex-1 flex-row items-center justify-center rounded-xl sm:h-auto sm:flex-none sm:px-3.5 sm:py-2.5"
+              className="h-11 w-11 flex-row items-center justify-center rounded-xl sm:h-auto sm:w-auto sm:px-3.5 sm:py-2.5"
             >
               <Icon name={tab.icon} size={14} tone={active ? 'accent' : 'muted'} />
               <Text

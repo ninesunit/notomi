@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 /**
  * Keeps the app exactly as tall as the part of the screen you can see.
  *
@@ -43,4 +45,63 @@ export function trackViewportHeight(): () => void {
     viewport.removeEventListener('scroll', apply);
     document.documentElement.style.removeProperty('--app-height');
   };
+}
+
+export type VisualViewport = {
+  /** What the student can actually see, keyboard subtracted. */
+  height: number;
+  /** How far the visual viewport has been pushed down the layout one. */
+  offsetTop: number;
+  /** Zero when the keyboard is closed. */
+  keyboardHeight: number;
+};
+
+function measure(): VisualViewport {
+  if (typeof window === 'undefined') return { height: 0, offsetTop: 0, keyboardHeight: 0 };
+  const viewport = window.visualViewport;
+  if (!viewport) return { height: window.innerHeight, offsetTop: 0, keyboardHeight: 0 };
+  return {
+    height: viewport.height,
+    offsetTop: viewport.offsetTop,
+    // The layout viewport does not shrink on iOS, so the difference between
+    // the two is the panel covering the bottom — which is the keyboard.
+    keyboardHeight: Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop),
+  };
+}
+
+/**
+ * The viewport as the student experiences it, for components that need to size
+ * themselves against it rather than against the window.
+ *
+ * `useWindowDimensions` reports the layout viewport, which iOS does not shrink
+ * when the keyboard opens — it slides a panel over the bottom instead. A sheet
+ * sized at sixty percent of that believes it has room it does not have, and
+ * puts its Save button under the keys.
+ *
+ * Falls back to the window on anything without visualViewport, which is every
+ * desktop browser worth worrying about and where the two agree anyway.
+ */
+export function useVisualViewport(): VisualViewport {
+  const [state, setState] = useState<VisualViewport>(measure);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const update = () => setState(measure());
+    update();
+
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      window.addEventListener('resize', update);
+      return () => window.removeEventListener('resize', update);
+    }
+
+    viewport.addEventListener('resize', update);
+    viewport.addEventListener('scroll', update);
+    return () => {
+      viewport.removeEventListener('resize', update);
+      viewport.removeEventListener('scroll', update);
+    };
+  }, []);
+
+  return state;
 }

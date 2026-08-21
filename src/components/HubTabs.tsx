@@ -9,6 +9,17 @@ export type HubTab<T extends string> = {
   icon: IconName;
 };
 
+/**
+ * Icons on a phone, labels once there is room.
+ *
+ * These were equal-width flexible buttons, which is fine for five and absurd
+ * for two: Task Board and Focus Room each took half the screen, so a tab strip
+ * read as two enormous panels rather than as a control. The group is now only
+ * as wide as its contents, centred, with the active tab in a compact pill.
+ *
+ * Never scrolls sideways. A row of icons that runs off the edge is a row with
+ * destinations nobody will find.
+ */
 export function HubTabs<T extends string>({
   tabs,
   value,
@@ -20,8 +31,8 @@ export function HubTabs<T extends string>({
 }) {
   return (
     <View className="shrink-0 border-b border-line bg-paper">
-      <View className="w-full self-center px-4 py-3 sm:px-5 md:px-10" style={{ maxWidth: 1160 }}>
-        <View className="w-full flex-row items-center sm:w-auto sm:justify-start sm:gap-1">
+      <View className="w-full self-center px-4 py-2 sm:px-5 sm:py-3 md:px-10" style={{ maxWidth: 1160 }}>
+        <View className="flex-row items-center justify-center gap-1 self-center sm:justify-start sm:self-start">
           {tabs.map((tab) => {
             const active = tab.id === value;
             return (
@@ -43,7 +54,7 @@ export function HubTabs<T extends string>({
                   feedback('toggle');
                   onChange(tab.id);
                 }}
-                className={`h-11 min-w-0 flex-1 flex-row items-center justify-center rounded-xl sm:h-auto sm:flex-none sm:px-3.5 sm:py-2.5 ${
+                className={`h-11 w-11 flex-row items-center justify-center rounded-xl sm:h-auto sm:w-auto sm:px-3.5 sm:py-2.5 ${
                   active ? 'bg-ink' : 'bg-transparent'
                 }`}
               >

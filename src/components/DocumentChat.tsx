@@ -289,7 +289,7 @@ export function DocumentChat({
           multiline
           onSubmitEditing={() => void send(draft)}
           blurOnSubmit
-          className="max-h-28 min-h-[40px] flex-1 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] text-ink"
+          className="max-h-28 min-h-[40px] flex-1 rounded-xl border border-line bg-surface px-3 py-2.5 text-base text-ink"
         />
         <Pressable
           accessibilityRole="button"

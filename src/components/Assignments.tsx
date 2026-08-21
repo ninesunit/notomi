@@ -515,7 +515,7 @@ function AddAssignment({
             editable={!file}
             placeholder="Paste the task description, requirements and deadline…"
             placeholderTextColor={tones.subtle}
-            className={`min-h-[120px] rounded-xl border border-line px-4 py-3 text-[15px] leading-6 text-ink ${
+            className={`min-h-[120px] rounded-xl border border-line px-4 py-3 text-base leading-6 text-ink ${
               file ? 'bg-sand opacity-50' : 'bg-paper'
             }`}
             style={{ textAlignVertical: 'top' }}
@@ -542,7 +542,7 @@ function DraftReview({ draft, onChange }: { draft: Draft; onChange: (next: Draft
         <TextInput
           value={draft.title}
           onChangeText={(title) => onChange({ ...draft, title })}
-          className="rounded-xl border border-line bg-surface px-4 py-3 text-[15px] text-ink"
+          className="rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink"
         />
       </View>
 

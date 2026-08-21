@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Link } from 'expo-router';
 import { Icon } from '@/components/Icon';
@@ -47,6 +47,28 @@ export default function Calendar() {
   /** Analytics, folded away on a phone until asked for. */
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
+
+  /*
+   * The composer's submit, lifted into the sheet's header.
+   *
+   * Held in state rather than a ref because the header has to re-render when
+   * the task becomes submittable — a ref would keep the button greyed out
+   * until something else happened to redraw.
+   */
+  const [composerState, setComposerState] = useState<{
+    submit: () => void;
+    canSubmit: boolean;
+    busy: boolean;
+  } | null>(null);
+  const onComposerReady = useCallback(setComposerState, []);
+  const composer = composerState
+    ? {
+        label: 'Add task',
+        onPress: composerState.submit,
+        disabled: !composerState.canSubmit,
+        loading: composerState.busy,
+      }
+    : undefined;
   const [planning, setPlanning] = useState(false);
   const [message, setMessage] = useState<{
     tone: 'rose' | 'pine';
@@ -466,13 +488,15 @@ export default function Calendar() {
         title="New task"
         icon="plus"
         dismissOnScrim={false}
+        variant="form"
+        primaryAction={composer}
       >
         <TaskComposer
+          onReady={onComposerReady}
           subjects={subjects.data}
           markers={markers}
           initialDueDate={selected}
           onSubmit={addTask}
-          autoFocus
         />
       </Sheet>
     </ScreenScroll>
