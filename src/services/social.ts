@@ -385,6 +385,57 @@ export async function saveProfile(
   }
 }
 
+export type PrivacySettings = {
+  /** Let classmates find you by the courses you share. */
+  shareCourses: boolean;
+  /** Let friends see whether you are free, in class or focusing. */
+  sharePresence: boolean;
+  /** Let friends see your week as busy/free blocks. */
+  shareSchedule: boolean;
+};
+
+export function privacyOf(profile: Profile | null | undefined): PrivacySettings {
+  return {
+    shareCourses: profile?.shareCourses === true,
+    sharePresence: profile?.sharePresence === true,
+    shareSchedule: profile?.shareSchedule === true,
+  };
+}
+
+/**
+ * Changes what other people can see, and nothing else.
+ *
+ * Separate from `saveProfile` deliberately. That function takes the whole
+ * profile and checks the username for uniqueness first, so routing a privacy
+ * change through it would spend a query on every toggle and could fail with a
+ * message about a username — for someone who was turning presence off.
+ *
+ * Turning course sharing off empties `courseCodes` rather than only clearing
+ * the flag. A switch that says "stop sharing" and leaves the data behind is
+ * not a privacy control.
+ */
+export async function savePrivacy(uid: string, next: PrivacySettings): Promise<void> {
+  await setDoc(
+    social.profile(getDb(), uid),
+    {
+      shareCourses: next.shareCourses,
+      sharePresence: next.sharePresence,
+      shareSchedule: next.shareSchedule,
+      ...(next.shareCourses ? {} : { courseCodes: [] }),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(`notomi:share-presence-v1:${uid}`, next.sharePresence ? '1' : '0');
+    }
+  } catch {
+    /* The setting still lives in Firestore. */
+  }
+}
+
 export async function myProfile(uid: string): Promise<Profile | null> {
   const snapshot = await getDoc(social.profile(getDb(), uid));
   if (!snapshot.exists()) return null;

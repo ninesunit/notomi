@@ -30,6 +30,7 @@ import { play, soundPreference } from '@/lib/sound';
 import { useThemeChoice, type ThemeChoice } from '@/lib/theme';
 import { exportAcademicData } from '@/services/dataExport';
 import { exportTermCalendar } from '@/services/calendarExport';
+import { myProfile, privacyOf, savePrivacy, type PrivacySettings } from '@/services/social';
 import { AI_LIMITS, budgetStatus, subscribeToBudget } from '@/lib/aiBudget';
 
 // Opened once a term at most, and it drags the migration machinery with it.
@@ -106,6 +107,8 @@ export default function Settings() {
         ) : null}
       </View>
       {migrating ? <DriveMigrationModal visible onClose={() => setMigrating(false)} /> : null}
+
+      <PrivacyCard />
 
       <DataCard />
 
@@ -348,6 +351,107 @@ function SoundCard({ sound, onChange }: { sound: boolean; onChange: (next: boole
  * linked rather than copied here: they are saved as part of the profile, and a
  * second write path for them is a second way to overwrite a bio by accident.
  */
+/**
+ * Who can see what, in the place a student looks for a setting.
+ *
+ * These three switches lived at the bottom of the profile *edit* form, which
+ * meant changing what other people can see required opening a form about
+ * yourself and scrolling past your bio. Worse, saving them went through the
+ * whole-profile write, so a privacy change could fail with a message about a
+ * username being taken.
+ *
+ * Each row says what it means for someone else rather than what it sets, which
+ * is the difference between a toggle a student understands and one they leave
+ * alone because they are not sure.
+ */
+function PrivacyCard() {
+  const uid = useUid();
+  const [privacy, setPrivacy] = useState<PrivacySettings | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void myProfile(uid)
+      .then((profile) => active && setPrivacy(privacyOf(profile)))
+      .catch(() => active && setPrivacy(privacyOf(null)));
+    return () => {
+      active = false;
+    };
+  }, [uid]);
+
+  function update(patch: Partial<PrivacySettings>) {
+    if (!privacy) return;
+    const next = { ...privacy, ...patch };
+    // Optimistic: the switch should move under the thumb, not after a
+    // round trip. It goes back if the write fails.
+    setPrivacy(next);
+    setError(null);
+    play('toggle');
+    void savePrivacy(uid, next).catch(() => {
+      setPrivacy(privacy);
+      setError('That did not save. Check your connection and try again.');
+    });
+  }
+
+  const rows: Array<{ key: keyof PrivacySettings; title: string; detail: string }> = [
+    {
+      key: 'shareCourses',
+      title: 'Classmates can find you',
+      detail: 'People taking the same courses can see that you share them, and send a request.',
+    },
+    {
+      key: 'sharePresence',
+      title: 'Friends see when you are studying',
+      detail: 'Free, in class or focusing — never what you are working on unless you say so.',
+    },
+    {
+      key: 'shareSchedule',
+      title: 'Friends can match free time',
+      detail: 'They see busy and free blocks. Course names, rooms and routines stay private.',
+    },
+  ];
+
+  return (
+    <SettingCard
+      icon="eye"
+      title="Privacy & social"
+      subtitle="Everything here is off until you turn it on."
+    >
+      {privacy === null ? (
+        <Text className="text-xs text-subtle">Checking…</Text>
+      ) : (
+        <View className="gap-1">
+          {rows.map((row) => (
+            <View key={row.key} className="flex-row items-center gap-3 py-2">
+              <View className="min-w-0 flex-1 gap-0.5">
+                <Text className="text-sm font-medium text-ink">{row.title}</Text>
+                <Text className="text-[11px] leading-4 text-muted">{row.detail}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="switch"
+                accessibilityState={{ checked: privacy[row.key] }}
+                accessibilityLabel={`${row.title}. ${privacy[row.key] ? 'On' : 'Off'}.`}
+                onPress={() => update({ [row.key]: !privacy[row.key] })}
+                className={`h-7 w-12 shrink-0 justify-center rounded-full px-0.5 ${
+                  privacy[row.key] ? 'bg-pine' : 'bg-line'
+                }`}
+              >
+                <View
+                  className={`h-6 w-6 rounded-full bg-surface ${
+                    privacy[row.key] ? 'self-end' : 'self-start'
+                  }`}
+                />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {error ? <Text className="text-[11px] text-rose">{error}</Text> : null}
+    </SettingCard>
+  );
+}
+
 function DataCard() {
   const uid = useUid();
   const [busy, setBusy] = useState<'data' | 'calendar' | null>(null);

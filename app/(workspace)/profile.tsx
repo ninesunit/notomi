@@ -7,7 +7,7 @@ import { Icon } from '@/components/Icon';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import { SurfaceBack } from '@/components/SurfaceBack';
-import { Button, Card, Field, Loading, Notice, PageHeader } from '@/components/ui';
+import { Button, Card, Field, Loading, Notice, PageHeader, Touchable } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { paths } from '@/lib/paths';
@@ -29,6 +29,7 @@ import {
 } from '@/services/r2Storage';
 import { searchUniversities, universityLabel, type University } from '@/services/universities';
 import { TINT, subjectInk, subjectTint } from '@/lib/color';
+import { Link } from 'expo-router';
 
 const AVATAR_PRESETS = ['#B4552D', '#2E6F5E', '#4C5FA8', '#8A4B86', '#2B7A78'];
 
@@ -221,9 +222,6 @@ function EditProfileModal({
   const [searchingUniversities, setSearchingUniversities] = useState(false);
   const [major, setMajor] = useState('');
   const [bio, setBio] = useState('');
-  const [shareCourses, setShareCourses] = useState(false);
-  const [sharePresence, setSharePresence] = useState(false);
-  const [shareSchedule, setShareSchedule] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -241,9 +239,6 @@ function EditProfileModal({
     setUniversityResults([]);
     setMajor(profile?.major ?? '');
     setBio(profile?.bio ?? '');
-    setShareCourses(profile?.shareCourses === true);
-    setSharePresence(profile?.sharePresence === true);
-    setShareSchedule(profile?.shareSchedule === true);
     setError(null);
   }, [visible, profile, fallbackName]);
 
@@ -332,9 +327,12 @@ function EditProfileModal({
         bio,
         color: avatarPreset,
         courseCodes: profile?.courseCodes ?? [],
-        shareCourses,
-        sharePresence,
-        shareSchedule,
+        // Carried through untouched: this form no longer owns them, and
+        // writing a stale local copy would silently undo a change made in
+        // Settings while this sheet was open.
+        shareCourses: profile?.shareCourses === true,
+        sharePresence: profile?.sharePresence === true,
+        shareSchedule: profile?.shareSchedule === true,
         stats: profile?.stats,
       });
       if (profile?.avatarKey && profile.avatarKey !== nextAvatarKey) {
@@ -484,30 +482,27 @@ function EditProfileModal({
       </View>
       <Field label="Major" value={major} onChangeText={setMajor} placeholder="Degree or field of study" />
       <Field label="Bio" value={bio} onChangeText={setBio} placeholder="What are you studying or working toward?" multiline />
-      <View className="gap-2">
-        <Text className="text-sm font-medium text-muted">Social privacy</Text>
-        <PrivacyToggle
-          icon="book-open"
-          title="Find classmates"
-          detail="Share course codes only. Course materials, timetable details and marks remain private."
-          value={shareCourses}
-          onChange={setShareCourses}
-        />
-        <PrivacyToggle
-          icon="activity"
-          title="Share live study status"
-          detail="Friends may see when you are focusing. This is off until you enable it."
-          value={sharePresence}
-          onChange={setSharePresence}
-        />
-        <PrivacyToggle
-          icon="calendar"
-          title="Let friends see your weekly schedule"
-          detail="Accepted friends may open your week and see class names and times. Finding time you are both free never needs this — that works from the shape of your week alone."
-          value={shareSchedule}
-          onChange={setShareSchedule}
-        />
-      </View>
+      {/*
+        The privacy switches moved to Settings.
+        
+        Changing what other people can see should not require opening a form
+        about yourself and scrolling past your own bio — and saving them here
+        went through the whole-profile write, so a privacy change could fail
+        with a message about a username being taken. This form is identity now,
+        and only identity.
+      */}
+      <Link href="/settings" asChild>
+        <Touchable
+          accessibilityRole="link"
+          accessibilityLabel="Privacy and social settings"
+          onPress={onClose}
+          className="flex-row items-center gap-3 rounded-xl border border-line px-3 py-3"
+        >
+          <Icon name="eye" size={15} tone="muted" />
+          <Text className="flex-1 text-sm font-medium text-ink">Who can see what</Text>
+          <Icon name="chevron-right" size={15} tone="subtle" />
+        </Touchable>
+      </Link>
     </Sheet>
   );
 }
@@ -531,39 +526,6 @@ function ProfilePill({ icon, label }: { icon: 'book-open' | 'activity'; label: s
   );
 }
 
-function PrivacyToggle({
-  icon,
-  title,
-  detail,
-  value,
-  onChange,
-}: {
-  icon: 'book-open' | 'activity' | 'calendar';
-  title: string;
-  detail: string;
-  value: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
-      onPress={() => onChange(!value)}
-      className="flex-row items-center gap-3 rounded-xl border border-line bg-paper p-3"
-    >
-      <View className={`h-9 w-9 items-center justify-center rounded-lg ${value ? 'bg-pine-soft' : 'bg-sand'}`}>
-        <Icon name={icon} size={16} tone={value ? 'pine' : 'muted'} />
-      </View>
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text className="text-sm font-semibold text-ink">{title}</Text>
-        <Text className="text-xs leading-4 text-muted">{detail}</Text>
-      </View>
-      <View className={`h-6 w-11 rounded-full p-0.5 ${value ? 'bg-pine' : 'bg-line'}`}>
-        <View className={`h-5 w-5 rounded-full bg-surface ${value ? 'self-end' : 'self-start'}`} />
-      </View>
-    </Pressable>
-  );
-}
 
 function ProfileStat({
   icon,
