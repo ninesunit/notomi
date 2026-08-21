@@ -11,6 +11,10 @@ import { ScreenScroll } from '@/components/ScreenScroll';
 import { Button, Card, PageHeader, Touchable } from '@/components/ui';
 import { WeekStyleToggle } from '@/components/WeekStyleToggle';
 import { useAuth, useUid } from '@/hooks/useAuth';
+import { useQueryOnce } from '@/hooks/useFirestore';
+import { paths } from '@/lib/paths';
+import type { Semester } from '@/lib/schema';
+import { getDb } from '@/services/firebase';
 import { useVisibleDays } from '@/hooks/useVisibleDays';
 import {
   ATTENDANCE_THRESHOLDS,
@@ -25,6 +29,7 @@ import { isDriveConfigured } from '@/lib/driveUtils';
 import { play, soundPreference } from '@/lib/sound';
 import { useThemeChoice, type ThemeChoice } from '@/lib/theme';
 import { exportAcademicData } from '@/services/dataExport';
+import { exportTermCalendar } from '@/services/calendarExport';
 import { AI_LIMITS, budgetStatus, subscribeToBudget } from '@/lib/aiBudget';
 
 // Opened once a term at most, and it drags the migration machinery with it.
@@ -345,8 +350,12 @@ function SoundCard({ sound, onChange }: { sound: boolean; onChange: (next: boole
  */
 function DataCard() {
   const uid = useUid();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'data' | 'calendar' | null>(null);
   const [done, setDone] = useState<string | null>(null);
+
+  // The calendar file describes one term, so there has to be one in force.
+  const semesters = useQueryOnce<Semester>(paths.semesters(getDb(), uid), [uid]);
+  const term = semesters.data.find((entry) => entry.isCurrent) ?? semesters.data[0] ?? null;
 
   return (
     <SettingCard
@@ -354,16 +363,16 @@ function DataCard() {
       title="Your data"
       subtitle="Take a copy, or change who can see what."
     >
-      <View className="flex-row">
+      <View className="flex-row flex-wrap gap-2">
         <Button
-          label={busy ? 'Collecting…' : 'Export everything as JSON'}
+          label={busy === 'data' ? 'Collecting…' : 'Export everything as JSON'}
           icon="arrow-down-to-line"
           variant="secondary"
           size="sm"
-          loading={busy}
-          disabled={busy}
+          loading={busy === 'data'}
+          disabled={busy !== null}
           onPress={() => {
-            setBusy(true);
+            setBusy('data');
             setDone(null);
             void exportAcademicData(uid)
               .then((summary) => {
@@ -376,14 +385,41 @@ function DataCard() {
                   error instanceof Error ? error.message : 'Try again.'
                 )
               )
-              .finally(() => setBusy(false));
+              .finally(() => setBusy(null));
+          }}
+        />
+        <Button
+          label={busy === 'calendar' ? 'Building…' : 'Term as a calendar file'}
+          icon="calendar"
+          variant="secondary"
+          size="sm"
+          loading={busy === 'calendar'}
+          disabled={busy !== null || !term}
+          onPress={() => {
+            if (!term) return;
+            setBusy('calendar');
+            setDone(null);
+            void exportTermCalendar(uid, term)
+              .then((summary) => {
+                setDone(
+                  `${summary.classes} weekly class${summary.classes === 1 ? '' : 'es'} and ${summary.deadlines} deadline${summary.deadlines === 1 ? '' : 's'}. Open it in any calendar app.`
+                );
+                play('success');
+              })
+              .catch((error: unknown) =>
+                Alert.alert(
+                  'Could not build the calendar',
+                  error instanceof Error ? error.message : 'Try again.'
+                )
+              )
+              .finally(() => setBusy(null));
           }}
         />
       </View>
 
       <Text className="text-[11px] leading-4 text-subtle">
         {done ??
-          'Subjects, notes, flashcards, timetable, deadlines and teaching plans. Uploaded files stay where they already are — in your own storage.'}
+          'JSON is everything: subjects, notes, flashcards, timetable, deadlines, teaching plans. The calendar file is this term’s classes and deadlines, for the calendar app you already use. Uploaded files stay where they are — in your own storage.'}
       </Text>
 
       <Link href="/profile" asChild>
