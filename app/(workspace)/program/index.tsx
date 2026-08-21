@@ -47,6 +47,7 @@ import {
   type SemesterInput,
 } from '@/services/program';
 import { subjectInk, subjectTint } from '@/lib/color';
+import { GRADE_SCALES, useGradeScale } from '@/lib/academicRules';
 
 /**
  * The program planner: the degree seen as a sequence of semesters, each holding
@@ -348,8 +349,9 @@ function Stat({
 }
 
 function TargetBar({ gpa, target }: { gpa: number | null; target: number }) {
+  const [scaleId] = useGradeScale();
   const ratio = gpa === null ? 0 : Math.max(0, Math.min(1, gpa / 4));
-  const targetRatio = Math.max(0, Math.min(1, target / 4));
+  const targetRatio = Math.max(0, Math.min(1, target / GRADE_SCALES[scaleId].max));
   const onTrack = gpa !== null && gpa >= target;
 
   return (
@@ -798,6 +800,8 @@ function SemesterForm({
   onClose: () => void;
 }) {
   const thisYear = new Date().getFullYear();
+  const [scaleId] = useGradeScale();
+  const gradeCeiling = GRADE_SCALES[scaleId].max;
   const [name, setName] = useState(record?.name ?? `Term ${existingCount + 1}`);
   const [year, setYear] = useState(String(record?.year ?? thisYear));
   const [term, setTerm] = useState<string>(record?.term ?? usedTerms[0] ?? '');
@@ -814,7 +818,8 @@ function SemesterForm({
   const parsedYear = Number.parseInt(year, 10);
   const parsedTarget = target.trim() ? Number.parseFloat(target) : null;
   const targetInvalid =
-    parsedTarget !== null && (Number.isNaN(parsedTarget) || parsedTarget <= 0 || parsedTarget > 4);
+    parsedTarget !== null &&
+    (Number.isNaN(parsedTarget) || parsedTarget <= 0 || parsedTarget > gradeCeiling);
   const parsedStart = parseDateField(startDate);
   const parsedEnd = parseDateField(endDate, true);
   const parsedWeeks = Number.parseInt(weeks, 10);
@@ -928,7 +933,7 @@ function SemesterForm({
           placeholder="3.50"
           hint={
             targetInvalid
-              ? 'Enter a target between 0 and 4.'
+              ? `Enter a target between 0 and ${gradeCeiling}.`
               : 'Shown as a progress bar against your cumulative GPA.'
           }
         />

@@ -13,11 +13,12 @@ import { paths } from '@/lib/paths';
 import {
   calculateGpa,
   GRADE_OPTIONS,
-  GRADE_POINTS,
+  gradePoints,
   type Semester,
   type Subject,
 } from '@/lib/schema';
 import { requiredAverage, sortSemesters } from '@/services/program';
+import { GRADE_SCALES, useGradeScale } from '@/lib/academicRules';
 
 /**
  * A what-if GPA calculator over the real program.
@@ -37,6 +38,10 @@ type Row = {
 };
 
 export default function GpaCalculator() {
+  // Subscribed to, not just read: changing the scale in Settings has to reach
+  // a screen that is already open, and gradePoints() alone would not re-render it.
+  const [scaleId] = useGradeScale();
+  const scale = GRADE_SCALES[scaleId];
   const uid = useUid();
   const db = getDb();
   const [scope, setScope] = useState<string>('all');
@@ -154,9 +159,9 @@ export default function GpaCalculator() {
                 />
                 {needed !== null ? (
                   <Text
-                    className={`text-xs font-medium ${needed > 4 ? 'text-rose' : 'text-pine'}`}
+                    className={`text-xs font-medium ${needed > scale.max ? 'text-rose' : 'text-pine'}`}
                   >
-                    {needed > 4
+                    {needed > scale.max
                       ? `Out of reach — ${needed.toFixed(2)} average needed across ${remaining} remaining credits.`
                       : `Average ${needed.toFixed(2)} (${closestGrade(needed)}) across your ${remaining} ungraded credits.`}
                   </Text>
@@ -251,10 +256,11 @@ function blankRow(index: number): Row {
 
 /** The letter a numeric average lands closest to, for a human-readable answer. */
 function closestGrade(points: number): string {
+  const scale = gradePoints();
   let best = GRADE_OPTIONS[0];
   let distance = Infinity;
   for (const grade of GRADE_OPTIONS) {
-    const gap = Math.abs(GRADE_POINTS[grade] - points);
+    const gap = Math.abs(scale[grade] - points);
     if (gap < distance) {
       distance = gap;
       best = grade;

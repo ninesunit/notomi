@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+import { createPreference } from '@/lib/preference';
+
 /**
  * UI sound, synthesised rather than shipped.
  *
@@ -63,34 +65,46 @@ const CUES: Record<Cue, Note[]> = {
   ],
 };
 
-const STORAGE_KEY = 'notomi:sound';
+/**
+ * Whether cues play at all.
+ *
+ * On the shared preference store rather than a private flag, because this
+ * toggle appears in two places — Settings and the sidebar — and each used to
+ * hold its own `useState` of it. Both wrote the store and neither heard the
+ * other, so flipping one left the other showing the old state until it
+ * remounted. The store's listener set is the whole fix.
+ *
+ * `parse` still accepts the 'on'/'off' strings this key held before the move.
+ * Treating those as unrecognised would read as "no preference" and quietly
+ * un-mute everyone who had turned sound off.
+ */
+export const soundPreference = createPreference<boolean>({
+  key: 'notomi:sound',
+  fallback: true,
+  parse: (raw) => {
+    if (typeof raw === 'boolean') return raw;
+    if (raw === 'on') return true;
+    if (raw === 'off') return false;
+    return null;
+  },
+});
 
 let context: AudioContext | null = null;
-let enabled = true;
 
-function readPreference(): boolean {
-  if (Platform.OS !== 'web') return true;
-  try {
-    return localStorage.getItem(STORAGE_KEY) !== 'off';
-  } catch {
-    return true;
-  }
-}
-
-enabled = readPreference();
+// Cached rather than read through: play() consults this on every tap, and a
+// storage read per tap is a strange price for a boolean that changes twice a
+// year.
+let enabled = soundPreference.get();
+soundPreference.subscribe((next) => {
+  enabled = next;
+});
 
 export function isSoundEnabled(): boolean {
   return enabled;
 }
 
 export function setSoundEnabled(next: boolean): void {
-  enabled = next;
-  if (Platform.OS !== 'web') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, next ? 'on' : 'off');
-  } catch {
-    /* Private mode; the preference just does not persist. */
-  }
+  soundPreference.set(next);
 }
 
 /**

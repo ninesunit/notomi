@@ -1,23 +1,9 @@
 import { Platform } from 'react-native';
 import type { ShareableFile } from '@/lib/deviceShare';
 import { originalBytes } from '@/services/driveStorage';
+import { downloadBlob, safeFileName } from '@/lib/download';
 
-function safeName(name: string): string {
-  return name.trim().replace(/[^a-z0-9._-]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'notomi-notes';
-}
-
-function downloadBlob(blob: Blob, fileName: string): void {
-  if (Platform.OS !== 'web') throw new Error('Direct downloads are currently available in the web app.');
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-}
+const safeName = (name: string) => safeFileName(name, 'notomi-notes');
 
 export function exportMarkdown(title: string, markdown: string): void {
   downloadBlob(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }), `${safeName(title)}.md`);

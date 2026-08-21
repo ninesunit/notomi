@@ -1,5 +1,6 @@
 import { Platform, Share } from 'react-native';
 import type { QuizQuestion, WeakConcept } from '@/lib/schema';
+import { downloadBlob } from '@/lib/download';
 
 /**
  * Anki export.
@@ -103,16 +104,7 @@ export async function downloadAnkiDeck(
 
   if (Platform.OS === 'web') {
     // BOM so Excel and Anki agree the file is UTF-8 before parsing a single row.
-    const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    // Revoked on the next tick; revoking synchronously can beat the download.
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    downloadBlob(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }), fileName);
     return cards.length;
   }
 

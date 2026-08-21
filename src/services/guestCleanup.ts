@@ -45,12 +45,16 @@ async function collectSubjectTree(db: Firestore, uid: string): Promise<DocumentR
       getDocs(paths.flashcards(db, uid, subject.id)),
       getDocs(paths.lectures(db, uid, subject.id)),
       getDocs(paths.assignments(db, uid, subject.id)),
+      // Missing until now, which meant deleting a guest workspace left every
+      // week of every teaching plan behind, under a subject that no longer
+      // existed. Nothing could reach them and nothing would ever clean them up.
+      getDocs(paths.teachingPlan(db, uid, subject.id)),
       getDocs(paths.chats(db, uid, subject.id)),
     ]);
-    nested.slice(0, 4).forEach((snapshot) =>
+    nested.slice(0, 5).forEach((snapshot) =>
       snapshot.docs.forEach((entry) => refs.push(entry.ref))
     );
-    for (const chat of nested[4].docs) {
+    for (const chat of nested[5].docs) {
       const messages = await getDocs(paths.chatMessages(db, uid, subject.id, chat.id));
       messages.docs.forEach((entry) => refs.push(entry.ref));
       refs.push(chat.ref);

@@ -16,9 +16,16 @@ import { Button, Card, Notice } from './ui';
  * are local notifications, so they need the app installed or open — is stated
  * where it matters instead of hidden.
  */
-export function RemindersCard() {
+export function RemindersCard({
+  /**
+   * Open on the Settings screen, where the panel behind the gear *is* what the
+   * student came for. On the dashboard it stays shut: there the card is a
+   * status line about what is coming next.
+   */
+  settingsOpen = false,
+}: { settingsOpen?: boolean } = {}) {
   const { prefs, update, permission, enable, upcoming } = useReminders();
-  const [settings, setSettings] = useState(false);
+  const [settings, setSettings] = useState(settingsOpen);
   const [busy, setBusy] = useState(false);
   const [denied, setDenied] = useState(false);
 

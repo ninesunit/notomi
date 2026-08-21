@@ -25,6 +25,7 @@ import {
   ParseError,
 } from './fileProcessor';
 import type { MaterialFile } from './ingestion';
+import { attendanceThreshold } from '@/lib/academicRules';
 
 const DAY_MS = 86_400_000;
 
@@ -249,7 +250,12 @@ export function attendanceSummary(
   const missed = Math.max(0, subject.attendanceMissed ?? 0);
   const held = attended + missed;
   const planned = Math.max(0, weeklySessions * (semester?.teachingWeeks ?? 14));
-  const maxAbsences = Math.max(0, planned - Math.ceil(planned * 0.8));
+  // The rule the student's university actually applies, not the 80% this used
+  // to assume. At a 75% institution the old number told them they could afford
+  // fewer absences than they could; at 85% it told them they could afford more,
+  // which is the direction that costs a grade.
+  const required = attendanceThreshold.get() / 100;
+  const maxAbsences = Math.max(0, planned - Math.ceil(planned * required));
   return {
     attended,
     missed,

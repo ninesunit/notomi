@@ -17,6 +17,7 @@ import type {
 import { attendanceSummary, buildBurnoutWeeks, saveAttendanceStatus } from '@/services/academicPlanner';
 import { getDb } from '@/services/firebase';
 import { workloadTint } from '@/lib/color';
+import { useAttendanceThreshold } from '@/lib/academicRules';
 
 export function BurnoutHeatmap({ semester, todos }: { semester: Semester | null; todos: Todo[] }) {
   const weeks = useMemo(() => buildBurnoutWeeks(semester, todos), [semester, todos]);
@@ -99,6 +100,9 @@ export function AttendanceGuard({
           attendanceMissed: logs.data.filter((log) => log.status === 'absent').length,
         }
       : subject;
+  // Subscribed to rather than only read inside attendanceSummary, so changing
+  // the rule in Settings reaches a subject page that is already open.
+  const [threshold] = useAttendanceThreshold();
   const summary = attendanceSummary(recordedSubject, subjectClasses.length, semester);
   const excused = logs.data.filter((log) => log.status === 'excused').length;
 
@@ -132,7 +136,9 @@ export function AttendanceGuard({
         >
           <Icon name="shield" size={15} tone="pine" />
           <Text className="text-sm font-semibold text-ink">Attendance Guard</Text>
-          <Text className="text-xs text-muted">{summary.held} logged</Text>
+          <Text className="text-xs text-muted">
+            {summary.held} logged · {threshold}% rule
+          </Text>
           <View className="ml-auto flex-row items-baseline gap-1">
             <Text className="text-base font-bold text-pine">{summary.safeSkips}</Text>
             <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">safe skips</Text>

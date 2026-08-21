@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Link, useLocalSearchParams } from 'expo-router';
-import { Icon, useTones } from '@/components/Icon';
+import { Icon } from '@/components/Icon';
 import { getDocs, orderBy, query, where } from 'firebase/firestore';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Badge, Button, Card, EmptyState, Loading, Notice, PageHeader } from '@/components/ui';
@@ -23,7 +23,6 @@ import { subjectInk, subjectTint } from '@/lib/color';
 type Phase = 'choosing' | 'generating' | 'active' | 'results';
 
 export default function StudyCenter() {
-  const tones = useTones();
   const params = useLocalSearchParams<{ subjectId?: string }>();
   const uid = useUid();
   const db = getDb();

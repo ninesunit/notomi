@@ -8,7 +8,7 @@ import {
   calculateGpa,
   DAY_LABELS,
   GRADE_OPTIONS,
-  GRADE_POINTS,
+  gradePoints,
   minutesToLabel,
   type ClassBlock,
   type Semester,
@@ -223,7 +223,7 @@ function SubjectDrawer({
   study: SubjectStudy | null;
   onClose: () => void;
 }) {
-  const points = subject.grade ? GRADE_POINTS[subject.grade] : null;
+  const points = subject.grade ? gradePoints()[subject.grade] : null;
 
   return (
     <Sheet

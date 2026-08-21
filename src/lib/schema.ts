@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
+import { activeGradeScale, GRADE_SCALES } from '@/lib/academicRules';
 
 export type Priority = 'low' | 'medium' | 'high';
 
@@ -55,25 +56,19 @@ export function knownTerms(semesters: { term: string }[]): string[] {
 }
 
 /**
- * 4.0-scale grade points. Kept here rather than in the UI so the planner and
- * the calculator can never disagree about what a B+ is worth.
+ * What each letter is worth, on whichever scale the student's university uses.
+ *
+ * A function rather than a table because the table was a 4.0 scale and nothing
+ * else, which quietly gave the wrong GPA to anyone on a 5.0 or a 10-point
+ * system. Still the single source, so the planner and the calculator can never
+ * disagree about what a B+ is worth — they just have to ask.
  */
-export const GRADE_POINTS: Record<string, number> = {
-  'A+': 4.0,
-  A: 4.0,
-  'A-': 3.7,
-  'B+': 3.3,
-  B: 3.0,
-  'B-': 2.7,
-  'C+': 2.3,
-  C: 2.0,
-  'C-': 1.7,
-  'D+': 1.3,
-  D: 1.0,
-  F: 0.0,
-};
+export function gradePoints(): Record<string, number> {
+  return activeGradeScale().points;
+}
 
-export const GRADE_OPTIONS = Object.keys(GRADE_POINTS);
+/** The same twelve letters on every scale; only their value moves. */
+export const GRADE_OPTIONS = Object.keys(GRADE_SCALES.gpa4.points);
 
 /**
  * Credit-weighted mean, ignoring subjects with no grade recorded yet.
@@ -92,12 +87,13 @@ export function calculateGpa(
   let credits = 0;
   let graded = 0;
 
+  const scale = gradePoints();
   for (const entry of entries) {
     const weight = entry.creditHours ?? 0;
     credits += weight;
     const grade = entry.grade ?? '';
-    if (!(grade in GRADE_POINTS) || weight <= 0) continue;
-    points += GRADE_POINTS[grade] * weight;
+    if (!(grade in scale) || weight <= 0) continue;
+    points += scale[grade] * weight;
     graded += weight;
   }
 
@@ -214,7 +210,7 @@ export type Subject = {
   /** Hidden parent used by the cross-course Document Vault. */
   isVault?: boolean;
   creditHours: number;
-  /** Recorded grade, keyed into GRADE_POINTS. */
+  /** Recorded grade, keyed into the active scale (see gradePoints). */
   grade: string | null;
   /** Attendance Guard counters; missing values are treated as zero. */
   attendanceAttended?: number;

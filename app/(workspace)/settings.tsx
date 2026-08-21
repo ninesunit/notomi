@@ -1,26 +1,47 @@
 import { useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
+import { Link } from 'expo-router';
+
+import { DayFilter } from '@/components/DayFilter';
 import { DriveConnect } from '@/components/DriveConnect';
 import { DriveMigrationModal } from '@/components/DriveMigrationModal';
-import { Icon } from '@/components/Icon';
+import { Icon, type IconName } from '@/components/Icon';
 import { RemindersCard } from '@/components/Reminders';
 import { ScreenScroll } from '@/components/ScreenScroll';
-import { Button, Card, PageHeader } from '@/components/ui';
-import { useAuth } from '@/hooks/useAuth';
+import { Button, Card, PageHeader, Touchable } from '@/components/ui';
+import { WeekStyleToggle } from '@/components/WeekStyleToggle';
+import { useAuth, useUid } from '@/hooks/useAuth';
+import { useVisibleDays } from '@/hooks/useVisibleDays';
+import {
+  ATTENDANCE_THRESHOLDS,
+  GRADE_SCALES,
+  GRADE_SCALE_IDS,
+  useAttendanceThreshold,
+  useGradeScale,
+  type AttendanceThreshold,
+  type GradeScaleId,
+} from '@/lib/academicRules';
 import { isDriveConfigured } from '@/lib/driveUtils';
-import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
+import { play, soundPreference } from '@/lib/sound';
 import { useThemeChoice, type ThemeChoice } from '@/lib/theme';
+import { exportAcademicData } from '@/services/dataExport';
 
 /**
  * Settings.
  *
- * This exists because the dashboard was carrying it. Reminders, sound and the
- * account were three cards competing with the two things a student actually
- * opens the app for, so they moved to the one place people already look.
+ * The one screen where a list of settings is the right answer, which is exactly
+ * why the settings that were scattered belong here: the week's shape, the rules
+ * a university sets, reminders, sound, the account. Everything else in Notomi
+ * earns its place by being on the way to something; this is the place a student
+ * goes on purpose.
+ *
+ * Ordered by how often it is touched, not by how important it sounds. The look
+ * of the app and the shape of the week change often; a grading scale is set
+ * once a degree.
  */
 export default function Settings() {
   const { user, logOut } = useAuth();
-  const [sound, setSound] = useState(isSoundEnabled);
+  const [sound, setSound] = soundPreference.use();
   const [theme, setTheme] = useThemeChoice();
   const [migrating, setMigrating] = useState(false);
 
@@ -28,11 +49,34 @@ export default function Settings() {
 
   return (
     <ScreenScroll>
-      <PageHeader title="Settings" subtitle="Appearance, reminders, sound and your account." />
+      <PageHeader title="Settings" subtitle="How Notomi looks, works and remembers." />
 
-      <AppearanceCard value={theme} onChange={setTheme} />
+      <SettingCard icon="sun" title="Appearance" subtitle="How Notomi looks on this device.">
+        <Segment
+          options={[
+            { id: 'light', label: 'Light', icon: 'sun' },
+            { id: 'dark', label: 'Dark', icon: 'moon' },
+            { id: 'system', label: 'Match device', icon: 'monitor' },
+          ]}
+          value={theme}
+          onChange={(next: ThemeChoice) => setTheme(next)}
+        />
+      </SettingCard>
 
-      <RemindersCard />
+      <WeekCard />
+
+      <RemindersCard settingsOpen />
+
+      <SoundCard
+        sound={sound}
+        onChange={(next) => {
+          setSound(next);
+          // Played after enabling so the switch confirms itself audibly.
+          if (next) play('toggle');
+        }}
+      />
+
+      <RulesCard />
 
       <View className="mb-8 gap-2">
         <DriveConnect />
@@ -48,38 +92,7 @@ export default function Settings() {
       </View>
       <DriveMigrationModal visible={migrating} onClose={() => setMigrating(false)} />
 
-      <Card className="mb-8 gap-4">
-        <View className="flex-row items-center gap-3">
-          <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-            <Icon name={sound ? 'volume-2' : 'volume-x'} size={16} tone="muted" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-[15px] font-semibold text-ink">Sound and haptics</Text>
-            <Text className="text-xs text-muted">
-              Short cues when something saves, finishes or fails.
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="switch"
-            accessibilityState={{ checked: sound }}
-            accessibilityLabel={sound ? 'Turn sound off' : 'Turn sound on'}
-            onPress={() => {
-              const next = !sound;
-              setSoundEnabled(next);
-              setSound(next);
-              // Played after enabling so the switch confirms itself audibly.
-              if (next) play('toggle');
-            }}
-            className={`h-7 w-12 justify-center rounded-full px-0.5 ${
-              sound ? 'bg-pine' : 'bg-line'
-            }`}
-          >
-            <View
-              className={`h-6 w-6 rounded-full bg-surface ${sound ? 'self-end' : 'self-start'}`}
-            />
-          </Pressable>
-        </View>
-      </Card>
+      <DataCard />
 
       <Card className="mb-8 gap-4">
         <View className="flex-row items-center gap-3">
@@ -93,9 +106,7 @@ export default function Settings() {
               {displayName}
             </Text>
             <Text className="text-xs text-muted" numberOfLines={1}>
-              {user?.isAnonymous
-                ? 'Temporary guest account'
-                : (user?.email ?? '')}
+              {user?.isAnonymous ? 'Temporary guest account' : (user?.email ?? '')}
             </Text>
           </View>
         </View>
@@ -142,73 +153,249 @@ export default function Settings() {
   );
 }
 
+/* ---------------------------- Shared shapes ---------------------------- */
+
+/**
+ * The card every setting sits in. Extracted once there were five of them and
+ * the header markup had started to differ by a pixel here and a tone there.
+ */
+function SettingCard({
+  icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: IconName;
+  title: string;
+  subtitle: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <Card className="mb-8 gap-4">
+      <View className="flex-row items-center gap-3">
+        <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
+          <Icon name={icon} size={16} tone="muted" />
+        </View>
+        <View className="flex-1">
+          <Text className="text-[15px] font-semibold text-ink">{title}</Text>
+          <Text className="text-xs leading-4 text-muted">{subtitle}</Text>
+        </View>
+      </View>
+      {children}
+    </Card>
+  );
+}
+
+/** One choice from a short list, as a row of pills. */
+function Segment<T extends string | number>({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ id: T; label: string; icon?: IconName }>;
+  value: T;
+  onChange: (next: T) => void;
+}) {
+  return (
+    <View className="flex-row flex-wrap gap-1.5">
+      {options.map((option) => {
+        const active = value === option.id;
+        return (
+          <Pressable
+            key={String(option.id)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            onPress={() => {
+              if (active) return;
+              play('toggle');
+              onChange(option.id);
+            }}
+            className={`min-w-0 flex-1 flex-row items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 ${
+              active ? 'bg-ink' : 'bg-sand'
+            }`}
+          >
+            {option.icon ? (
+              <Icon name={option.icon} size={14} tone={active ? 'inverse' : 'muted'} />
+            ) : null}
+            <Text
+              className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}
+              numberOfLines={1}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/* ------------------------------- Cards -------------------------------- */
+
+/**
+ * Both of these already exist on the timetable and the dashboard, where they
+ * belong — a control that changes what you are looking at should sit next to
+ * it. They are here as well because that is where a student looks for a
+ * setting they cannot remember seeing, and both read the same store, so the
+ * two places can never disagree.
+ */
+function WeekCard() {
+  const { visibleDays, toggleDay } = useVisibleDays();
+
+  return (
+    <SettingCard
+      icon="calendar"
+      title="Your week"
+      subtitle="How the week is drawn, and which days it includes."
+    >
+      <View className="flex-row items-center gap-2">
+        <WeekStyleToggle />
+        <DayFilter visibleDays={visibleDays} onToggle={toggleDay} className="flex-1" />
+      </View>
+    </SettingCard>
+  );
+}
+
+/**
+ * The two numbers Notomi cannot guess.
+ *
+ * Both were hardcoded to one institution's answer, so a student elsewhere was
+ * shown numbers that were confidently wrong: how many classes they could still
+ * miss, and what their GPA was. That is why this card exists rather than a
+ * sensible default staying invisible.
+ */
+function RulesCard() {
+  const [threshold, setThreshold] = useAttendanceThreshold();
+  const [scaleId, setScaleId] = useGradeScale();
+
+  return (
+    <SettingCard
+      icon="graduation-cap"
+      title="Your university's rules"
+      subtitle="Attendance and grading differ by institution. Notomi should use yours."
+    >
+      <View className="gap-2">
+        <Text className="text-xs font-medium text-muted">Minimum attendance</Text>
+        <Segment
+          options={ATTENDANCE_THRESHOLDS.map((value) => ({ id: value, label: `${value}%` }))}
+          value={threshold}
+          onChange={(next: AttendanceThreshold) => setThreshold(next)}
+        />
+      </View>
+
+      <View className="gap-2">
+        <Text className="text-xs font-medium text-muted">Grade scale — what an A is worth</Text>
+        <Segment
+          options={GRADE_SCALE_IDS.map((id) => ({ id, label: GRADE_SCALES[id].label }))}
+          value={scaleId}
+          onChange={(next: GradeScaleId) => setScaleId(next)}
+        />
+        <Text className="text-[11px] leading-4 text-subtle">
+          Changes what each letter is worth. Your recorded grades are untouched — an A stays an A.
+        </Text>
+      </View>
+    </SettingCard>
+  );
+}
+
+function SoundCard({ sound, onChange }: { sound: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <Card className="mb-8 gap-4">
+      <View className="flex-row items-center gap-3">
+        <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
+          <Icon name={sound ? 'volume-2' : 'volume-x'} size={16} tone="muted" />
+        </View>
+        <View className="flex-1">
+          <Text className="text-[15px] font-semibold text-ink">Sound and haptics</Text>
+          <Text className="text-xs text-muted">
+            Short cues when something saves, finishes or fails.
+          </Text>
+        </View>
+        <Pressable
+          accessibilityRole="switch"
+          accessibilityState={{ checked: sound }}
+          accessibilityLabel={sound ? 'Turn sound off' : 'Turn sound on'}
+          onPress={() => onChange(!sound)}
+          className={`h-7 w-12 justify-center rounded-full px-0.5 ${sound ? 'bg-pine' : 'bg-line'}`}
+        >
+          <View className={`h-6 w-6 rounded-full bg-surface ${sound ? 'self-end' : 'self-start'}`} />
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
+
+/**
+ * Leaving has to be possible.
+ *
+ * A study workspace accumulates a term of work, and a student who cannot get it
+ * out is not using the app so much as stuck in it. The privacy switches are
+ * linked rather than copied here: they are saved as part of the profile, and a
+ * second write path for them is a second way to overwrite a bio by accident.
+ */
+function DataCard() {
+  const uid = useUid();
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+
+  return (
+    <SettingCard
+      icon="shield"
+      title="Your data"
+      subtitle="Take a copy, or change who can see what."
+    >
+      <View className="flex-row">
+        <Button
+          label={busy ? 'Collecting…' : 'Export everything as JSON'}
+          icon="arrow-down-to-line"
+          variant="secondary"
+          size="sm"
+          loading={busy}
+          disabled={busy}
+          onPress={() => {
+            setBusy(true);
+            setDone(null);
+            void exportAcademicData(uid)
+              .then((summary) => {
+                setDone(`${summary.documents} records across ${summary.collections} collections.`);
+                play('success');
+              })
+              .catch((error: unknown) =>
+                Alert.alert(
+                  'Could not export',
+                  error instanceof Error ? error.message : 'Try again.'
+                )
+              )
+              .finally(() => setBusy(false));
+          }}
+        />
+      </View>
+
+      <Text className="text-[11px] leading-4 text-subtle">
+        {done ??
+          'Subjects, notes, flashcards, timetable, deadlines and teaching plans. Uploaded files stay where they already are — in your own storage.'}
+      </Text>
+
+      <Link href="/profile" asChild>
+        <Touchable
+          accessibilityRole="link"
+          accessibilityLabel="Privacy settings, in your profile"
+          className="flex-row items-center gap-3 rounded-xl border border-line px-3 py-2.5"
+        >
+          <Icon name="eye" size={15} tone="muted" />
+          <Text className="flex-1 text-sm font-medium text-ink">Who can see your courses</Text>
+          <Icon name="chevron-right" size={15} tone="subtle" />
+        </Touchable>
+      </Link>
+    </SettingCard>
+  );
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-row items-center justify-between border-t border-line py-2">
       <Text className="text-sm text-muted">{label}</Text>
       <Text className="text-sm font-medium text-ink">{value}</Text>
     </View>
-  );
-}
-
-/**
- * Three choices, two looks: "Match device" is a standing instruction rather
- * than a third theme, which is why it is worded as following something and not
- * as being something.
- */
-function AppearanceCard({
-  value,
-  onChange,
-}: {
-  value: ThemeChoice;
-  onChange: (choice: ThemeChoice) => void;
-}) {
-  const options: Array<{ id: ThemeChoice; label: string; icon: 'sun' | 'moon' | 'monitor' }> = [
-    { id: 'light', label: 'Light', icon: 'sun' },
-    { id: 'dark', label: 'Dark', icon: 'moon' },
-    { id: 'system', label: 'Match device', icon: 'monitor' },
-  ];
-
-  return (
-    <Card className="mb-8 gap-4">
-      <View className="flex-row items-center gap-3">
-        <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
-          <Icon name="sun" size={16} tone="muted" />
-        </View>
-        <View className="flex-1">
-          <Text className="text-[15px] font-semibold text-ink">Appearance</Text>
-          <Text className="text-xs text-muted">How Notomi looks on this device.</Text>
-        </View>
-      </View>
-
-      <View className="flex-row gap-1.5">
-        {options.map((option) => {
-          const active = value === option.id;
-          return (
-            <Pressable
-              key={option.id}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              onPress={() => {
-                if (active) return;
-                play('toggle');
-                onChange(option.id);
-              }}
-              className={`min-w-0 flex-1 flex-row items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 ${
-                active ? 'bg-ink' : 'bg-sand'
-              }`}
-            >
-              <Icon name={option.icon} size={14} tone={active ? 'inverse' : 'muted'} />
-              <Text
-                className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}
-                numberOfLines={1}
-              >
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </Card>
   );
 }

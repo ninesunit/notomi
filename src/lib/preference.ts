@@ -31,7 +31,17 @@ export function createPreference<T>(options: {
     try {
       const raw = localStorage.getItem(key);
       if (raw === null) return fallback;
-      return parse(JSON.parse(raw)) ?? fallback;
+      // `parse` sees whatever was stored, JSON or not. A key that predates this
+      // factory may hold a bare string, and reading that as "unrecognised" would
+      // silently reset a setting the student had chosen — which for the sound
+      // toggle would mean un-muting them.
+      let value: unknown = raw;
+      try {
+        value = JSON.parse(raw);
+      } catch {
+        /* Not JSON. Hand the raw string to parse and let it decide. */
+      }
+      return parse(value) ?? fallback;
     } catch {
       return fallback;
     }
@@ -49,6 +59,18 @@ export function createPreference<T>(options: {
   /** For code that needs the value once, outside React. */
   const get = read;
 
+  /**
+   * For code that needs every value, outside React — a module that caches the
+   * setting because it is consulted far too often to re-read the store each
+   * time. Returns its own unsubscribe.
+   */
+  const subscribe = (listener: (value: T) => void): (() => void) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  };
+
   function usePreference(): [T, (value: T) => void] {
     const [value, setValue] = useState<T>(read);
 
@@ -64,5 +86,5 @@ export function createPreference<T>(options: {
     return [value, set];
   }
 
-  return { use: usePreference, get, set };
+  return { use: usePreference, get, set, subscribe };
 }

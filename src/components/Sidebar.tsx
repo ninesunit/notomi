@@ -1,8 +1,7 @@
-import { useState } from 'react';
 import { Alert, ScrollView, Text, View } from 'react-native';
 import { Link, usePathname } from 'expo-router';
 import { Icon } from '@/components/Icon';
-import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
+import { play, soundPreference } from '@/lib/sound';
 import { useAuth } from '@/hooks/useAuth';
 import { useSafeArea } from '@/hooks/useSafeArea';
 import { GlobalSearch } from './GlobalSearch';
@@ -19,7 +18,7 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
   const pathname = usePathname();
   const { user, logOut } = useAuth();
   const insets = useSafeArea();
-  const [sound, setSound] = useState(isSoundEnabled);
+  const [sound, setSound] = soundPreference.use();
 
   const displayName = user?.displayName || (user?.isAnonymous ? 'Guest' : user?.email) || 'You';
   const initial = displayName.charAt(0).toUpperCase();
@@ -139,7 +138,6 @@ export function Sidebar({ onAsk, onCollapse }: { onAsk: () => void; onCollapse: 
             accessibilityLabel={sound ? 'Turn sound off' : 'Turn sound on'}
             onPress={() => {
               const next = !sound;
-              setSoundEnabled(next);
               setSound(next);
               // Play after enabling so the toggle confirms itself audibly.
               if (next) play('toggle');
