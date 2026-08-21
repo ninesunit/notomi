@@ -9,6 +9,14 @@ import {
   type Part,
 } from 'firebase/ai';
 import { withAiResponseCache } from './aiCache';
+import {
+  claimAiRequest,
+  isQuotaError,
+  recordUpstreamRefusal,
+  recordUpstreamSuccess,
+  releaseAiRequest,
+  type AiWeight,
+} from './budget';
 import { GEMINI_MODEL, getAiClient, isAppCheckEnabled } from '@/services/firebase';
 import type {
   AnswerGrade,
@@ -212,6 +220,28 @@ function modelFor(modelName: string, params: Omit<ModelParams, 'model'> = {}): G
 /** The model id actually in use, after any fallback. */
 export const currentModel = (): string => activeModel;
 
+/**
+ * The last thing the AI did, for the diagnostics panel.
+ *
+ * Deliberately just the shape of the outcome: which operation, which model,
+ * how long, and whether it worked. No prompt, no answer, no document text —
+ * a student pasting this into a support conversation must not be pasting
+ * their coursework with it.
+ */
+export type AiOutcome = {
+  operation: string;
+  model: string;
+  ms: number;
+  status: 'ok' | 'failed';
+  /** HTTP status where the SDK exposed one. */
+  httpStatus: number | null;
+  at: number;
+};
+
+let lastOutcome: AiOutcome | null = null;
+
+export const lastAiOutcome = (): AiOutcome | null => lastOutcome;
+
 type SdkErrorShape = {
   name?: string;
   code?: string;
@@ -286,8 +316,32 @@ function canTryAnotherModel(error: unknown): boolean {
   );
 }
 
-/** Runs one request through the active model and current stable fallbacks. */
+/**
+ * Runs one request through the active model and current stable fallbacks.
+ *
+ * Every AI call in the app funnels through here, which is why the daily
+ * allowance is checked here too rather than at forty call sites — there is no
+ * way to add a new AI feature that forgets to ask permission. It sits *inside*
+ * withAiResponseCache deliberately: a cached answer never reached the model,
+ * so it must not spend a request the student could have used on a new one.
+ */
 async function runWithModelFallback<T>(
+  operation: string,
+  params: Omit<ModelParams, 'model'>,
+  run: (candidate: GenerativeModel) => Promise<T>,
+  weight: AiWeight = 'standard'
+): Promise<T> {
+  // Throws a QuotaError, which callers pass through untouched so the screen
+  // can show the reset time rather than a generic failure.
+  claimAiRequest(weight);
+  try {
+    return await attemptWithModelFallback(operation, params, run);
+  } finally {
+    releaseAiRequest();
+  }
+}
+
+async function attemptWithModelFallback<T>(
   operation: string,
   params: Omit<ModelParams, 'model'>,
   run: (candidate: GenerativeModel) => Promise<T>
@@ -331,6 +385,15 @@ async function runWithModelFallback<T>(
         }
       }
       clearModelCooldown(candidate);
+      recordUpstreamSuccess();
+      lastOutcome = {
+        operation,
+        model: candidate,
+        ms: Date.now() - startedAt,
+        status: 'ok',
+        httpStatus: null,
+        at: Date.now(),
+      };
       console.info(`[ai] ${operation} · ${candidate} · ${Date.now() - startedAt}ms`);
       if (candidate !== activeModel) {
         console.info(`[ai] switched from ${activeModel} to ${candidate}.`);
@@ -339,9 +402,20 @@ async function runWithModelFallback<T>(
       return value;
     } catch (error) {
       lastError = error;
+      lastOutcome = {
+        operation,
+        model: candidate,
+        ms: Date.now() - startedAt,
+        status: 'failed',
+        httpStatus: errorDetails(error).httpStatus,
+        at: Date.now(),
+      };
       logAiFailure(operation, error, candidate);
       if (errorDetails(error).httpStatus === 429 || /quota|RESOURCE_EXHAUSTED/i.test(errorDetails(error).message)) {
         coolDownModel(candidate, error);
+        // Enough of these in a row is not a hiccup, it is the project's daily
+        // allowance gone, and the breaker stops the app hammering it.
+        recordUpstreamRefusal();
       }
       if (!canTryAnotherModel(error) || index === candidates.length - 1) throw error;
       console.warn(`[ai] ${candidate} is unavailable; trying ${candidates[index + 1]}.`);
@@ -377,6 +451,19 @@ function logSetupHint(kind: 'missing-token' | 'token-refused', raw: string): voi
  */
 const AI_UNREACHABLE =
   "Notomi's AI is temporarily unavailable. This is a problem on our side, not with your device — your work is safe and it should be back shortly.";
+
+/**
+ * Rethrows, wrapping anything that is not already one of ours.
+ *
+ * A QuotaError passes through untouched. It is not a failure — it is Notomi
+ * declining to spend an allowance, and it carries the code and reset time a
+ * screen needs to say so. Flattening it into an AiError's message would leave
+ * every surface parsing English to work out whether to offer a retry.
+ */
+function rethrow(error: unknown): never {
+  if (isQuotaError(error)) throw error;
+  throw new AiError(describe(error), error);
+}
 
 /** Turns an unknown SDK failure into something worth showing a student. */
 function describe(error: unknown): string {
@@ -469,7 +556,11 @@ export function buildContext(sources: { title: string; text: string }[]): string
     .join('\n\n');
 }
 
-async function generate(params: Omit<ModelParams, 'model'>, prompt: string): Promise<string> {
+async function generate(
+  params: Omit<ModelParams, 'model'>,
+  prompt: string,
+  weight: AiWeight = 'standard'
+): Promise<string> {
   try {
     return await withAiResponseCache(
       {
@@ -477,14 +568,17 @@ async function generate(params: Omit<ModelParams, 'model'>, prompt: string): Pro
         payload: JSON.stringify({ models: MODEL_POOL, params, prompt }),
       },
       async () => {
-        const result = await runWithModelFallback('generateContent', params, (candidate) =>
-          candidate.generateContent(prompt)
+        const result = await runWithModelFallback(
+          'generateContent',
+          params,
+          (candidate) => candidate.generateContent(prompt),
+          weight
         );
         return result.response.text();
       }
     );
   } catch (error) {
-    throw new AiError(describe(error), error);
+    rethrow(error);
   }
 }
 
@@ -512,12 +606,15 @@ async function generateJson<T>(
     };
 
     try {
-      const raw = await generate(config, prompt);
+      // The second pass is Notomi correcting its own schema handling, not the
+      // student asking for something else, so it does not cost them a request.
+      const raw = await generate(config, prompt, attempt === 0 ? 'standard' : 'continuation');
       const parsed = parseJson<unknown>(raw);
       if (validate(parsed)) return parsed;
       lastError = new AiError('The response came back in a shape Notomi could not read.');
     } catch (error) {
       // A transport or quota failure will not be fixed by retrying the parse.
+      if (isQuotaError(error)) throw error;
       if (
         error instanceof AiError &&
         !/not valid JSON|unexpected shape|shape Notomi could not read/i.test(error.message)
@@ -597,7 +694,11 @@ async function generateFromMedia(
             candidate.generateContent([
               { inlineData: { data: toBase64(data), mimeType } },
               { text: prompt },
-            ])
+            ]),
+          // Sending a whole file is the expensive shape, and it draws on the
+          // smaller heavy allowance so a batch of scans cannot eat the
+          // requests the reader and the quiz need.
+          'heavy'
         );
         return result.response.text();
       }
@@ -609,7 +710,7 @@ async function generateFromMedia(
         'That file is too large to send in one request. Compress or split it and retry.'
       );
     }
-    throw new AiError(describe(error), error);
+    rethrow(error);
   }
 }
 
@@ -928,7 +1029,7 @@ export async function askSources(
       }
     );
   } catch (error) {
-    throw new AiError(describe(error), error);
+    rethrow(error);
   }
 }
 
@@ -2240,11 +2341,17 @@ ${input.brief}`,
     });
 
   try {
-    const send = () =>
-      runWithModelFallback('copilot chat', copilotParams, (candidate) =>
-        candidate.generateContent({ contents })
+    // The first call is the student's question. Every round after it is the
+    // model finishing that same question with a tool in hand, so it is billed
+    // as a continuation rather than as four separate requests.
+    const send = (weight: AiWeight) =>
+      runWithModelFallback(
+        'copilot chat',
+        copilotParams,
+        (candidate) => candidate.generateContent({ contents }),
+        weight
       );
-    let response = (await deadline(send())).response;
+    let response = (await deadline(send('standard'))).response;
 
     for (let round = 0; round < 4; round += 1) {
       const calls = response.functionCalls();
@@ -2286,12 +2393,12 @@ ${input.brief}`,
       // from the client, so send it explicitly as USER while retaining the
       // model's function-call content immediately before it.
       contents.push({ role: 'user', parts: replies });
-      response = (await deadline(send())).response;
+      response = (await deadline(send('continuation'))).response;
     }
 
     return { reply: response.text().trim(), actions };
   } catch (error) {
-    throw new AiError(describe(error), error);
+    rethrow(error);
   }
 }
 

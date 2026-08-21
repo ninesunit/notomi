@@ -14,11 +14,11 @@ import { WeekStyleToggle } from '@/components/WeekStyleToggle';
 import { useVisibleDays } from '@/hooks/useVisibleDays';
 import { useWeekStyle } from '@/hooks/useWeekStyle';
 import { defaultScope, filterByTerm } from '@/components/TermFilter';
-import { Badge, Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
+import { Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { useIngest } from '@/hooks/useIngest';
-import { bucketFor, formatDue, toDate } from '@/lib/dates';
+import { bucketFor, formatDue, isSameDay, toDate } from '@/lib/dates';
 import { paths } from '@/lib/paths';
 import {
   calculateGpa,
@@ -36,7 +36,7 @@ import { academicClasses, type ResolvedClass } from '@/services/timetable';
 import { buildBurnoutWeeks, findActiveSemester } from '@/services/academicPlanner';
 import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
 import { pickMaterials, type MaterialFile } from '@/services/ingestion';
-import { subjectTint, workloadTint } from '@/lib/color';
+import { subjectTint } from '@/lib/color';
 
 /**
  * The dashboard.
@@ -125,7 +125,7 @@ export default function Dashboard() {
         />
       )}
 
-      <MissionStatus semester={activeSemester} todos={open} />
+      <MissionStatus semester={activeSemester} todos={open} classes={liveClasses} />
 
       {subjects.error ? (
         <View className="mb-6">
@@ -149,10 +149,7 @@ export default function Dashboard() {
         semester={activeSemester}
       />
 
-      <CompactBurnout
-        semester={activeSemester}
-        todos={open}
-      />
+      <WorkloadAhead semester={activeSemester} todos={open} />
 
       {currentSubjects.length > 0 ? (
         <QuickLog uid={uid} subjects={currentSubjects} classes={liveClasses} />
@@ -169,7 +166,29 @@ export default function Dashboard() {
   );
 }
 
-function MissionStatus({ semester, todos }: { semester: Semester | null; todos: Todo[] }) {
+/**
+ * Where the term is, and what today asks of you — in one sentence.
+ *
+ * This was four things competing for the same strip: a term badge, a week
+ * number, a date range and a colour-coded "Burnout: Building load" pill. Each
+ * was true and none of them answered the question a student opens the app
+ * with, which is whether today is going to be a lot. A ratio against the
+ * term's own peak cannot answer it either — in a quiet semester the busiest
+ * week still reads "High load", and in a brutal one the third-worst week reads
+ * "Balanced".
+ *
+ * So it counts what is actually on today and says so in words. The term and
+ * week stay, quietly, as the line underneath: context, not a headline.
+ */
+function MissionStatus({
+  semester,
+  todos,
+  classes,
+}: {
+  semester: Semester | null;
+  todos: Todo[];
+  classes: ResolvedClass[];
+}) {
   if (!semester) {
     return (
       <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
@@ -187,20 +206,44 @@ function MissionStatus({ semester, todos }: { semester: Semester | null; todos: 
   // step with a Monday-aligned plan the moment a term begins mid-week.
   const week = weekOf(semester);
   const dates = week ? weekRangeLabel(semester, week) : null;
-  const weeks = buildBurnoutWeeks(semester, todos);
-  const current = week ? weeks[week - 1] : weeks[0];
-  const peak = Math.max(1, ...weeks.map((entry) => entry.workload));
-  const ratio = current ? current.workload / peak : 0;
-  const status = ratio >= 0.8 ? 'High load' : ratio >= 0.45 ? 'Building load' : 'Balanced';
-  const tone = ratio >= 0.8 ? 'rose' : ratio >= 0.45 ? 'amber' : 'pine';
+
+  const now = new Date();
+  const day = todayIndex();
+  const classCount = classes.filter((block) => block.day === day).length;
+  const dueCount = todos.filter((todo) => {
+    const date = toDate(todo.dueDate);
+    return !!date && isSameDay(date, now);
+  }).length;
+
+  // A deadline is worth more than a class because it is work rather than
+  // attendance. Deliberately arithmetic and not a model: this changes what a
+  // student does next, so it has to be the same every time they look.
+  const load = classCount + dueCount * 2;
+  const headline =
+    load === 0 ? 'Clear day' : load >= 7 ? 'Heavy day' : load >= 3 ? 'Moderate day' : 'Light day';
+
+  const parts = [
+    classCount > 0 ? `${classCount} ${classCount === 1 ? 'class' : 'classes'}` : null,
+    dueCount > 0 ? `${dueCount} ${dueCount === 1 ? 'deadline' : 'deadlines'}` : null,
+  ].filter(Boolean);
 
   return (
-    <View className="mb-5 flex-row flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-      <Icon name="layout-dashboard" size={16} tone="ink" />
-      <Badge label={`${semester.name}${week ? ` • Week ${week}` : ''}`} />
-      {dates ? <Text className="text-xs font-medium text-muted">{dates}</Text> : null}
-      <View className="flex-1" />
-      <Badge label={`Burnout: ${status}`} tone={tone} />
+    <View className="mb-5 gap-1 rounded-2xl border border-line bg-surface px-4 py-3">
+      <View className="flex-row items-center gap-2.5">
+        <Icon
+          name={load >= 7 ? 'alert-triangle' : load === 0 ? 'check-circle' : 'layout-dashboard'}
+          size={15}
+          tone={load >= 7 ? 'amber' : load === 0 ? 'pine' : 'ink'}
+        />
+        <Text className="flex-1 text-sm font-semibold leading-5 text-ink">
+          {parts.length > 0
+            ? `${headline} — ${parts.join(' and ')} today.`
+            : `${headline} — nothing scheduled today.`}
+        </Text>
+      </View>
+      <Text className="text-xs text-muted" numberOfLines={1}>
+        {[semester.name, week ? `Week ${week}` : null, dates].filter(Boolean).join(' · ')}
+      </Text>
     </View>
   );
 }
@@ -510,28 +553,77 @@ function ClassDetailRow({
   );
 }
 
-function CompactBurnout({ semester, todos }: { semester: Semester | null; todos: Todo[] }) {
-  const weeks = useMemo(() => buildBurnoutWeeks(semester, todos), [semester, todos]);
-  if (!semester || weeks.length === 0) return null;
-  const peak = Math.max(1, ...weeks.map((week) => week.workload));
+/**
+ * The one week ahead worth warning about.
+ *
+ * This was fourteen coloured bars, which is a pretty way of saying nothing: a
+ * strip of tints with no numbers, no names and nothing to press cannot change
+ * what a student does next, and it took a full row of the dashboard to not do
+ * it. A forecast earns its space by naming the week, the reason and the move.
+ *
+ * It also stays quiet. Rendering "workload is fine" every day for eleven weeks
+ * is how a warning becomes furniture, so when nothing is piling up this is
+ * simply not on the screen.
+ */
+function WorkloadAhead({ semester, todos }: { semester: Semester | null; todos: Todo[] }) {
+  const forecast = useMemo(() => {
+    const weeks = buildBurnoutWeeks(semester, todos);
+    if (!semester || weeks.length === 0) return null;
+
+    // Look from this week forward. What happened in week 3 is not a forecast,
+    // and it is not something a student can still do anything about.
+    const current = Math.max(0, (weekOf(semester) ?? 1) - 1);
+    const ahead = weeks.slice(current, current + 4).filter((week) => week.tasks >= 2);
+    if (ahead.length === 0) return null;
+
+    const worst = ahead.reduce((peak, week) => (week.workload > peak.workload ? week : peak));
+    // Two deadlines in a week is ordinary. Three, or two heavy ones, is the
+    // week that ruins the fortnight around it.
+    if (worst.tasks < 3 && worst.workload < 10) return null;
+
+    const due = todos.filter((todo) => {
+      const date = toDate(todo.dueDate);
+      return !todo.isCompleted && !!date && date >= worst.start && date <= worst.end;
+    });
+    const subjects = new Set(
+      due.map((todo) => todo.subjectName).filter((name): name is string => !!name)
+    ).size;
+
+    const offset = worst.index - current;
+    const when =
+      offset === 0 ? 'This week' : offset === 1 ? 'Next week' : `In ${offset} weeks`;
+
+    return {
+      when,
+      reason: [
+        `${due.length} ${due.length === 1 ? 'deadline' : 'deadlines'}`,
+        subjects > 1 ? `across ${subjects} subjects` : null,
+      ]
+        .filter(Boolean)
+        .join(' '),
+      heavy: worst.workload >= 14,
+    };
+  }, [semester, todos]);
+
+  if (!forecast) return null;
+
   return (
-    <View className="mb-6 flex-row items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
-      <Icon name="activity" size={16} tone="accent" />
-      <View className="min-w-0 flex-1">
-        <Text className="text-sm font-semibold text-ink">Burnout forecast</Text>
-        <Text className="text-[11px] text-muted" numberOfLines={1}>{semester.name}</Text>
+    <View className="mb-6 gap-2.5 rounded-2xl border border-line bg-surface px-4 py-3.5">
+      <View className="flex-row items-start gap-2.5">
+        <Icon
+          name={forecast.heavy ? 'alert-triangle' : 'activity'}
+          size={15}
+          tone={forecast.heavy ? 'amber' : 'accent'}
+          style={{ marginTop: 2 }}
+        />
+        <Text className="flex-1 text-sm font-semibold leading-5 text-ink">
+          {forecast.when} is heavy — {forecast.reason}.
+        </Text>
       </View>
-      <View className="flex-row gap-1">
-        {weeks.slice(0, 14).map((week) => {
-          return (
-            <View
-              key={week.index}
-              accessibilityLabel={`Week ${week.index + 1}, workload ${week.workload}`}
-              className="h-5 w-2 rounded-full"
-              style={{ backgroundColor: workloadTint(week.workload, peak) }}
-            />
-          );
-        })}
+      <View className="flex-row">
+        <Link href="/tasks" asChild>
+          <Button label="Review workload" icon="arrow-right" variant="secondary" size="sm" />
+        </Link>
       </View>
     </View>
   );

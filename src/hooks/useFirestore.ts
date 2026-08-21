@@ -5,6 +5,7 @@ import {
   type Query,
   type DocumentData,
 } from 'firebase/firestore';
+import { recordReads } from '@/lib/budget';
 
 type State<T> = { data: T; loading: boolean; error: Error | null };
 
@@ -34,6 +35,11 @@ export function useCollection<T>(
     return onSnapshot(
       current,
       (snapshot) => {
+        // Only what actually changed. A listener re-delivers the whole result
+        // set on every update, but Firestore bills the documents that moved —
+        // counting snapshot.docs would report a screen watching fifty subjects
+        // as fifty reads a keystroke and make the estimate useless.
+        recordReads(snapshot.docChanges().length);
         setState({
           data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as T),
           loading: false,
@@ -72,6 +78,7 @@ export function useDocument<T>(
     return onSnapshot(
       current,
       (snapshot) => {
+        recordReads(1);
         setState({
           data: snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as T) : null,
           loading: false,

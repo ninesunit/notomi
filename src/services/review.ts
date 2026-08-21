@@ -12,6 +12,7 @@ import {
   writeBatch,
   type QueryConstraint,
 } from 'firebase/firestore';
+import { recordReads, recordWrites } from '@/lib/budget';
 import { nextReviewDate } from '@/lib/dates';
 import { stableId } from '@/lib/ids';
 import { paths } from '@/lib/paths';
@@ -274,6 +275,7 @@ async function readCandidates(uid: string, scope: ReviewScope, size: number): Pr
 
   const read = async (constraints: QueryConstraint[]) => {
     const snapshot = await getDocs(query(collectionRef, ...constraints));
+    recordReads(snapshot.size);
     return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as ReviewCard);
   };
 
@@ -312,6 +314,7 @@ async function readMistakes(uid: string, scope: ReviewScope, size: number): Prom
       ? [where('subjectId', '==', scope.subjectIds[0]), limitTo(poolSize(size))]
       : [limitTo(poolSize(size))];
   const snapshot = await getDocs(query(paths.weakConcepts(db, uid), ...constraints));
+  recordReads(snapshot.size);
   return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as WeakConcept);
 }
 
@@ -473,6 +476,7 @@ export async function commitReviewSession(uid: string, answers: ReviewAnswer[]):
   }
 
   await batch.commit();
+  recordWrites(answers.length);
   return newlyMastered;
 }
 
@@ -623,5 +627,6 @@ export async function buildDeckForDocument(input: {
       );
     })
   );
+  recordWrites(cards.length);
   return cards.length;
 }

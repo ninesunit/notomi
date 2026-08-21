@@ -3,6 +3,7 @@ import { Alert, Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
 
 import { DayFilter } from '@/components/DayFilter';
+import { DiagnosticsCard } from '@/components/Diagnostics';
 import { DriveConnect } from '@/components/DriveConnect';
 import { DriveMigrationModal } from '@/components/DriveMigrationModal';
 import { Icon, type IconName } from '@/components/Icon';
@@ -93,6 +94,8 @@ export default function Settings() {
       <DriveMigrationModal visible={migrating} onClose={() => setMigrating(false)} />
 
       <DataCard />
+
+      <DiagnosticsCard />
 
       <Card className="mb-8 gap-4">
         <View className="flex-row items-center gap-3">
