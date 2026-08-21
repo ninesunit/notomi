@@ -14,7 +14,7 @@ import { WeekStyleToggle } from '@/components/WeekStyleToggle';
 import { useVisibleDays } from '@/hooks/useVisibleDays';
 import { useWeekStyle } from '@/hooks/useWeekStyle';
 import { defaultScope, filterByTerm } from '@/components/TermFilter';
-import { Badge, Button, Card, Loading, Notice, PageHeader } from '@/components/ui';
+import { Badge, Button, Card, Loading, Notice, PageHeader, Touchable } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useCollection } from '@/hooks/useFirestore';
 import { useIngest } from '@/hooks/useIngest';
@@ -327,20 +327,41 @@ function ThisWeek({
     return week ? weekDays(semester, week) : null;
   }, [semester]);
 
+  /**
+   * What is due, from now to a fortnight out.
+   *
+   * This used to be today and overdue only — three rows that were empty most
+   * of the week, which is the wrong half of the term to be silent in. A
+   * deadline is worth knowing about while there is still time to act on it,
+   * and a fortnight is about as far ahead as a student plans.
+   *
+   * Sorted by date rather than by bucket: the list is the sequence you will
+   * meet them in, which is the only order that needs no explaining.
+   */
   const due = useMemo(() => {
+    const horizon = now.getTime() + 14 * 86_400_000;
     const rows: Entry[] = [];
     for (const todo of todos) {
       const date = toDate(todo.dueDate);
       if (!date) continue;
       const bucket = bucketFor(date, now);
-      if (bucket !== 'today' && bucket !== 'overdue') continue;
+      if (bucket !== 'today' && bucket !== 'overdue' && date.getTime() > horizon) continue;
       rows.push({ todo, overdue: bucket === 'overdue' });
     }
-    // Overdue first: it is the one that changes what you do next.
-    return rows.sort((a, b) => Number(b.overdue) - Number(a.overdue)).slice(0, 3);
+    return rows
+      .sort(
+        (left, right) =>
+          (toDate(left.todo.dueDate)?.getTime() ?? 0) - (toDate(right.todo.dueDate)?.getTime() ?? 0)
+      )
+      .slice(0, 5);
     // `now` is derived from render time; todos is the real input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todos]);
+
+  const laterCount = Math.max(
+    0,
+    todos.filter((todo) => toDate(todo.dueDate) !== null).length - due.length
+  );
 
   return (
     <View className="mb-6 gap-2.5">
@@ -412,11 +433,31 @@ function ThisWeek({
       )}
 
       {due.length > 0 ? (
-        <Card className="gap-0 p-0">
-          {due.map((entry, index) => (
-            <TaskRow key={entry.todo.id} entry={entry} first={index === 0} />
-          ))}
-        </Card>
+        <View className="mt-1 gap-2">
+          <View className="flex-row items-baseline gap-2">
+            <Text className="text-sm font-semibold tracking-tight text-ink">Coming up</Text>
+            <Text className="min-w-0 flex-1 text-xs text-subtle" numberOfLines={1}>
+              next 14 days
+            </Text>
+            <Link href="/tasks" asChild>
+              <Touchable
+                accessibilityRole="link"
+                accessibilityLabel="Open the Task Board"
+                className="flex-row items-center gap-1"
+              >
+                <Text className="text-xs font-semibold text-muted">
+                  {laterCount > 0 ? `+${laterCount} more` : 'All tasks'}
+                </Text>
+                <Icon name="chevron-right" size={13} tone="subtle" />
+              </Touchable>
+            </Link>
+          </View>
+          <Card className="gap-0 p-0">
+            {due.map((entry, index) => (
+              <TaskRow key={entry.todo.id} entry={entry} first={index === 0} />
+            ))}
+          </Card>
+        </View>
       ) : null}
 
       <DashboardClassSheet block={selectedClass} onClose={() => setSelectedClass(null)} />
@@ -537,6 +578,13 @@ function CompactBurnout({ semester, todos }: { semester: Semester | null; todos:
   );
 }
 
+/**
+ * One deadline, one line.
+ *
+ * The date leads rather than trails. Five of these are read as a column of
+ * dates with tasks attached — "Wed, Fri, Fri, Mon" — which is the shape of the
+ * question a student is actually asking when they glance at this.
+ */
 function TaskRow({ entry, first }: { entry: Entry; first: boolean }) {
   const due = toDate(entry.todo.dueDate);
 
@@ -544,42 +592,52 @@ function TaskRow({ entry, first }: { entry: Entry; first: boolean }) {
     <Link href="/tasks" asChild>
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel={`Open ${entry.todo.title}`}
-        className={`flex-row items-center gap-3 px-4 py-3 ${first ? '' : 'border-t border-line'}`}
+        accessibilityLabel={`${entry.todo.title}, ${formatDue(due)}. Open the Task Board.`}
+        className={`flex-row items-center gap-3 px-3 py-2.5 ${first ? '' : 'border-t border-line'}`}
       >
         <View
-          className={`h-8 w-8 items-center justify-center rounded-lg ${
+          className={`w-[62px] shrink-0 items-center rounded-lg py-1 ${
             entry.overdue ? 'bg-rose-soft' : 'bg-sand'
           }`}
         >
-          <Icon
-            name={entry.overdue ? 'alert-circle' : 'check-square'}
-            size={14}
-            tone={entry.overdue ? 'rose' : 'muted'}
-          />
+          <Text
+            className={`text-[11px] font-bold ${entry.overdue ? 'text-rose' : 'text-muted'}`}
+            numberOfLines={1}
+          >
+            {dueChip(due, entry.overdue)}
+          </Text>
         </View>
 
-        <View className="flex-1 gap-0.5">
-          <Text className="text-[14px] font-medium leading-5 text-ink" numberOfLines={2}>
+        <View className="min-w-0 flex-1">
+          <Text className="text-[14px] font-medium leading-5 text-ink" numberOfLines={1}>
             {entry.todo.title}
           </Text>
           {entry.todo.subjectName ? (
-            <Text className="text-xs text-subtle" numberOfLines={1}>
+            <Text className="text-[11px] text-subtle" numberOfLines={1}>
               {entry.todo.subjectName}
             </Text>
           ) : null}
         </View>
 
-        <Text
-          className={`shrink-0 text-[13px] font-semibold ${
-            entry.overdue ? 'text-rose' : 'text-muted'
-          }`}
-        >
-          {formatDue(due)}
-        </Text>
+        <Icon name="chevron-right" size={14} tone="subtle" />
       </Pressable>
     </Link>
   );
+}
+
+/** Six characters at most: this chip is 62 points wide and must not wrap. */
+function dueChip(due: Date | null, overdue: boolean): string {
+  if (!due) return '—';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const day = new Date(due);
+  day.setHours(0, 0, 0, 0);
+  const offset = Math.round((day.getTime() - today.getTime()) / 86_400_000);
+  if (overdue || offset < 0) return offset === -1 ? '1d late' : `${Math.abs(offset)}d late`;
+  if (offset === 0) return 'Today';
+  if (offset === 1) return 'Tmrw';
+  if (offset < 7) return due.toLocaleDateString(undefined, { weekday: 'short' });
+  return due.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 /* ------------------------------------------------------------------ *

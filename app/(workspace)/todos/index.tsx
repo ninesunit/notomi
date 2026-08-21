@@ -12,6 +12,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { FloatingAction } from '@/components/FloatingAction';
+import { ResponsiveTermPicker } from '@/components/ResponsiveTermPicker';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import { TaskComposer, type NewTask } from '@/components/TaskComposer';
@@ -27,6 +28,36 @@ import { getDb } from '@/services/firebase';
 import { paths } from '@/lib/paths';
 import type { SubTask, Subject, Todo } from '@/lib/schema';
 import { sweepOrphanedTodos } from '@/services/ingestion';
+
+/**
+ * The cuts a student actually asks for.
+ *
+ * Deliberately not a query. Firestore would need a composite index per
+ * combination and would still not answer "high priority in the next week", and
+ * a term's task list is small enough that filtering it in memory costs
+ * nothing. The reads are the same reads either way.
+ */
+type Lens = 'all' | 'high' | 'week' | 'syllabus' | 'manual' | 'steps';
+
+const LENSES: { id: Lens; label: string }[] = [
+  { id: 'all', label: 'Everything' },
+  { id: 'high', label: 'High priority' },
+  { id: 'week', label: 'Next 7 days' },
+  { id: 'syllabus', label: 'From a syllabus' },
+  { id: 'manual', label: 'Added by me' },
+  { id: 'steps', label: 'Has steps' },
+];
+
+function matchesLens(todo: Todo, lens: Lens): boolean {
+  if (lens === 'all') return true;
+  if (lens === 'high') return todo.priority === 'high';
+  if (lens === 'syllabus') return todo.source === 'syllabus';
+  if (lens === 'manual') return todo.source !== 'syllabus';
+  if (lens === 'steps') return (todo.subTasks ?? []).length > 0;
+  const due = toDate(todo.dueDate);
+  if (!due) return false;
+  return due.getTime() <= Date.now() + 7 * 86_400_000;
+}
 
 const GROUPS: { key: DueBucket; title: string; hint: string }[] = [
   { key: 'overdue', title: 'Overdue', hint: 'Past due and still open' },
@@ -54,6 +85,8 @@ export default function Todos() {
 
   const [showCompleted, setShowCompleted] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [subjectFilter, setSubjectFilter] = useState('all');
+  const [lens, setLens] = useState<Lens>('all');
 
   /*
    * The composer's submit, lifted into the sheet's header.
@@ -103,8 +136,46 @@ export default function Todos() {
       .catch(() => undefined);
   }, [uid]);
 
-  const open = useMemo(() => todos.data.filter((todo) => !todo.isCompleted), [todos.data]);
-  const completed = useMemo(() => todos.data.filter((todo) => todo.isCompleted), [todos.data]);
+  const everythingOpen = useMemo(
+    () => todos.data.filter((todo) => !todo.isCompleted),
+    [todos.data]
+  );
+
+  const filtering = subjectFilter !== 'all' || lens !== 'all';
+  const keep = useCallback(
+    (todo: Todo) =>
+      (subjectFilter === 'all' ||
+        (subjectFilter === 'none' ? !todo.subjectId : todo.subjectId === subjectFilter)) &&
+      matchesLens(todo, lens),
+    [subjectFilter, lens]
+  );
+
+  const open = useMemo(() => everythingOpen.filter(keep), [everythingOpen, keep]);
+  const completed = useMemo(
+    () => todos.data.filter((todo) => todo.isCompleted && keep(todo)),
+    [todos.data, keep]
+  );
+
+  /** Counts on the picker come from the whole list, not the filtered one. */
+  const subjectOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    let loose = 0;
+    for (const todo of everythingOpen) {
+      if (todo.subjectId) counts.set(todo.subjectId, (counts.get(todo.subjectId) ?? 0) + 1);
+      else loose += 1;
+    }
+    return [
+      { id: 'all', label: 'All subjects', detail: `${everythingOpen.length} open` },
+      ...subjects.data
+        .filter((subject) => counts.has(subject.id))
+        .map((subject) => ({
+          id: subject.id,
+          label: subject.moduleCode || subject.name,
+          detail: `${counts.get(subject.id)} open · ${subject.name}`,
+        })),
+      ...(loose ? [{ id: 'none', label: 'No subject', detail: `${loose} open` }] : []),
+    ];
+  }, [everythingOpen, subjects.data]);
 
   /**
    * Manual tasks and syllabus-extracted deadlines live in the same collection,
@@ -117,8 +188,8 @@ export default function Todos() {
   }, [open]);
 
   const syllabusCount = useMemo(
-    () => open.filter((todo) => todo.source === 'syllabus').length,
-    [open]
+    () => everythingOpen.filter((todo) => todo.source === 'syllabus').length,
+    [everythingOpen]
   );
 
   /**
@@ -128,7 +199,7 @@ export default function Todos() {
   const markers = useMemo(() => {
     const map = new Map<string, { color: string; overdue?: boolean }[]>();
     const now = new Date();
-    for (const todo of open) {
+    for (const todo of everythingOpen) {
       const due = toDate(todo.dueDate);
       if (!due) continue;
       const key = dayKey(due);
@@ -138,7 +209,7 @@ export default function Todos() {
       map.set(key, list);
     }
     return map;
-  }, [open, subjects.data]);
+  }, [everythingOpen, subjects.data]);
 
   /**
    * The write, kept here rather than in the composer.
@@ -249,7 +320,7 @@ export default function Todos() {
         title="Task Board"
         subtitle={
           syllabusCount > 0
-            ? `${open.length} open · ${syllabusCount} pulled from your syllabuses automatically`
+            ? `${everythingOpen.length} open · ${syllabusCount} pulled from your syllabuses automatically`
             : 'Manual tasks and syllabus deadlines, in one list.'
         }
         actions={
@@ -291,6 +362,53 @@ export default function Todos() {
       ) : null}
 
       {/*
+        Two controls, and only once there is enough to be worth narrowing.
+
+        A subject picker and a lens covers what students actually ask for —
+        "just this module", "what is high priority", "what is due this week" —
+        and both are dropdowns rather than pill rows so twelve subjects cost
+        the same vertical space as two.
+      */}
+      {everythingOpen.length > 4 || filtering ? (
+        <View className="mb-6 flex-row flex-wrap items-center gap-2">
+          <View className="min-w-0 flex-1" style={{ minWidth: 150 }}>
+            <ResponsiveTermPicker
+              alwaysDropdown
+              icon="folder"
+              options={subjectOptions}
+              value={subjectFilter}
+              title="Filter by subject"
+              sheetIcon="folder"
+              onChange={setSubjectFilter}
+            />
+          </View>
+          <View className="min-w-0 flex-1" style={{ minWidth: 150 }}>
+            <ResponsiveTermPicker
+              alwaysDropdown
+              icon="filter"
+              options={LENSES}
+              value={lens}
+              title="Filter tasks"
+              sheetIcon="filter"
+              onChange={(next) => setLens(next as Lens)}
+            />
+          </View>
+          {filtering ? (
+            <Button
+              label="Clear"
+              icon="x"
+              variant="ghost"
+              size="sm"
+              onPress={() => {
+                setSubjectFilter('all');
+                setLens('all');
+              }}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
+      {/*
         The form is the whole first screen on a phone.
         
         Header plus form came to roughly six hundred and fifty of an
@@ -308,39 +426,58 @@ export default function Todos() {
       {todos.loading ? (
         <Loading label="Loading your tasks…" />
       ) : open.length === 0 && completed.length === 0 ? (
-        <EmptyState
-          icon="check-circle"
-          title="Nothing on your list"
-          body={
-            phone
-              ? 'Tap the button below, or upload a syllabus — every deadline Notomi finds in it lands here automatically.'
-              : 'Add a task above, or upload a syllabus — every deadline Notomi finds in it lands here automatically.'
-          }
-          // On a phone the form is no longer above to be the obvious next step.
-          action={
-            phone ? (
-              <Button label="New task" icon="plus" onPress={() => setComposerOpen(true)} />
-            ) : undefined
-          }
-        />
+        filtering ? (
+          <EmptyState
+            icon="filter"
+            title="Nothing matches this filter"
+            body="There are tasks on the board — none of them fit what you have narrowed to."
+            action={
+              <Button
+                label="Clear the filter"
+                icon="x"
+                onPress={() => {
+                  setSubjectFilter('all');
+                  setLens('all');
+                }}
+              />
+            }
+          />
+        ) : (
+          <EmptyState
+            icon="check-circle"
+            title="Nothing on your list"
+            body={
+              phone
+                ? 'Tap the button below, or upload a syllabus — every deadline Notomi finds in it lands here automatically.'
+                : 'Add a task above, or upload a syllabus — every deadline Notomi finds in it lands here automatically.'
+            }
+            // On a phone the form is no longer above to be the obvious next step.
+            action={
+              phone ? (
+                <Button label="New task" icon="plus" onPress={() => setComposerOpen(true)} />
+              ) : undefined
+            }
+          />
+        )
       ) : (
-        <View className="gap-8">
+        <View className={phone ? 'gap-5' : 'gap-8'}>
           {GROUPS.map((group) => {
             const items = grouped[group.key];
             if (items.length === 0) return null;
 
             return (
-              <View key={group.key} className="gap-3">
+              <View key={group.key} className={phone ? 'gap-2' : 'gap-3'}>
                 <View className="flex-row items-baseline gap-2">
                   <Text
-                    className={`text-lg font-semibold tracking-tight ${
+                    className={`font-semibold tracking-tight ${phone ? 'text-[15px]' : 'text-lg'} ${
                       group.key === 'overdue' ? 'text-rose' : 'text-ink'
                     }`}
                   >
                     {group.title}
                   </Text>
-                  <Text className="text-xs text-subtle">
-                    {items.length} · {group.hint}
+                  <Text className="min-w-0 flex-1 text-xs text-subtle" numberOfLines={1}>
+                    {items.length}
+                    {phone ? '' : ` · ${group.hint}`}
                   </Text>
                 </View>
 

@@ -219,15 +219,37 @@ export function NotebookShelf() {
         Safety limits: {NOTE_LIMITS.notebooks} notebooks, {NOTE_LIMITS.pagesPerNotebook} pages per notebook and {NOTE_LIMITS.nodesPerPage.toLocaleString()} objects per page. These prevent an individual iPad tab from exhausting memory.
       </Text>
 
+      {/*
+        A name field, a subject list and a colour row — and the name field is
+        focused the moment it opens, so on a phone the keyboard covers roughly
+        the bottom half of it, Create included. Same shape as the subject
+        modal, so it gets the same answer: a full screen sized against the
+        *visible* viewport, with Create in the header where the keys cannot
+        reach it.
+      */}
       <Sheet
         visible={createOpen}
         onClose={() => setCreateOpen(false)}
         title="Create notebook"
         icon="notebook-pen"
+        variant="fullscreen-mobile"
+        dismissOnScrim={false}
+        primaryAction={{
+          label: 'Create',
+          onPress: () => void createNotebook(),
+          disabled: !title.trim(),
+          loading: saving,
+        }}
         footer={
           <View className="w-full flex-row justify-end gap-2">
             <Button label="Cancel" variant="ghost" onPress={() => setCreateOpen(false)} />
-            <Button label="Create" icon="file-plus" loading={saving} onPress={() => void createNotebook()} />
+            <Button
+              label="Create"
+              icon="file-plus"
+              loading={saving}
+              disabled={!title.trim()}
+              onPress={() => void createNotebook()}
+            />
           </View>
         }
       >

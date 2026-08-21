@@ -1,4 +1,5 @@
-import { Image, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Avatar } from '@/components/Avatar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Icon } from '@/components/Icon';
 import { ScreenScroll } from '@/components/ScreenScroll';
@@ -138,25 +139,21 @@ export default function PublicProfilePage() {
   );
 }
 
+/*
+ * The shared renderer, so a student's chosen mark and the contrast-corrected
+ * initial reach the page other people actually look at. This copy drew the
+ * initial in the raw stored colour, which on the dark ground is the one place
+ * an avatar could come out unreadable.
+ */
 function PublicAvatar({ profile, size }: { profile: Profile; size: number }) {
-  if (profile.avatarUrl) {
-    return (
-      <Image
-        source={{ uri: profile.avatarUrl }}
-        style={{ width: size, height: size, borderRadius: size / 2 }}
-      />
-    );
-  }
-  const color = profile.avatarPreset || profile.color || '#B4552D';
   return (
-    <View
-      className="items-center justify-center rounded-full"
-      style={{ width: size, height: size, backgroundColor: subjectTint(color, TINT.fill) }}
-    >
-      <Text className="font-heading text-2xl font-bold" style={{ color }}>
-        {(profile.displayName || 'S').charAt(0).toUpperCase()}
-      </Text>
-    </View>
+    <Avatar
+      name={profile.displayName}
+      color={profile.avatarPreset || profile.color || '#B4552D'}
+      avatarUrl={profile.avatarUrl}
+      icon={profile.avatarIcon}
+      size={size}
+    />
   );
 }
 

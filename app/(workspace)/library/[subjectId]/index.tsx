@@ -427,10 +427,13 @@ export default function SubjectFolder({
 
       <Sheet
         visible={actionsOpen}
-        onClose={() => setActionsOpen(false)}
+        onClose={() => {
+          setActionsOpen(false);
+          setConfirmingDelete(false);
+        }}
         title={phone ? 'Subject actions' : 'Add content'}
         icon="plus"
-        maxHeight={430}
+        maxHeight={560}
       >
         <View className="gap-2">
           {/* On a phone this sheet is also where Quiz and Edit went, so the
@@ -503,6 +506,47 @@ export default function SubjectFolder({
               onPress={() => setActionsOpen(false)}
             />
           </Link>
+
+          {/*
+            Deleting a subject used to live at the very bottom of the Sources
+            tab, under every document in it — findable only by a student who
+            scrolled past the thing they wanted to get rid of. It belongs with
+            the other things you can do to a subject, which is here, at every
+            width. The confirmation is still its own step.
+          */}
+          <View className="my-1 h-px bg-line" />
+          {confirmingDelete ? (
+            <>
+              <Notice
+                tone="rose"
+                title={`Delete “${subject.data.name}” and everything in it?`}
+                body={`This removes ${documents.data.length} source${
+                  documents.data.length === 1 ? '' : 's'
+                }, their uploaded files, every note and saved chat, and any to-dos created from them. It cannot be undone.`}
+              />
+              <Button
+                label={deleting ? 'Deleting…' : 'Yes, delete everything'}
+                variant="danger"
+                icon="trash-2"
+                loading={deleting}
+                disabled={deleting}
+                onPress={() => void removeSubject()}
+              />
+              <Button
+                label="Keep this subject"
+                variant="ghost"
+                disabled={deleting}
+                onPress={() => setConfirmingDelete(false)}
+              />
+            </>
+          ) : (
+            <Button
+              label="Delete subject"
+              icon="trash-2"
+              variant="danger"
+              onPress={() => setConfirmingDelete(true)}
+            />
+          )}
         </View>
       </Sheet>
 
@@ -626,52 +670,6 @@ export default function SubjectFolder({
               ))}
             </View>
           )}
-
-          <View className="mt-10 gap-3 border-t border-line pt-6">
-            {confirmingDelete ? (
-              <>
-                <Notice
-                  tone="rose"
-                  title={`Delete “${subject.data.name}” and everything in it?`}
-                  body={`This removes ${documents.data.length} source${
-                    documents.data.length === 1 ? '' : 's'
-                  }, their uploaded files, every note and saved chat, and any to-dos created from them. It cannot be undone.`}
-                />
-                <View className="flex-row items-center gap-2">
-                  <Button
-                    label={deleting ? 'Deleting…' : 'Yes, delete everything'}
-                    variant="danger"
-                    size="sm"
-                    icon="trash-2"
-                    loading={deleting}
-                    disabled={deleting}
-                    onPress={() => void removeSubject()}
-                  />
-                  <Button
-                    label="Cancel"
-                    variant="ghost"
-                    size="sm"
-                    disabled={deleting}
-                    onPress={() => setConfirmingDelete(false)}
-                  />
-                </View>
-              </>
-            ) : (
-              <View className="items-start">
-                <Button
-                  label="Delete subject"
-                  variant="danger"
-                  size="sm"
-                  icon="trash-2"
-                  onPress={() => setConfirmingDelete(true)}
-                />
-                <Text className="mt-2 text-xs text-subtle">
-                  Removes this folder and everything derived from it — sources, notes, chats and
-                  deadlines.
-                </Text>
-              </View>
-            )}
-          </View>
         </TabPanel>
       ) : tab === 'tasks' ? (
         <TabPanel id="tasks">

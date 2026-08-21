@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { updateProfile as updateAuthProfile } from 'firebase/auth';
 import { limit, query, where } from 'firebase/firestore';
 import { Icon } from '@/components/Icon';
+import { AVATAR_ICONS, Avatar } from '@/components/Avatar';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import { SurfaceBack } from '@/components/SurfaceBack';
-import { Button, Card, Field, Loading, Notice, PageHeader, Touchable } from '@/components/ui';
+import { Button, Card, Field, IconButton, Loading, Notice, PageHeader, Touchable } from '@/components/ui';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useCollection, useDocument } from '@/hooks/useFirestore';
 import { paths } from '@/lib/paths';
@@ -18,6 +19,7 @@ import {
   normaliseProfileStats,
   myProfile,
   profilePath,
+  saveAvatar,
   saveProfile,
   syncPublicAttendanceBadge,
   type Profile,
@@ -31,7 +33,8 @@ import { searchUniversities, universityLabel, type University } from '@/services
 import { TINT, subjectInk, subjectTint } from '@/lib/color';
 import { Link } from 'expo-router';
 
-const AVATAR_PRESETS = ['#B4552D', '#2E6F5E', '#4C5FA8', '#8A4B86', '#2B7A78'];
+const AVATAR_PRESETS = ['#B4552D', '#2E6F5E', '#4C5FA8', '#8A4B86', '#2B7A78', '#B4832A'];
+
 
 export default function ProfilePage() {
   const uid = useUid();
@@ -43,6 +46,7 @@ export default function ProfilePage() {
     [uid, attendanceCutoff]
   );
   const [editing, setEditing] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
 
   useEffect(() => {
     void myProfile(uid).catch((error) =>
@@ -82,21 +86,45 @@ export default function ProfilePage() {
       <PageHeader
         title="Student profile"
         subtitle="Your public identity for search, friends, quiz challenges and project sprints."
-        actions={<Button label="Edit Profile" icon="edit-3" onPress={() => setEditing(true)} />}
       />
 
       {profile.error ? <Notice title="Could not load your profile" body={profile.error.message} /> : null}
 
       <Card className="gap-6 p-6">
         <View className="flex-row flex-wrap items-center gap-5">
-          <ProfileAvatar
-            name={displayName}
-            color={color}
-            avatarUrl={current?.avatarUrl ?? null}
-            size={84}
-          />
+          {/*
+            The picture is the button.
+
+            Changing it used to mean opening a form about your name and your
+            bio and scrolling to a file picker inside it. Tapping the thing you
+            want to change is how this works everywhere else on a phone.
+          */}
+          <Touchable
+            accessibilityRole="button"
+            accessibilityLabel="Change your profile picture"
+            onPress={() => setAvatarOpen(true)}
+            className="rounded-full"
+          >
+            <View>
+              <Avatar
+                name={displayName}
+                color={color}
+                avatarUrl={current?.avatarUrl ?? null}
+                icon={current?.avatarIcon ?? null}
+                size={84}
+              />
+              <View className="absolute -bottom-0.5 -right-0.5 h-7 w-7 items-center justify-center rounded-full border-2 border-surface bg-ink">
+                <Icon name="camera" size={13} tone="inverse" />
+              </View>
+            </View>
+          </Touchable>
           <View className="min-w-[220px] flex-1 gap-1">
-            <Text className="text-2xl font-bold tracking-tight text-ink">{displayName}</Text>
+            <View className="flex-row items-center gap-2">
+              <Text className="min-w-0 flex-1 text-2xl font-bold tracking-tight text-ink" numberOfLines={1}>
+                {displayName}
+              </Text>
+              <IconButton icon="edit-3" label="Edit your profile" onPress={() => setEditing(true)} />
+            </View>
             <Text className="text-sm font-semibold text-accent">
               {current?.username ? `@${current.username}` : 'Choose a username'}
             </Text>
@@ -155,6 +183,13 @@ export default function ProfilePage() {
         </View>
       </Card>
 
+      <AvatarSheet
+        visible={avatarOpen}
+        profile={current}
+        fallbackName={displayName}
+        onClose={() => setAvatarOpen(false)}
+      />
+
       <EditProfileModal
         visible={editing}
         profile={current}
@@ -169,29 +204,229 @@ export default function ProfilePage() {
   );
 }
 
-function ProfileAvatar({
-  name,
-  color,
-  avatarUrl,
-  size,
+function AvatarSheet({
+  visible,
+  profile,
+  fallbackName,
+  onClose,
 }: {
-  name: string;
-  color: string;
-  avatarUrl: string | null;
-  size: number;
+  visible: boolean;
+  profile: Profile | null;
+  fallbackName: string;
+  onClose: () => void;
 }) {
-  if (avatarUrl) {
-    return <Image source={{ uri: avatarUrl }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
+  const uid = useUid();
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarKey, setAvatarKey] = useState('');
+  const [preset, setPreset] = useState(AVATAR_PRESETS[0]);
+  const [icon, setIcon] = useState<string | null>(null);
+  const [pending, setPending] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+    setAvatarUrl(profile?.avatarUrl ?? '');
+    setAvatarKey(profile?.avatarKey ?? '');
+    setPreset(profile?.avatarPreset || profile?.color || AVATAR_PRESETS[0]);
+    setIcon(profile?.avatarIcon ?? null);
+    setPending(null);
+    setError(null);
+  }, [visible, profile]);
+
+  async function choosePhoto() {
+    setError(null);
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['image/jpeg', 'image/png', 'image/webp'],
+      multiple: false,
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if ((asset.size ?? 0) > PROFILE_IMAGE_MAX_BYTES) {
+      setError('Profile images must be 2 MB or smaller.');
+      return;
+    }
+    setPending(asset);
+    setAvatarUrl(asset.uri);
   }
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    let uploadedKey = '';
+    try {
+      let nextUrl = avatarUrl;
+      let nextKey = avatarKey;
+      if (pending) {
+        const bytes = pending.file
+          ? await pending.file.arrayBuffer()
+          : await (await fetch(pending.uri)).arrayBuffer();
+        if (bytes.byteLength > PROFILE_IMAGE_MAX_BYTES) {
+          throw new Error('Profile images must be 2 MB or smaller.');
+        }
+        const uploaded = await uploadProfileImage(
+          pending.uri,
+          pending.name || 'profile.jpg',
+          uid,
+          profileImageMimeType(pending),
+          bytes
+        );
+        uploadedKey = uploaded.fileKey;
+        nextKey = uploaded.fileKey;
+        nextUrl = uploaded.fileUrl;
+      }
+
+      await saveAvatar(uid, {
+        avatarUrl: nextUrl || null,
+        avatarKey: nextKey,
+        avatarPreset: preset,
+        avatarIcon: icon,
+      });
+      // The replaced file goes only once the new one is safely recorded.
+      if (profile?.avatarKey && profile.avatarKey !== nextKey) {
+        await deleteR2File(profile.avatarKey).catch(() => undefined);
+      }
+      onClose();
+    } catch (caught) {
+      if (uploadedKey) await deleteR2File(uploadedKey).catch(() => undefined);
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <View
-      className="items-center justify-center rounded-full"
-      style={{ width: size, height: size, backgroundColor: subjectTint(color, TINT.fill) }}
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title="Your picture"
+      icon="camera"
+      variant="fullscreen-mobile"
+      maxHeight={640}
+      primaryAction={{ label: 'Save', onPress: () => void save(), loading: busy }}
+      footer={
+        <>
+          <Button label="Cancel" variant="ghost" disabled={busy} onPress={onClose} />
+          <View className="flex-1" />
+          <Button label="Save" icon="check" loading={busy} onPress={() => void save()} />
+        </>
+      }
     >
-      <Text className="text-2xl font-bold" style={{ color: subjectInk(color) }}>
-        {name.charAt(0).toUpperCase()}
-      </Text>
-    </View>
+      {error ? <Notice title="That did not work" body={error} /> : null}
+
+      <View className="items-center gap-3 py-2">
+        <Avatar
+          name={fallbackName}
+          color={preset}
+          avatarUrl={avatarUrl || null}
+          icon={icon}
+          size={96}
+        />
+        <View className="flex-row flex-wrap justify-center gap-2">
+          <Button
+            label={avatarUrl ? 'Change photo' : 'Upload a photo'}
+            icon="camera"
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            onPress={() => void choosePhoto()}
+          />
+          {avatarUrl ? (
+            <Button
+              label="Remove photo"
+              icon="trash-2"
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onPress={() => {
+                setPending(null);
+                setAvatarUrl('');
+                setAvatarKey('');
+              }}
+            />
+          ) : null}
+        </View>
+        <Text className="text-[11px] text-subtle">JPEG, PNG or WebP. Maximum 2 MB.</Text>
+      </View>
+
+      <View className="gap-2">
+        <Text className="text-sm font-medium text-muted">
+          {avatarUrl ? 'Used when your photo cannot load' : 'Or pick a mark'}
+        </Text>
+        <View className="flex-row flex-wrap gap-2">
+          <Pressable
+            accessibilityRole="radio"
+            accessibilityState={{ selected: icon === null }}
+            accessibilityLabel="Use your initial"
+            onPress={() => setIcon(null)}
+            className="h-12 w-12 items-center justify-center rounded-full"
+            style={{
+              backgroundColor: subjectTint(preset, TINT.fill),
+              borderWidth: icon === null ? 2 : 0,
+              borderColor: subjectInk(preset),
+            }}
+          >
+            <Text className="text-base font-bold" style={{ color: subjectInk(preset) }}>
+              {fallbackName.charAt(0).toUpperCase()}
+            </Text>
+          </Pressable>
+          {AVATAR_ICONS.map((entry) => (
+            <Pressable
+              key={entry}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: icon === entry }}
+              accessibilityLabel={`Use the ${entry.replace(/-/g, ' ')} mark`}
+              onPress={() => setIcon(entry)}
+              className="h-12 w-12 items-center justify-center rounded-full"
+              style={{
+                backgroundColor: subjectTint(preset, TINT.fill),
+                borderWidth: icon === entry ? 2 : 0,
+                borderColor: subjectInk(preset),
+              }}
+            >
+              <Icon name={entry} size={20} color={subjectInk(preset)} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View className="gap-2">
+        <Text className="text-sm font-medium text-muted">Colour</Text>
+        <View className="flex-row flex-wrap gap-2">
+          {AVATAR_PRESETS.map((entry) => (
+            <Pressable
+              key={entry}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: preset === entry }}
+              accessibilityLabel={`Use avatar colour ${entry}`}
+              onPress={() => setPreset(entry)}
+              className="h-10 w-10 items-center justify-center rounded-full"
+              style={{
+                backgroundColor: subjectTint(entry, TINT.fill),
+                borderWidth: preset === entry ? 2 : 0,
+                borderColor: subjectInk(entry),
+              }}
+            >
+              {/*
+                A solid core inside the tint. Six discs at six percent alpha
+                are six shades of nearly-white — you cannot pick a colour you
+                cannot tell apart, and the tint alone is what the avatar shows
+                behind a mark, not what the mark is drawn in.
+              */}
+              {preset === entry ? (
+                <Icon name="check" size={15} color={subjectInk(entry)} />
+              ) : (
+                <View
+                  className="h-4 w-4 rounded-full"
+                  style={{ backgroundColor: subjectInk(entry) }}
+                />
+              )}
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    </Sheet>
   );
 }
 
@@ -213,8 +448,6 @@ function EditProfileModal({
   const [displayName, setDisplayName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [avatarKey, setAvatarKey] = useState('');
-  const [pendingAvatar, setPendingAvatar] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
-  const [avatarPreset, setAvatarPreset] = useState(AVATAR_PRESETS[0]);
   const [university, setUniversity] = useState('');
   const [universityId, setUniversityId] = useState('');
   const [universityAbbreviation, setUniversityAbbreviation] = useState('');
@@ -231,8 +464,6 @@ function EditProfileModal({
     setDisplayName(profile?.displayName ?? fallbackName);
     setAvatarUrl(profile?.avatarUrl ?? '');
     setAvatarKey(profile?.avatarKey ?? '');
-    setPendingAvatar(null);
-    setAvatarPreset(profile?.avatarPreset || profile?.color || AVATAR_PRESETS[0]);
     setUniversity(profile?.university ?? '');
     setUniversityId(profile?.universityId ?? '');
     setUniversityAbbreviation(profile?.universityAbbreviation ?? '');
@@ -241,29 +472,6 @@ function EditProfileModal({
     setBio(profile?.bio ?? '');
     setError(null);
   }, [visible, profile, fallbackName]);
-
-  async function chooseAvatar() {
-    setError(null);
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['image/jpeg', 'image/png', 'image/webp'],
-      multiple: false,
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    if ((asset.size ?? 0) > PROFILE_IMAGE_MAX_BYTES) {
-      setError('Profile images must be 2 MB or smaller.');
-      return;
-    }
-    setPendingAvatar(asset);
-    setAvatarUrl(asset.uri);
-  }
-
-  function removeAvatar() {
-    setPendingAvatar(null);
-    setAvatarUrl('');
-    setAvatarKey('');
-  }
 
   useEffect(() => {
     if (!visible || university.trim().length < 2 || universityId) {
@@ -288,44 +496,32 @@ function EditProfileModal({
   async function submit() {
     setBusy(true);
     setError(null);
-    let uploadedKey = '';
     try {
       if (university.trim() && !universityId) {
         throw new Error('Select your university from the verified directory.');
-      }
-      let nextAvatarUrl = avatarUrl;
-      let nextAvatarKey = avatarKey;
-      if (pendingAvatar) {
-        const bytes = pendingAvatar.file
-          ? await pendingAvatar.file.arrayBuffer()
-          : await (await fetch(pendingAvatar.uri)).arrayBuffer();
-        if (bytes.byteLength > PROFILE_IMAGE_MAX_BYTES) {
-          throw new Error('Profile images must be 2 MB or smaller.');
-        }
-        const uploaded = await uploadProfileImage(
-          pendingAvatar.uri,
-          pendingAvatar.name || 'profile.jpg',
-          uid,
-          profileImageMimeType(pendingAvatar),
-          bytes
-        );
-        uploadedKey = uploaded.fileKey;
-        nextAvatarKey = uploaded.fileKey;
-        nextAvatarUrl = uploaded.fileUrl;
       }
 
       await saveProfile(uid, {
         username,
         displayName,
-        avatarUrl: nextAvatarUrl || null,
-        avatarKey: nextAvatarKey,
-        avatarPreset,
+        /*
+         * Carried through untouched, like the privacy flags below.
+         *
+         * The picture is owned by its own sheet and its own write now, so
+         * this form must pass back exactly what it read. Sending `null` for
+         * the icon — which is what omitting it does — would quietly reset an
+         * avatar somebody chose, from a form about their name.
+         */
+        avatarUrl: avatarUrl || null,
+        avatarKey,
+        avatarPreset: profile?.avatarPreset || profile?.color || AVATAR_PRESETS[0],
+        avatarIcon: profile?.avatarIcon ?? null,
         university,
         universityId,
         universityAbbreviation,
         major,
         bio,
-        color: avatarPreset,
+        color: profile?.avatarPreset || profile?.color || AVATAR_PRESETS[0],
         courseCodes: profile?.courseCodes ?? [],
         // Carried through untouched: this form no longer owns them, and
         // writing a stale local copy would silently undo a change made in
@@ -335,12 +531,8 @@ function EditProfileModal({
         shareSchedule: profile?.shareSchedule === true,
         stats: profile?.stats,
       });
-      if (profile?.avatarKey && profile.avatarKey !== nextAvatarKey) {
-        await deleteR2File(profile.avatarKey).catch(() => undefined);
-      }
       await onSaved(displayName.trim());
     } catch (caught) {
-      if (uploadedKey) await deleteR2File(uploadedKey).catch(() => undefined);
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setBusy(false);
@@ -353,7 +545,14 @@ function EditProfileModal({
       onClose={onClose}
       title="Edit Profile"
       icon="edit-3"
+      variant="fullscreen-mobile"
       maxHeight={720}
+      primaryAction={{
+        label: 'Save',
+        onPress: () => void submit(),
+        disabled: username.length < 3 || !displayName.trim(),
+        loading: busy,
+      }}
       footer={
         <>
           <Button label="Cancel" variant="ghost" disabled={busy} onPress={onClose} />
@@ -378,65 +577,6 @@ function EditProfileModal({
         autoCorrect={false}
       />
       <Field label="Display name" value={displayName} onChangeText={setDisplayName} placeholder="Your name" />
-      <View className="gap-3">
-        <Text className="text-sm font-medium text-muted">Profile picture</Text>
-        <View className="flex-row flex-wrap items-center gap-3 rounded-xl border border-line bg-paper p-3">
-          <ProfileAvatar
-            name={displayName || 'Student'}
-            color={avatarPreset}
-            avatarUrl={avatarUrl || null}
-            size={64}
-          />
-          <View className="min-w-[180px] flex-1 gap-1">
-            <Text className="text-sm font-semibold text-ink">
-              {pendingAvatar ? pendingAvatar.name : avatarUrl ? 'Current profile picture' : 'No picture selected'}
-            </Text>
-            <Text className="text-xs leading-4 text-muted">JPEG, PNG or WebP. Maximum 2 MB.</Text>
-            <View className="mt-1 flex-row flex-wrap gap-2">
-              <Button
-                label={avatarUrl ? 'Change photo' : 'Upload photo'}
-                icon="camera"
-                variant="secondary"
-                size="sm"
-                disabled={busy}
-                onPress={() => void chooseAvatar()}
-              />
-              {avatarUrl ? (
-                <Button
-                  label="Remove"
-                  icon="trash-2"
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy}
-                  onPress={removeAvatar}
-                />
-              ) : null}
-            </View>
-          </View>
-        </View>
-      </View>
-      <View className="gap-2">
-        <Text className="text-sm font-medium text-muted">Avatar preset</Text>
-        <View className="flex-row gap-2">
-          {AVATAR_PRESETS.map((preset) => (
-            <Pressable
-              key={preset}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: avatarPreset === preset }}
-              accessibilityLabel={`Use avatar colour ${preset}`}
-              onPress={() => setAvatarPreset(preset)}
-              className="h-10 w-10 items-center justify-center rounded-full"
-              style={{
-                backgroundColor: subjectTint(preset, TINT.fill),
-                borderWidth: avatarPreset === preset ? 2 : 0,
-                borderColor: subjectInk(preset),
-              }}
-            >
-              {avatarPreset === preset ? <Icon name="check" size={15} color={subjectInk(preset)} /> : null}
-            </Pressable>
-          ))}
-        </View>
-      </View>
       <View className="gap-2">
         <Field
           label="University"
@@ -480,8 +620,17 @@ function EditProfileModal({
           </View>
         ) : null}
       </View>
+
       <Field label="Major" value={major} onChangeText={setMajor} placeholder="Degree or field of study" />
       <Field label="Bio" value={bio} onChangeText={setBio} placeholder="What are you studying or working toward?" multiline />
+      {/*
+        The picture moved out of this form and onto the picture. It was five
+        controls — upload, remove, and a row of colours — inside a form about
+        your name, and none of them belonged to the same decision.
+      */}
+      <Text className="text-xs leading-5 text-subtle">
+        To change your picture, close this and tap your avatar.
+      </Text>
       {/*
         The privacy switches moved to Settings.
         

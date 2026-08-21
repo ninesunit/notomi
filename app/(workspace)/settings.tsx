@@ -7,7 +7,7 @@ import { lazyScreen } from '@/components/lazyScreen';
 import { Icon, type IconName } from '@/components/Icon';
 import { RemindersCard } from '@/components/Reminders';
 import { ScreenScroll } from '@/components/ScreenScroll';
-import { Button, Card, PageHeader } from '@/components/ui';
+import { Button, Card, Field, PageHeader, Touchable } from '@/components/ui';
 import { WeekStyleToggle } from '@/components/WeekStyleToggle';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useQueryOnce } from '@/hooks/useFirestore';
@@ -53,120 +53,297 @@ const DriveMigrationModal = lazyScreen<{ visible: boolean; onClose: () => void }
  * of the app and the shape of the week change often; a grading scale is set
  * once a degree.
  */
+type GroupId = 'look' | 'week' | 'study' | 'privacy' | 'storage' | 'account';
+
+/**
+ * Six groups, and a search box over all of them.
+ *
+ * Settings had become one column eleven cards long. Everything in it was in
+ * the right *app*, and nothing in it was findable: a student who wanted to
+ * change their attendance rule had to scroll past reminders, sound and their
+ * AI allowance to find out whether it was even there.
+ *
+ * Grouping alone would not have fixed that, because the hard case is not
+ * "where is the sound setting" — it is "can I even change this". So the
+ * keywords are the real feature: typing "dark", "75", "gpa", "delete" or
+ * "blocked" finds the setting without knowing which drawer it lives in.
+ */
+const GROUPS: {
+  id: GroupId;
+  title: string;
+  subtitle: string;
+  icon: IconName;
+  keywords: string;
+}[] = [
+  {
+    id: 'look',
+    title: 'Look and feel',
+    subtitle: 'Theme and sound',
+    icon: 'sun',
+    keywords: 'appearance theme dark light mode colour color sound audio mute volume taps clicks',
+  },
+  {
+    id: 'week',
+    title: 'Your week',
+    subtitle: 'Timetable style, visible days, class reminders',
+    icon: 'calendar',
+    keywords: 'week timetable grid list agenda days weekend hide reminders notifications alerts class',
+  },
+  {
+    id: 'study',
+    title: 'Study rules',
+    subtitle: 'Attendance threshold, grading scale, AI allowance',
+    icon: 'graduation-cap',
+    keywords: 'attendance threshold percent 75 80 85 grade grading scale gpa points university rules ai allowance limit quota',
+  },
+  {
+    id: 'privacy',
+    title: 'Privacy and people',
+    subtitle: 'Who can find you, blocked people, shared material',
+    icon: 'eye',
+    keywords: 'privacy public profile classmates discovery presence status schedule blocked block report shared material revoke friends preview',
+  },
+  {
+    id: 'storage',
+    title: 'Files and data',
+    subtitle: 'Where originals live, and taking a copy',
+    icon: 'shield',
+    keywords: 'drive storage files originals upload migrate export json backup copy calendar ics download data',
+  },
+  {
+    id: 'account',
+    title: 'Account',
+    subtitle: 'Sign out, and about Notomi',
+    icon: 'user',
+    keywords: 'account sign out log out email guest version about update',
+  },
+];
+
 export default function Settings() {
   const { user, logOut } = useAuth();
   const [sound, setSound] = soundPreference.use();
   const [theme, setTheme] = useThemeChoice();
   const [migrating, setMigrating] = useState(false);
+  const [open, setOpen] = useState<GroupId | null>(null);
+  const [search, setSearch] = useState('');
 
   const displayName = user?.displayName || (user?.isAnonymous ? 'Guest' : user?.email) || 'You';
 
+  const query = search.trim().toLowerCase();
+  const matches = query.length >= 2
+    ? GROUPS.filter(
+        (group) =>
+          group.title.toLowerCase().includes(query) ||
+          group.subtitle.toLowerCase().includes(query) ||
+          group.keywords.includes(query)
+      )
+    : [];
+
+  const section = (id: GroupId) => {
+    switch (id) {
+      case 'look':
+        return (
+          <>
+            <SettingCard icon="sun" title="Appearance" subtitle="How Notomi looks on this device.">
+              <Segment
+                options={[
+                  { id: 'light', label: 'Light', icon: 'sun' },
+                  { id: 'dark', label: 'Dark', icon: 'moon' },
+                  { id: 'system', label: 'Match device', icon: 'monitor' },
+                ]}
+                value={theme}
+                onChange={(next: ThemeChoice) => setTheme(next)}
+              />
+            </SettingCard>
+            <SoundCard
+              sound={sound}
+              onChange={(next) => {
+                setSound(next);
+                // Played after enabling so the switch confirms itself audibly.
+                if (next) play('toggle');
+              }}
+            />
+          </>
+        );
+      case 'week':
+        return (
+          <>
+            <WeekCard />
+            <RemindersCard settingsOpen />
+          </>
+        );
+      case 'study':
+        return (
+          <>
+            <RulesCard />
+            <AllowanceCard />
+          </>
+        );
+      case 'privacy':
+        return <PrivacyCard />;
+      case 'storage':
+        return (
+          <>
+            <View className="mb-8 gap-2">
+              <DriveConnect />
+              {isDriveConfigured() ? (
+                <Button
+                  label="Move existing files to my Drive"
+                  icon="upload-cloud"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => setMigrating(true)}
+                />
+              ) : null}
+            </View>
+            <DataCard />
+          </>
+        );
+      case 'account':
+        return (
+          <>
+            <Card className="mb-8 gap-4">
+              <View className="flex-row items-center gap-3">
+                <View className="h-11 w-11 items-center justify-center rounded-full bg-accent-soft">
+                  <Text className="text-base font-bold text-accent">
+                    {displayName.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[15px] font-semibold text-ink" numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                  <Text className="text-xs text-muted" numberOfLines={1}>
+                    {user?.isAnonymous ? 'Temporary guest account' : (user?.email ?? '')}
+                  </Text>
+                </View>
+              </View>
+
+              {user?.isAnonymous ? (
+                <Text className="text-xs leading-5 text-subtle">
+                  Signing out permanently deletes this guest account and everything stored in it.
+                  Create a regular account before adding work you need to keep.
+                </Text>
+              ) : null}
+
+              <View className="flex-row">
+                <Button
+                  label="Sign out"
+                  icon="log-out"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    void logOut().catch((error) =>
+                      Alert.alert(
+                        'Could not sign out',
+                        error instanceof Error ? error.message : 'Try again.'
+                      )
+                    );
+                  }}
+                />
+              </View>
+            </Card>
+
+            <Card className="gap-2">
+              <Text className="text-[15px] font-semibold text-ink">About Notomi</Text>
+              <Text className="text-sm leading-6 text-muted">
+                Your whole semester in one place. Scan your timetable once and Notomi builds your
+                subjects, your week and your deadlines, then helps you study from your own material
+                — notes, flashcards, a tutor that only knows what you uploaded.
+              </Text>
+              <Row label="Version" value="1.0.0" />
+              <Text className="mt-2 text-xs leading-5 text-subtle">
+                Notomi updates itself: a new version is fetched in the background and applied the
+                next time you open it.
+              </Text>
+            </Card>
+          </>
+        );
+    }
+  };
+
+  const current = open ? GROUPS.find((group) => group.id === open) : null;
+
   return (
-    <ScreenScroll>
-      <PageHeader title="Settings" subtitle="How Notomi looks, works and remembers." />
+    <ScreenScroll maxWidth={760}>
+      {current ? (
+        <>
+          <Touchable
+            accessibilityRole="button"
+            accessibilityLabel="Back to all settings"
+            onPress={() => setOpen(null)}
+            className="mb-3 flex-row items-center gap-1.5 self-start py-1"
+          >
+            <Icon name="arrow-left" size={16} tone="muted" />
+            <Text className="text-sm font-medium text-muted">All settings</Text>
+          </Touchable>
+          <PageHeader title={current.title} subtitle={current.subtitle} />
+          {section(current.id)}
+        </>
+      ) : (
+        <>
+          <PageHeader title="Settings" subtitle="How Notomi looks, works and remembers." />
 
-      <SettingCard icon="sun" title="Appearance" subtitle="How Notomi looks on this device.">
-        <Segment
-          options={[
-            { id: 'light', label: 'Light', icon: 'sun' },
-            { id: 'dark', label: 'Dark', icon: 'moon' },
-            { id: 'system', label: 'Match device', icon: 'monitor' },
-          ]}
-          value={theme}
-          onChange={(next: ThemeChoice) => setTheme(next)}
-        />
-      </SettingCard>
+          <View className="mb-6">
+            <Field
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search settings…"
+              autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel="Search settings"
+            />
+          </View>
 
-      <WeekCard />
+          {query.length >= 2 ? (
+            matches.length === 0 ? (
+              <Card>
+                <Text className="text-sm text-muted">
+                  Nothing here matches “{search.trim()}”. Notomi keeps very little configuration on
+                  purpose — if you expected a setting and it is not here, it probably does not exist
+                  yet.
+                </Text>
+              </Card>
+            ) : (
+              <View className="gap-6">
+                {matches.map((group) => (
+                  <View key={group.id}>
+                    <Text className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">
+                      {group.title}
+                    </Text>
+                    {section(group.id)}
+                  </View>
+                ))}
+              </View>
+            )
+          ) : (
+            <View className="gap-2">
+              {GROUPS.map((group) => (
+                <Touchable
+                  key={group.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${group.title}. ${group.subtitle}.`}
+                  onPress={() => setOpen(group.id)}
+                  className="flex-row items-center gap-3 rounded-2xl border border-line bg-surface p-3.5"
+                >
+                  <View className="h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sand">
+                    <Icon name={group.icon} size={17} tone="muted" />
+                  </View>
+                  <View className="min-w-0 flex-1">
+                    <Text className="text-[15px] font-semibold text-ink">{group.title}</Text>
+                    <Text className="text-xs text-muted" numberOfLines={2}>
+                      {group.subtitle}
+                    </Text>
+                  </View>
+                  <Icon name="chevron-right" size={16} tone="subtle" />
+                </Touchable>
+              ))}
+            </View>
+          )}
+        </>
+      )}
 
-      <RemindersCard settingsOpen />
-
-      <SoundCard
-        sound={sound}
-        onChange={(next) => {
-          setSound(next);
-          // Played after enabling so the switch confirms itself audibly.
-          if (next) play('toggle');
-        }}
-      />
-
-      <RulesCard />
-
-      <AllowanceCard />
-
-      <View className="mb-8 gap-2">
-        <DriveConnect />
-        {isDriveConfigured() ? (
-          <Button
-            label="Move existing files to my Drive"
-            icon="upload-cloud"
-            variant="secondary"
-            size="sm"
-            onPress={() => setMigrating(true)}
-          />
-        ) : null}
-      </View>
       {migrating ? <DriveMigrationModal visible onClose={() => setMigrating(false)} /> : null}
-
-      <PrivacyCard />
-
-      <DataCard />
-
-      <Card className="mb-8 gap-4">
-        <View className="flex-row items-center gap-3">
-          <View className="h-11 w-11 items-center justify-center rounded-full bg-accent-soft">
-            <Text className="text-base font-bold text-accent">
-              {displayName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-          <View className="flex-1">
-            <Text className="text-[15px] font-semibold text-ink" numberOfLines={1}>
-              {displayName}
-            </Text>
-            <Text className="text-xs text-muted" numberOfLines={1}>
-              {user?.isAnonymous ? 'Temporary guest account' : (user?.email ?? '')}
-            </Text>
-          </View>
-        </View>
-
-        {user?.isAnonymous ? (
-          <Text className="text-xs leading-5 text-subtle">
-            Signing out permanently deletes this guest account and everything stored in it. Create
-            a regular account before adding work you need to keep.
-          </Text>
-        ) : null}
-
-        <View className="flex-row">
-          <Button
-            label="Sign out"
-            icon="log-out"
-            variant="secondary"
-            size="sm"
-            onPress={() => {
-              void logOut().catch((error) =>
-                Alert.alert(
-                  'Could not sign out',
-                  error instanceof Error ? error.message : 'Try again.'
-                )
-              );
-            }}
-          />
-        </View>
-      </Card>
-
-      <Card className="gap-2">
-        <Text className="text-[15px] font-semibold text-ink">About Notomi</Text>
-        <Text className="text-sm leading-6 text-muted">
-          Your whole semester in one place. Scan your timetable once and Notomi builds your
-          subjects, your week and your deadlines, then helps you study from your own material —
-          notes, flashcards, a tutor that only knows what you uploaded.
-        </Text>
-        <Row label="Version" value="1.0.0" />
-        <Text className="mt-2 text-xs leading-5 text-subtle">
-          Notomi updates itself: a new version is fetched in the background and applied the next
-          time you open it.
-        </Text>
-      </Card>
     </ScreenScroll>
   );
 }

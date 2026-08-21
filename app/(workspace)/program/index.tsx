@@ -47,6 +47,7 @@ import {
   type SemesterInput,
 } from '@/services/program';
 import { subjectInk, subjectTint } from '@/lib/color';
+import { PHONE } from '@/lib/breakpoints';
 import { GRADE_SCALES, useGradeScale } from '@/lib/academicRules';
 
 /**
@@ -62,6 +63,9 @@ export default function Program() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Semester | 'new' | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const { width } = useWindowDimensions();
+  const phone = width < PHONE;
   const [calendarMessage, setCalendarMessage] = useState<string | null>(null);
   /** The map is the default: structure first, editing second. */
   const [view, setView] = useState<'map' | 'planner'>('map');
@@ -129,21 +133,69 @@ export default function Program() {
             : 'Create term boundaries, set dates and assign each subject to its active teaching period.'
         }
         actions={
-          <>
-            <Link href="/program/gpa" asChild>
-              <Button label="GPA calculator" icon="trending-up" variant="secondary" size="sm" />
-            </Link>
-            <Button
-              label="Import academic calendar"
-              icon="calendar"
-              variant="secondary"
-              size="sm"
-              onPress={() => setCalendarOpen(true)}
-            />
-            <Button label="New term" icon="plus" size="sm" onPress={() => setEditing('new')} />
-          </>
+          /*
+            One action on a phone, three on a desktop.
+
+            "Import academic calendar" is twenty-six characters of button, and
+            beside two others it came to seven hundred points on a three
+            hundred and ninety point screen — "New term" ended up off the edge
+            entirely. Both of the others are things a student does once a term;
+            New term is the one they came here for.
+          */
+          phone ? (
+            <>
+              <Button label="New term" icon="plus" size="sm" onPress={() => setEditing('new')} />
+              <IconButton
+                icon="more-horizontal"
+                label="More term actions"
+                onPress={() => setMoreOpen(true)}
+              />
+            </>
+          ) : (
+            <>
+              <Link href="/program/gpa" asChild>
+                <Button label="GPA calculator" icon="trending-up" variant="secondary" size="sm" />
+              </Link>
+              <Button
+                label="Import academic calendar"
+                icon="calendar"
+                variant="secondary"
+                size="sm"
+                onPress={() => setCalendarOpen(true)}
+              />
+              <Button label="New term" icon="plus" size="sm" onPress={() => setEditing('new')} />
+            </>
+          )
         }
       />
+
+      <Sheet
+        visible={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        title="Term actions"
+        icon="layers"
+        variant="compact"
+      >
+        <View className="gap-2">
+          <Link href="/program/gpa" asChild>
+            <Button
+              label="GPA calculator"
+              icon="trending-up"
+              variant="secondary"
+              onPress={() => setMoreOpen(false)}
+            />
+          </Link>
+          <Button
+            label="Import academic calendar"
+            icon="calendar"
+            variant="secondary"
+            onPress={() => {
+              setMoreOpen(false);
+              setCalendarOpen(true);
+            }}
+          />
+        </View>
+      </Sheet>
 
       {error ? (
         <View className="mb-6">
@@ -273,10 +325,18 @@ function OverviewBar({ subjects, semesters }: { subjects: Subject[]; semesters: 
       {/*
         Three stats at 140 points wide with 28-point numbers wrap to three rows
         on a phone — roughly a quarter of the screen spent on numbers a student
-        glances at. Side by side they cost one row, and nothing is dropped
-        except the whitespace.
+        glances at. Side by side they cost one row.
+
+        But three across 390 points is 130 each, and the third one carries a
+        term name: "Year 2 · Trime…", "6 subjects · 24 cr…". Two on the first
+        line and the term on its own, full width, is the same one-glance row
+        without the ellipses.
       */}
-      <View className={tight ? 'flex-row items-stretch' : 'flex-row flex-wrap gap-x-10 gap-y-5'}>
+      <View
+        className={
+          tight ? 'flex-row flex-wrap items-stretch gap-y-3' : 'flex-row flex-wrap gap-x-10 gap-y-5'
+        }
+      >
         <Stat
           tight={tight}
           label="Cumulative GPA"
@@ -291,6 +351,7 @@ function OverviewBar({ subjects, semesters }: { subjects: Subject[]; semesters: 
         />
         <Stat
           tight={tight}
+          wide={tight}
           label={current ? current.name : 'Current semester'}
           value={currentGpa.gpa === null ? '—' : currentGpa.gpa.toFixed(2)}
           hint={
@@ -311,28 +372,45 @@ function Stat({
   value,
   hint,
   tight = false,
+  wide = false,
 }: {
   label: string;
+  wide?: boolean;
   value: string;
   hint: string;
   /** Side by side in one row, for a phone. */
   tight?: boolean;
 }) {
   if (tight) {
+    /*
+     * `wide` takes the whole line rather than a third of it. A term is named,
+     * not measured, and a name does not survive a 130-point column.
+     */
     return (
-      <View className="min-w-0 flex-1 gap-0.5 border-l border-line px-2 first:border-l-0 first:pl-0">
+      <View
+        className={
+          wide
+            ? 'w-full min-w-0 gap-0.5 border-t border-line pt-2.5'
+            : 'min-w-0 flex-1 gap-0.5 border-l border-line px-2 first:border-l-0 first:pl-0'
+        }
+      >
         <Text
           className="text-[9px] font-semibold uppercase tracking-wider text-muted"
           numberOfLines={1}
         >
           {label}
         </Text>
-        <Text className="text-[20px] font-bold leading-6 text-ink" numberOfLines={1}>
-          {value}
-        </Text>
-        <Text className="text-[10px] leading-3 text-subtle" numberOfLines={1}>
-          {hint}
-        </Text>
+        <View className={wide ? 'flex-row items-baseline gap-2' : ''}>
+          <Text className="text-[20px] font-bold leading-6 text-ink" numberOfLines={1}>
+            {value}
+          </Text>
+          <Text
+            className={`text-[10px] leading-3 text-subtle ${wide ? 'min-w-0 flex-1' : ''}`}
+            numberOfLines={1}
+          >
+            {hint}
+          </Text>
+        </View>
       </View>
     );
   }

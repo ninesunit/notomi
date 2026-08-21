@@ -61,6 +61,17 @@ export function BurnoutHeatmap({ semester, todos }: { semester: Semester | null;
   );
 }
 
+/*
+ * Written out rather than interpolated. Tailwind reads the source as text, so
+ * a class built from a variable — `bg-${tone}-soft` — is a class it never
+ * generates, and the chip silently loses its background.
+ */
+const GUARD_TONE = {
+  pine: { chip: 'bg-pine-soft', text: 'text-pine', bar: 'bg-pine' },
+  amber: { chip: 'bg-amber-soft', text: 'text-amber', bar: 'bg-amber' },
+  rose: { chip: 'bg-rose-soft', text: 'text-rose', bar: 'bg-rose' },
+} as const;
+
 export function AttendanceGuard({
   uid,
   subject,
@@ -124,36 +135,76 @@ export function AttendanceGuard({
     }
   }
 
+  /*
+   * Two lines, not one row of six things.
+   *
+   * This was a fixed 48-point row carrying an icon, a title, a counter, a
+   * number, its label, a chevron, a divider and a button. At 390 points the
+   * title alone wrapped to two lines and pushed the rest through the bottom
+   * of the box. Nothing was wrong with the information — there was just never
+   * a width at which it fit on one line.
+   *
+   * So the headline is the answer the student came for, the working is the
+   * quiet line under it, and the bar makes the margin visible without a
+   * second number to read.
+   */
+  const rate = summary.percentage;
+  const safe = summary.safeSkips;
+  const level: keyof typeof GUARD_TONE = safe === 0 ? 'rose' : safe <= 1 ? 'amber' : 'pine';
+  const paint = GUARD_TONE[level];
+  const headline =
+    summary.held === 0
+      ? 'Nothing logged yet'
+      : safe === 0
+        ? 'No absences left'
+        : `${safe} safe skip${safe === 1 ? '' : 's'} left`;
+
   return (
     <View className="mb-6 gap-2">
-      <View className="h-12 flex-row items-center rounded-xl border border-line bg-surface px-3">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded }}
-          accessibilityLabel="Show attendance dates"
-          onPress={() => setExpanded((value) => !value)}
-          className="min-w-0 flex-1 flex-row items-center gap-2.5"
-        >
-          <Icon name="shield" size={15} tone="pine" />
-          <Text className="text-sm font-semibold text-ink">Attendance Guard</Text>
-          <Text className="text-xs text-muted">
-            {summary.held} logged · {threshold}% rule
-          </Text>
-          <View className="ml-auto flex-row items-baseline gap-1">
-            <Text className="text-base font-bold text-pine">{summary.safeSkips}</Text>
-            <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">safe skips</Text>
+      <View className="rounded-xl border border-line bg-surface">
+        <View className="flex-row items-center gap-2 px-3 py-2.5">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            accessibilityLabel={`Attendance Guard. ${headline}. Show attendance dates.`}
+            onPress={() => setExpanded((value) => !value)}
+            className="min-w-0 flex-1 flex-row items-center gap-2.5"
+          >
+            <View className={`h-8 w-8 shrink-0 items-center justify-center rounded-lg ${paint.chip}`}>
+              <Icon name="shield" size={15} tone={level} />
+            </View>
+            <View className="min-w-0 flex-1">
+              <Text className={`text-sm font-semibold ${paint.text}`} numberOfLines={1}>
+                {headline}
+              </Text>
+              <Text className="text-[11px] text-muted" numberOfLines={1}>
+                {summary.held} logged
+                {rate === null ? '' : ` · ${rate.toFixed(0)}% attended`} · {threshold}% needed
+              </Text>
+            </View>
+            <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={15} tone="subtle" />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Edit attendance history"
+            onPress={() => setHistoryOpen(true)}
+            className="h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line"
+          >
+            <Icon name="edit-3" size={15} tone="muted" />
+          </Pressable>
+        </View>
+
+        {/* The rule as a line rather than a percentage to compare against one. */}
+        {rate === null ? null : (
+          <View className="px-3 pb-2.5">
+            <View className="h-1.5 overflow-hidden rounded-full bg-line">
+              <View
+                className={`h-full rounded-full ${paint.bar}`}
+                style={{ width: `${Math.max(2, Math.min(100, rate))}%` }}
+              />
+            </View>
           </View>
-          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={14} tone="subtle" />
-        </Pressable>
-        <View className="mx-2 h-6 w-px bg-line" />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Edit attendance history"
-          onPress={() => setHistoryOpen(true)}
-          className="h-9 w-9 items-center justify-center rounded-lg"
-        >
-          <Icon name="edit-3" size={15} tone="muted" />
-        </Pressable>
+        )}
       </View>
 
       {expanded ? (

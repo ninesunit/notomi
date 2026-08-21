@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon, useTones } from '@/components/Icon';
 import { CountdownChip } from './Countdown';
 import { DatePicker } from './DatePicker';
-import { Badge, Button, IconButton } from './ui';
+import { Badge, Button, Field, IconButton } from './ui';
 import { Sheet } from './Sheet';
 import { formatDue, toDate } from '@/lib/dates';
 import type { Priority, SubTask, Todo } from '@/lib/schema';
@@ -16,6 +16,13 @@ const PRIORITY_TONE: Record<Priority, 'rose' | 'amber' | 'neutral'> = {
 };
 
 const PRIORITY_ORDER: Priority[] = ['low', 'medium', 'high'];
+
+/** A dot rather than a word: on a compact row the word is most of the row. */
+const PRIORITY_DOT: Record<Priority, string> = {
+  high: 'bg-rose',
+  medium: 'bg-amber',
+  low: 'bg-line',
+};
 
 export type TodoActions = {
   toggle: (todo: Todo) => void;
@@ -35,12 +42,10 @@ export function TodoRow({
   actions: TodoActions;
   overdue: boolean;
 }) {
-  const tones = useTones();
   const [expanded, setExpanded] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [editing, setEditing] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState(todo.title);
+  const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
   /**
@@ -50,8 +55,8 @@ export function TodoRow({
    * points of fixed width. The title column is flex-1 with no floor, so on a
    * phone it got whatever was left — about sixty points — and set one word per
    * line down the whole screen. Widening the title is not the fix; there is
-   * genuinely no room for both, so on a narrow screen the controls move to
-   * their own line underneath.
+   * genuinely no room for both, so on a narrow screen the row becomes one
+   * line and everything else moves into a sheet the row opens.
    */
   const { width } = useWindowDimensions();
   const narrow = width < PHONE;
@@ -59,25 +64,6 @@ export function TodoRow({
   const subTasks = todo.subTasks ?? [];
   const doneCount = subTasks.filter((subTask) => subTask.isCompleted).length;
   const due = toDate(todo.dueDate);
-
-  function addSubTask() {
-    const title = draft.trim();
-    if (!title) return;
-    actions.setSubTasks(todo, [
-      ...subTasks,
-      { id: `${Date.now()}${Math.random().toString(36).slice(2, 6)}`, title, isCompleted: false },
-    ]);
-    setDraft('');
-  }
-
-  function toggleSubTask(id: string) {
-    actions.setSubTasks(
-      todo,
-      subTasks.map((subTask) =>
-        subTask.id === id ? { ...subTask, isCompleted: !subTask.isCompleted } : subTask
-      )
-    );
-  }
 
   /** Blur and submit both land here, so an edit is never lost by clicking away. */
   function commitTitle() {
@@ -90,6 +76,82 @@ export function TodoRow({
     }
     actions.rename(todo, next);
   }
+
+  /* ------------------------------ Phone ------------------------------ */
+
+  if (narrow) {
+    /*
+     * One line per task.
+     *
+     * The old phone row carried the title, a due date, a subject, a syllabus
+     * badge and a menu button, wrapping to three lines and about 140 points —
+     * so an iPhone showed three tasks. Everything except the title, the state
+     * and when it is due is detail, and detail is what a tap is for.
+     */
+    return (
+      <View className="border-t border-line first:border-t-0">
+        <View className="flex-row items-center gap-2.5 px-3 py-2.5">
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: todo.isCompleted }}
+            accessibilityLabel={`Mark ${todo.title} ${todo.isCompleted ? 'incomplete' : 'complete'}`}
+            onPress={() => actions.toggle(todo)}
+            hitSlop={8}
+            className={`h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+              todo.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
+            }`}
+          >
+            {todo.isCompleted ? <Icon name="check" size={12} tone="inverse" /> : null}
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${todo.title}. ${
+              due ? formatDue(due) : 'No due date'
+            }. Opens the full task.`}
+            onPress={() => setDetailOpen(true)}
+            className="min-w-0 flex-1 flex-row items-center gap-2"
+          >
+            <View className={`h-1.5 w-1.5 shrink-0 rounded-full ${PRIORITY_DOT[todo.priority]}`} />
+            <Text
+              numberOfLines={1}
+              className={`min-w-0 flex-1 text-[15px] ${
+                todo.isCompleted ? 'text-subtle line-through' : 'text-ink'
+              }`}
+            >
+              {todo.title}
+            </Text>
+            {subTasks.length > 0 ? (
+              <Text className="shrink-0 text-[11px] tabular-nums text-subtle">
+                {doneCount}/{subTasks.length}
+              </Text>
+            ) : null}
+            {due ? (
+              <Text
+                numberOfLines={1}
+                className={`shrink-0 text-[11px] font-medium ${
+                  overdue && !todo.isCompleted ? 'text-rose' : 'text-muted'
+                }`}
+              >
+                {shortDue(due)}
+              </Text>
+            ) : null}
+            <Icon name="chevron-right" size={14} tone="subtle" />
+          </Pressable>
+        </View>
+
+        <TaskDetailSheet
+          visible={detailOpen}
+          onClose={() => setDetailOpen(false)}
+          todo={todo}
+          actions={actions}
+          overdue={overdue}
+        />
+      </View>
+    );
+  }
+
+  /* ----------------------------- Desktop ----------------------------- */
 
   const controls = (
     <>
@@ -161,7 +223,6 @@ export function TodoRow({
             />
           ) : (
             <Text
-              numberOfLines={narrow ? 2 : undefined}
               className={`text-[15px] leading-6 ${
                 todo.isCompleted ? 'text-subtle line-through' : 'text-ink'
               }`}
@@ -170,15 +231,6 @@ export function TodoRow({
             </Text>
           )}
 
-          {/*
-            One line of metadata on a phone, not five.
-            
-            A due date, a countdown, a subject, a source badge and a step count
-            is more supporting detail than the task it supports, and it wraps to
-            three lines at 390pt. The countdown and the step count are the two
-            that are already implied — the date says when, and tapping opens the
-            steps — so they wait for the wide layout.
-          */}
           <View className="flex-row flex-wrap items-center gap-2">
             {due ? (
               <Text
@@ -190,7 +242,7 @@ export function TodoRow({
               </Text>
             ) : null}
 
-            {due && !todo.isCompleted && !narrow ? <CountdownChip due={due} compact /> : null}
+            {due && !todo.isCompleted ? <CountdownChip due={due} compact /> : null}
 
             {todo.subjectName ? (
               <Text className="text-xs text-subtle" numberOfLines={1}>
@@ -200,7 +252,7 @@ export function TodoRow({
 
             {todo.source === 'syllabus' ? <Badge label="From syllabus" tone="pine" /> : null}
 
-            {subTasks.length > 0 && !narrow ? (
+            {subTasks.length > 0 ? (
               <Text className="text-xs text-subtle">
                 {doneCount}/{subTasks.length} steps
               </Text>
@@ -208,15 +260,7 @@ export function TodoRow({
           </View>
         </Pressable>
 
-        {narrow ? (
-          <IconButton
-            icon="more-horizontal"
-            label={`More actions for ${todo.title}`}
-            onPress={() => setMenuOpen(true)}
-          />
-        ) : (
-          controls
-        )}
+        {controls}
       </View>
 
       {confirming ? (
@@ -230,120 +274,279 @@ export function TodoRow({
         </View>
       ) : null}
 
-      {/*
-        The actions, on request.
-        
-        These used to sit in a second permanent row under every task, which is
-        four controls per task competing with the task. Behind a single button
-        they cost one line for the whole list instead of one line each — and
-        nothing is lost, because the row still expands on tap for the date and
-        the steps.
-      */}
-      <Sheet
-        visible={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        title={todo.title}
-        icon="check-square"
-        variant="compact"
-      >
-        <View className="gap-2">
-          <Button
-            label="Rename"
-            icon="edit-2"
-            variant="secondary"
-            onPress={() => {
-              setMenuOpen(false);
-              setTitleDraft(todo.title);
-              setEditing(true);
-            }}
-          />
-          <Button
-            label={`Priority: ${todo.priority}`}
-            icon="flag"
-            variant="secondary"
-            onPress={() => actions.cyclePriority(todo)}
-          />
-          <Button
-            label={expanded ? 'Hide date and steps' : 'Date and steps'}
-            icon={expanded ? 'chevron-up' : 'chevron-down'}
-            variant="secondary"
-            onPress={() => {
-              setMenuOpen(false);
-              setExpanded(true);
-            }}
-          />
-          <Button
-            label="Delete task"
-            icon="trash-2"
-            variant="danger"
-            onPress={() => {
-              setMenuOpen(false);
-              actions.remove(todo);
-            }}
-          />
-        </View>
-      </Sheet>
-
       {expanded ? (
         <View className="gap-3 border-t border-line bg-paper/60 px-4 py-3 pl-12">
-          {/* Reschedule without retyping the task. */}
           <DatePicker
             label="Due date"
             value={due}
             onChange={(next) => actions.setDueDate(todo, next)}
           />
-
-          {subTasks.map((subTask) => (
-            <View key={subTask.id} className="flex-row items-center gap-3">
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: subTask.isCompleted }}
-                onPress={() => toggleSubTask(subTask.id)}
-                className={`h-4 w-4 items-center justify-center rounded border ${
-                  subTask.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
-                }`}
-              >
-                {subTask.isCompleted ? <Icon name="check" size={9} tone="inverse" /> : null}
-              </Pressable>
-
-              <Text
-                className={`flex-1 text-sm ${
-                  subTask.isCompleted ? 'text-subtle line-through' : 'text-ink/80'
-                }`}
-              >
-                {subTask.title}
-              </Text>
-
-              <IconButton
-                icon="x"
-                label={`Remove ${subTask.title}`}
-                onPress={() =>
-                  actions.setSubTasks(
-                    todo,
-                    subTasks.filter((candidate) => candidate.id !== subTask.id)
-                  )
-                }
-              />
-            </View>
-          ))}
-
-          <View className="flex-row items-center gap-2">
-            <Icon name="plus" size={13} tone="subtle" />
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              onSubmitEditing={addSubTask}
-              placeholder="Break this into a step…"
-              placeholderTextColor={tones.subtle}
-              returnKeyType="done"
-              className="flex-1 py-1.5 text-base text-ink"
-            />
-          </View>
-
+          <SubTaskList todo={todo} actions={actions} />
         </View>
       ) : null}
     </View>
   );
+}
+
+/**
+ * The whole task, on request.
+ *
+ * On a phone this is the only place a task can be edited, which is the point.
+ * Renaming used to be an autofocused input inside the row — inside a Pressable,
+ * inside a swipeable, and opened from a modal that was closing at the moment
+ * the field asked for focus. On iOS the field lost focus to the closing modal
+ * and its own blur handler immediately committed and dismissed it, so the
+ * keyboard flashed and nothing changed. A field in a sheet that is already
+ * open has none of those problems.
+ */
+function TaskDetailSheet({
+  visible,
+  onClose,
+  todo,
+  actions,
+  overdue,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  todo: Todo;
+  actions: TodoActions;
+  overdue: boolean;
+}) {
+  const [title, setTitle] = useState(todo.title);
+  const [confirming, setConfirming] = useState(false);
+  const due = toDate(todo.dueDate);
+
+  // Reopening shows what is stored, not what was typed and abandoned last time.
+  useEffect(() => {
+    if (visible) {
+      setTitle(todo.title);
+      setConfirming(false);
+    }
+  }, [visible, todo.title]);
+
+  function save() {
+    const next = title.trim();
+    if (next && next !== todo.title) actions.rename(todo, next);
+    onClose();
+  }
+
+  return (
+    <Sheet
+      visible={visible}
+      onClose={save}
+      title="Task"
+      icon="check-square"
+      variant="fullscreen-mobile"
+      dismissOnScrim={false}
+      primaryAction={{ label: 'Done', onPress: save }}
+    >
+      <View className="gap-5">
+        <Field
+          label="Task"
+          value={title}
+          onChangeText={setTitle}
+          multiline
+          placeholder="What needs doing?"
+          returnKeyType="done"
+          onSubmitEditing={save}
+        />
+
+        <View className="flex-row flex-wrap items-center gap-2">
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: todo.isCompleted }}
+            onPress={() => actions.toggle(todo)}
+            className={`flex-row items-center gap-2 rounded-xl border px-3 py-2.5 ${
+              todo.isCompleted ? 'border-pine bg-pine-soft' : 'border-line bg-surface'
+            }`}
+          >
+            <Icon name={todo.isCompleted ? 'check-circle' : 'circle'} size={16} tone={todo.isCompleted ? 'pine' : 'muted'} />
+            <Text className={`text-sm font-semibold ${todo.isCompleted ? 'text-pine' : 'text-ink'}`}>
+              {todo.isCompleted ? 'Completed' : 'Mark complete'}
+            </Text>
+          </Pressable>
+          {todo.subjectName ? (
+            <View className="rounded-xl bg-sand px-3 py-2.5">
+              <Text className="text-sm font-medium text-muted" numberOfLines={1}>
+                {todo.subjectName}
+              </Text>
+            </View>
+          ) : null}
+          {todo.source === 'syllabus' ? <Badge label="From syllabus" tone="pine" /> : null}
+        </View>
+
+        <View className="gap-2">
+          <Text className="text-sm font-medium text-muted">Priority</Text>
+          <View className="flex-row gap-2">
+            {PRIORITY_ORDER.map((level) => (
+              <Pressable
+                key={level}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: todo.priority === level }}
+                onPress={() => {
+                  if (todo.priority !== level) actions.cyclePriority(todo);
+                }}
+                disabled={todo.priority === level}
+                className={`flex-1 flex-row items-center justify-center gap-2 rounded-xl border py-2.5 ${
+                  todo.priority === level ? 'border-ink bg-ink' : 'border-line bg-surface'
+                }`}
+              >
+                <View className={`h-2 w-2 rounded-full ${PRIORITY_DOT[level]}`} />
+                <Text
+                  className={`text-xs font-semibold capitalize ${
+                    todo.priority === level ? 'text-paper' : 'text-muted'
+                  }`}
+                >
+                  {level}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <View className="gap-2">
+          <DatePicker
+            label="Due date"
+            value={due}
+            onChange={(next) => actions.setDueDate(todo, next)}
+          />
+          {due && !todo.isCompleted ? (
+            <View className="flex-row items-center gap-2">
+              <CountdownChip due={due} compact />
+              <Text className={`text-xs ${overdue ? 'text-rose' : 'text-muted'}`}>
+                {formatDue(due)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View className="gap-2">
+          <Text className="text-sm font-medium text-muted">Steps</Text>
+          <SubTaskList todo={todo} actions={actions} />
+        </View>
+
+        <View className="gap-2 border-t border-line pt-4">
+          {confirming ? (
+            <>
+              <Text className="text-xs leading-5 text-muted">
+                This deletes the task. You will have five seconds to undo it.
+              </Text>
+              <Button
+                label="Yes, delete this task"
+                icon="trash-2"
+                variant="danger"
+                onPress={() => {
+                  onClose();
+                  actions.remove(todo);
+                }}
+              />
+              <Button label="Keep it" variant="ghost" onPress={() => setConfirming(false)} />
+            </>
+          ) : (
+            <Button
+              label="Delete task"
+              icon="trash-2"
+              variant="danger"
+              onPress={() => setConfirming(true)}
+            />
+          )}
+        </View>
+      </View>
+    </Sheet>
+  );
+}
+
+function SubTaskList({ todo, actions }: { todo: Todo; actions: TodoActions }) {
+  const tones = useTones();
+  const [draft, setDraft] = useState('');
+  const subTasks = todo.subTasks ?? [];
+
+  function addSubTask() {
+    const title = draft.trim();
+    if (!title) return;
+    actions.setSubTasks(todo, [
+      ...subTasks,
+      { id: `${Date.now()}${Math.random().toString(36).slice(2, 6)}`, title, isCompleted: false },
+    ]);
+    setDraft('');
+  }
+
+  return (
+    <View className="gap-3">
+      {subTasks.map((subTask) => (
+        <View key={subTask.id} className="flex-row items-center gap-3">
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: subTask.isCompleted }}
+            accessibilityLabel={subTask.title}
+            hitSlop={8}
+            onPress={() =>
+              actions.setSubTasks(
+                todo,
+                subTasks.map((candidate) =>
+                  candidate.id === subTask.id
+                    ? { ...candidate, isCompleted: !candidate.isCompleted }
+                    : candidate
+                )
+              )
+            }
+            className={`h-4 w-4 items-center justify-center rounded border ${
+              subTask.isCompleted ? 'border-pine bg-pine' : 'border-subtle bg-surface'
+            }`}
+          >
+            {subTask.isCompleted ? <Icon name="check" size={9} tone="inverse" /> : null}
+          </Pressable>
+
+          <Text
+            className={`flex-1 text-sm ${
+              subTask.isCompleted ? 'text-subtle line-through' : 'text-ink/80'
+            }`}
+          >
+            {subTask.title}
+          </Text>
+
+          <IconButton
+            icon="x"
+            label={`Remove ${subTask.title}`}
+            onPress={() =>
+              actions.setSubTasks(
+                todo,
+                subTasks.filter((candidate) => candidate.id !== subTask.id)
+              )
+            }
+          />
+        </View>
+      ))}
+
+      <View className="flex-row items-center gap-2">
+        <Icon name="plus" size={13} tone="subtle" />
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          onSubmitEditing={addSubTask}
+          placeholder="Break this into a step…"
+          placeholderTextColor={tones.subtle}
+          returnKeyType="done"
+          className="flex-1 py-1.5 text-base text-ink"
+        />
+      </View>
+    </View>
+  );
+}
+
+/** "Fri 3 Oct" rather than "in 4 days" — a compact row has no room to explain. */
+function shortDue(due: Date): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const day = new Date(due);
+  day.setHours(0, 0, 0, 0);
+  const offset = Math.round((day.getTime() - today.getTime()) / 86_400_000);
+  if (offset === 0) return 'Today';
+  if (offset === 1) return 'Tomorrow';
+  if (offset === -1) return 'Yesterday';
+  if (offset < 0) return `${Math.abs(offset)}d late`;
+  if (offset < 7) return due.toLocaleDateString(undefined, { weekday: 'short' });
+  return due.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 export function nextPriority(current: Priority): Priority {

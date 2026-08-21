@@ -78,6 +78,14 @@ export type Profile = {
   avatarUrl: string | null;
   avatarKey?: string;
   avatarPreset: string | null;
+  /**
+   * A drawn mark instead of an initial, when the student picked one.
+   *
+   * An icon name from the app's own set rather than an emoji: emoji render
+   * differently on every platform and read as a sticker, and a study workspace
+   * that looks like a chat app is not the thing Notomi is trying to be.
+   */
+  avatarIcon?: string | null;
   university: string;
   universityId?: string;
   universityAbbreviation?: string;
@@ -412,6 +420,7 @@ export async function saveProfile(
       avatarUrl: input.avatarUrl?.trim() || null,
       avatarKey: input.avatarKey?.trim().slice(0, 220) || '',
       avatarPreset: input.avatarPreset || input.color,
+      avatarIcon: input.avatarIcon || null,
       university: input.university.trim().slice(0, 100),
       universityId: input.universityId?.trim().slice(0, 160) || '',
       universityAbbreviation: input.universityAbbreviation?.trim().slice(0, 12) || '',
@@ -492,6 +501,34 @@ export async function savePrivacy(uid: string, next: PrivacySettings): Promise<v
   }
 }
 
+export type AvatarChoice = {
+  avatarUrl: string | null;
+  avatarKey: string;
+  avatarPreset: string;
+  avatarIcon: string | null;
+};
+
+/**
+ * Changes the picture, and nothing else.
+ *
+ * Routing this through `saveProfile` would spend a uniqueness query on every
+ * colour tap and could fail with a message about a username being taken — to
+ * somebody who was choosing an avatar. Same reasoning as `savePrivacy`.
+ */
+export async function saveAvatar(uid: string, choice: AvatarChoice): Promise<void> {
+  await setDoc(
+    social.profile(getDb(), uid),
+    {
+      avatarUrl: choice.avatarUrl?.trim() || null,
+      avatarKey: choice.avatarKey.trim().slice(0, 220),
+      avatarPreset: choice.avatarPreset,
+      avatarIcon: choice.avatarIcon || null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 /* ------------------------------- Safety -------------------------------- */
 
 export type BlockedUser = {
@@ -562,6 +599,7 @@ export async function myProfile(uid: string): Promise<Profile | null> {
     avatarUrl: typeof data.avatarUrl === 'string' ? data.avatarUrl : null,
     avatarKey: typeof data.avatarKey === 'string' ? data.avatarKey : '',
     avatarPreset: typeof data.avatarPreset === 'string' ? data.avatarPreset : null,
+    avatarIcon: typeof data.avatarIcon === 'string' ? data.avatarIcon : null,
     university: typeof data.university === 'string' ? data.university : '',
     universityId: typeof data.universityId === 'string' ? data.universityId : '',
     universityAbbreviation:

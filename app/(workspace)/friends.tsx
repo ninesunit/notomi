@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { Icon, type IconName } from '@/components/Icon';
+import { Avatar } from '@/components/Avatar';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Sheet } from '@/components/Sheet';
 import { ShareMaterial } from '@/components/social/ShareMaterial';
@@ -41,7 +42,7 @@ import {
   type Profile,
 } from '@/services/social';
 import { universityLabel, universitySearchKey } from '@/services/universities';
-import { TINT, subjectInk, subjectTint } from '@/lib/color';
+import { subjectInk } from '@/lib/color';
 
 /**
  * The social home.
@@ -351,6 +352,7 @@ export default function Friends() {
                     name={friend.displayName}
                     color={profiles[friend.id]?.avatarPreset || friend.color}
                     avatarUrl={profiles[friend.id]?.avatarUrl}
+                    icon={profiles[friend.id]?.avatarIcon}
                     statusColor={state.color}
                     size={26}
                   />
@@ -400,6 +402,7 @@ export default function Friends() {
                     name={entry.displayName}
                     color={entry.avatarPreset || entry.color}
                     avatarUrl={entry.avatarUrl}
+                    icon={entry.avatarIcon}
                     size={40}
                   />
                   <View className="min-w-0 flex-1">
@@ -574,6 +577,7 @@ function FriendRow({
           name={friend.displayName}
           color={profile.avatarPreset || profile.color || friend.color}
           avatarUrl={profile.avatarUrl}
+          icon={profile.avatarIcon}
           statusColor={state.color}
           size={42}
         />
@@ -934,6 +938,7 @@ function PersonCard({
         name={profile.displayName}
         color={profile.avatarPreset || profile.color}
         avatarUrl={profile.avatarUrl}
+        icon={profile.avatarIcon}
         size={42}
       />
       <View className="min-w-0 flex-1">
@@ -1190,49 +1195,6 @@ function FriendWeek({ friend, onClose }: { friend: Friend | null; onClose: () =>
 }
 
 /* ------------------------------ Pieces ----------------------------- */
-
-function Avatar({
-  name,
-  color,
-  avatarUrl,
-  statusColor,
-  size = 48,
-}: {
-  name: string;
-  color: string;
-  avatarUrl?: string | null;
-  statusColor?: string;
-  size?: number;
-}) {
-  const dot = Math.max(10, Math.round(size * 0.28));
-  return (
-    <View>
-      {avatarUrl ? (
-        <Image source={{ uri: avatarUrl }} style={{ width: size, height: size, borderRadius: size / 2 }} />
-      ) : (
-        <View
-          className="items-center justify-center"
-          style={{
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            backgroundColor: subjectTint(color, TINT.fill),
-          }}
-        >
-          <Text style={{ color: subjectInk(color), fontSize: Math.round(size * 0.38), fontWeight: '700' }}>
-            {name.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-      )}
-      {statusColor ? (
-        <View
-          className="absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-surface"
-          style={{ width: dot, height: dot, borderRadius: dot / 2, backgroundColor: statusColor }}
-        />
-      ) : null}
-    </View>
-  );
-}
 
 function FilterPill({
   active,

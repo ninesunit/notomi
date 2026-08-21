@@ -376,14 +376,25 @@ export function PageHeader({
         {subtitle ? <Text className="text-[15px] leading-6 text-muted">{subtitle}</Text> : null}
       </View>
       {/*
-        Wraps. Without it a header with three actions squeezes them until the
-        labels clip — "Import academic calenda…" — because a flex row with no
-        wrap will shrink its children before it will ever break the line. Every
-        page header in the app shares this, so the fault was never local to the
-        one screen it was noticed on.
+        Wraps, and can be made to.
+
+        `flex-wrap` alone was not enough. React Native defaults `flexShrink` to
+        zero, so this row was sized to its own content — 700 points of buttons
+        on a 390 point screen — and a row that never has to fit never reaches
+        the point where wrapping applies. The result was Term Management's
+        "New term" sitting off the right edge of an iPhone with no way to
+        reach it. Shrinking first is what lets the wrap do its job.
+
+        Every page header in the app shares this, so the fault was never local
+        to the one screen it was noticed on.
       */}
       {actions ? (
-        <View className="flex-row flex-wrap items-center gap-2">{actions}</View>
+        <View
+          className="flex-row flex-wrap items-center gap-2"
+          style={{ flexShrink: 1, minWidth: 0 }}
+        >
+          {actions}
+        </View>
       ) : null}
     </View>
   );

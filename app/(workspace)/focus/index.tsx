@@ -24,6 +24,8 @@ import {
   type Profile,
 } from '@/services/social';
 import { TINT, subjectTint } from '@/lib/color';
+import { AMBIENT, startAmbient, type AmbientHandle, type AmbientId } from '@/lib/ambient';
+import { useAmbientChoice } from '@/hooks/useAmbient';
 
 /**
  * Pomodoro timer.
@@ -322,11 +324,17 @@ export default function Focus() {
         {todos.data.some((candidate) => !candidate.isCompleted) ? (
           <View className="w-full max-w-sm">
             <ResponsiveTermPicker
+              alwaysDropdown
+              icon="check-square"
               options={[
                 { id: '', label: 'No task attached' },
                 ...todos.data
                   .filter((candidate) => !candidate.isCompleted)
-                  .map((candidate) => ({ id: candidate.id, label: candidate.title })),
+                  .map((candidate) => ({
+                    id: candidate.id,
+                    label: candidate.title,
+                    detail: candidate.subjectName ?? undefined,
+                  })),
               ]}
               value={taskId ?? ''}
               title="Attach a task"
@@ -377,6 +385,14 @@ export default function Focus() {
       <AmbientControl />
 
 
+      {/*
+        A picker, not a wall.
+
+        Six subjects was a tidy row; a student with a full timetable and a
+        couple of past terms had twenty, and twenty subject chips is a block of
+        interface between the timer and the streak counters. The same is true
+        of the task list above, for the same reason.
+      */}
       <Card className="mb-6 gap-3">
         <Text className="text-sm font-semibold text-ink">What are you working on?</Text>
         {subjects.loading ? (
@@ -386,29 +402,22 @@ export default function Focus() {
             Upload material to create a subject, and your focus time will be tracked against it.
           </Text>
         ) : (
-          <View className="flex-row flex-wrap gap-1.5">
-            {subjects.data.map((candidate) => (
-              <Pressable
-                key={candidate.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected: subjectId === candidate.id }}
-                onPress={() => setSubjectId(subjectId === candidate.id ? null : candidate.id)}
-                className={`rounded-lg border px-3 py-2 ${
-                  subjectId === candidate.id
-                    ? 'border-accent bg-accent-soft'
-                    : 'border-line bg-paper'
-                }`}
-              >
-                <Text
-                  className={`text-xs font-medium ${
-                    subjectId === candidate.id ? 'text-accent' : 'text-muted'
-                  }`}
-                >
-                  {candidate.name}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <ResponsiveTermPicker
+            alwaysDropdown
+            icon="folder"
+            options={[
+              { id: '', label: 'Not tracking a subject' },
+              ...subjects.data.map((candidate) => ({
+                id: candidate.id,
+                label: candidate.name,
+                detail: candidate.moduleCode || undefined,
+              })),
+            ]}
+            value={subjectId ?? ''}
+            title="Track this time against"
+            sheetIcon="folder"
+            onChange={(next) => setSubjectId(next || null)}
+          />
         )}
       </Card>
 
@@ -568,66 +577,88 @@ function chime(): void {
   }
 }
 
+/**
+ * Six soundscapes, one at a time, chosen and remembered.
+ *
+ * The preference is stored so a student who studies to rain does not pick rain
+ * every session; playback deliberately is not, because a page that starts
+ * making noise on load is a page that gets closed.
+ */
 function AmbientControl() {
+  const [choice, setChoice] = useAmbientChoice();
   const [playing, setPlaying] = useState(false);
-  const audio = useRef<{ context: AudioContext; source: AudioBufferSourceNode; gain: GainNode } | null>(null);
+  const handle = useRef<AmbientHandle | null>(null);
 
-  useEffect(
-    () => () => {
-      audio.current?.source.stop();
-      void audio.current?.context.close();
-    },
-    []
-  );
+  const halt = useCallback(() => {
+    handle.current?.stop();
+    handle.current = null;
+    setPlaying(false);
+  }, []);
 
-  function toggle() {
+  useEffect(() => () => handle.current?.stop(), []);
+
+  const preset = AMBIENT.find((entry) => entry.id === choice) ?? AMBIENT[0];
+
+  function play(id: AmbientId) {
     if (Platform.OS !== 'web') return;
-    if (audio.current) {
-      audio.current.source.stop();
-      void audio.current.context.close();
-      audio.current = null;
-      setPlaying(false);
-      return;
-    }
-
-    const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Context) return;
-    const context = new Context();
-    const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
-    const data = buffer.getChannelData(0);
-    let last = 0;
-    for (let index = 0; index < data.length; index += 1) {
-      const white = Math.random() * 2 - 1;
-      last = (last + 0.02 * white) / 1.02;
-      data[index] = last * 2.8;
-    }
-    const source = context.createBufferSource();
-    const gain = context.createGain();
-    source.buffer = buffer;
-    source.loop = true;
-    gain.gain.value = 0.12;
-    source.connect(gain).connect(context.destination);
-    source.start();
-    audio.current = { context, source, gain };
-    setPlaying(true);
+    handle.current?.stop();
+    handle.current = startAmbient(id);
+    setPlaying(handle.current !== null);
   }
 
   return (
-    <Card className="mb-6 flex-row items-center gap-3">
-      <View className="h-10 w-10 items-center justify-center rounded-xl bg-sand">
-        <Icon name={playing ? 'volume-2' : 'volume-x'} size={17} tone="ink" />
+    <Card className="mb-6 gap-3">
+      <View className="flex-row items-center gap-3">
+        <View className="h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sand">
+          <Icon name={playing ? 'volume-2' : 'volume-x'} size={17} tone="ink" />
+        </View>
+        <View className="min-w-0 flex-1">
+          <Text className="text-sm font-semibold text-ink">Ambient focus audio</Text>
+          <Text className="text-xs text-muted" numberOfLines={2}>
+            {preset.hint}
+          </Text>
+        </View>
+        <Button
+          label={playing ? 'Stop' : 'Play'}
+          icon={playing ? 'volume-x' : 'volume-2'}
+          variant="secondary"
+          size="sm"
+          onPress={() => (playing ? halt() : play(choice))}
+        />
       </View>
-      <View className="min-w-0 flex-1">
-        <Text className="text-sm font-semibold text-ink">Ambient focus audio</Text>
-        <Text className="text-xs text-muted">Soft brown noise generated on your device.</Text>
+
+      <View className="flex-row flex-wrap gap-1.5">
+        {AMBIENT.map((entry) => (
+          <Pressable
+            key={entry.id}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: choice === entry.id }}
+            accessibilityLabel={`${entry.label}. ${entry.hint}`}
+            onPress={() => {
+              setChoice(entry.id);
+              // Switching while it is running should switch what you hear,
+              // not stop it and wait to be asked again.
+              if (playing) play(entry.id);
+            }}
+            className={`rounded-full border px-3 py-1.5 ${
+              choice === entry.id ? 'border-ink bg-ink' : 'border-line bg-paper'
+            }`}
+          >
+            <Text
+              className={`text-xs font-semibold ${
+                choice === entry.id ? 'text-paper' : 'text-muted'
+              }`}
+            >
+              {entry.label}
+            </Text>
+          </Pressable>
+        ))}
       </View>
-      <Button
-        label={playing ? 'Turn off' : 'Play'}
-        icon={playing ? 'volume-x' : 'volume-2'}
-        variant="secondary"
-        size="sm"
-        onPress={toggle}
-      />
+
+      <Text className="text-[11px] leading-4 text-subtle">
+        Generated on your device as it plays. Nothing is downloaded, and it keeps going while you
+        work in another tab.
+      </Text>
     </Card>
   );
 }

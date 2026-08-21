@@ -50,6 +50,15 @@ import ExternalLink from 'lucide-react-native/icons/external-link';
 import Eye from 'lucide-react-native/icons/eye';
 import EyeOff from 'lucide-react-native/icons/eye-off';
 import Lock from 'lucide-react-native/icons/lock';
+import ListFilter from 'lucide-react-native/icons/list-filter';
+import Coffee from 'lucide-react-native/icons/coffee';
+import Atom from 'lucide-react-native/icons/atom';
+import FlaskConical from 'lucide-react-native/icons/flask-conical';
+import Leaf from 'lucide-react-native/icons/leaf';
+import Rocket from 'lucide-react-native/icons/rocket';
+import MoonStar from 'lucide-react-native/icons/moon-star';
+import Cat from 'lucide-react-native/icons/cat';
+import Palette from 'lucide-react-native/icons/palette';
 import Feather from 'lucide-react-native/icons/feather';
 import File from 'lucide-react-native/icons/file';
 import FileDown from 'lucide-react-native/icons/file-down';
@@ -171,6 +180,15 @@ const ICONS = {
   eye: Eye,
   'eye-off': EyeOff,
   lock: Lock,
+  filter: ListFilter,
+  'coffee': Coffee,
+  'atom': Atom,
+  'flask-conical': FlaskConical,
+  'leaf': Leaf,
+  'rocket': Rocket,
+  'moon-star': MoonStar,
+  'cat': Cat,
+  'palette': Palette,
   feather: Feather,
   file: File,
   'file-down': FileDown,

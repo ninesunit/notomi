@@ -322,6 +322,10 @@ service cloud.firestore {
           && (!('universityAbbreviation' in request.resource.data)
             || (request.resource.data.universityAbbreviation is string
               && request.resource.data.universityAbbreviation.size() <= 12))
+          && (!('avatarIcon' in request.resource.data)
+            || request.resource.data.avatarIcon == null
+            || (request.resource.data.avatarIcon is string
+              && request.resource.data.avatarIcon.size() <= 40))
           && (!('avatarKey' in request.resource.data)
             || (request.resource.data.avatarKey is string
               && request.resource.data.avatarKey.size() <= 220

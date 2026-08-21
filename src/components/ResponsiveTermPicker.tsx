@@ -8,6 +8,8 @@ export type TermPickerOption = {
   label: string;
   count?: number;
   current?: boolean;
+  /** Overrides the "N subjects" wording in the sheet. */
+  detail?: string;
 };
 
 export function ResponsiveTermPicker({
@@ -17,6 +19,16 @@ export function ResponsiveTermPicker({
   title = 'Select term',
   placeholder,
   sheetIcon = 'calendar',
+  /**
+   * Stay a dropdown at every width.
+   *
+   * The pill wall is right for four terms and wrong for twenty tasks: on a
+   * desktop the Focus Room laid eleven task pills between the clock and the
+   * Start button and pushed Start off the card. A list that can grow without
+   * bound is a list, not a row of choices, whatever the screen is.
+   */
+  alwaysDropdown = false,
+  icon,
 }: {
   options: TermPickerOption[];
   value: string;
@@ -24,6 +36,9 @@ export function ResponsiveTermPicker({
   title?: string;
   placeholder?: string;
   sheetIcon?: IconName;
+  alwaysDropdown?: boolean;
+  /** Shown inside the closed control, for a picker that is not about terms. */
+  icon?: IconName;
 }) {
   const [open, setOpen] = useState(false);
   const selected =
@@ -39,16 +54,17 @@ export function ResponsiveTermPicker({
 
   return (
     <>
-      <View className="sm:hidden">
+      <View className={alwaysDropdown ? '' : 'sm:hidden'}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${title}: ${selected.label}`}
           accessibilityState={{ expanded: open }}
           onPress={() => setOpen(true)}
-          className="h-11 max-w-full flex-row items-center rounded-xl border border-line bg-surface px-3.5"
+          className="h-11 max-w-full flex-row items-center gap-2 rounded-xl border border-line bg-surface px-3.5"
         >
+          {icon ? <Icon name={icon} size={15} tone="muted" /> : null}
           <Text
-            className="max-w-[250px] min-w-0 flex-1 truncate text-sm font-semibold text-ink"
+            className="min-w-0 flex-1 truncate text-sm font-semibold text-ink"
             numberOfLines={1}
           >
             {selected.label}
@@ -62,7 +78,7 @@ export function ResponsiveTermPicker({
         </Pressable>
       </View>
 
-      <View className="hidden flex-row flex-wrap gap-1.5 sm:flex">
+      <View className={alwaysDropdown ? 'hidden' : 'hidden flex-row flex-wrap gap-1.5 sm:flex'}>
         {options.map((option) => (
           <TermPill
             key={option.id}
@@ -73,7 +89,13 @@ export function ResponsiveTermPicker({
         ))}
       </View>
 
-      <Sheet visible={open} onClose={() => setOpen(false)} title={title} icon={sheetIcon}>
+      <Sheet
+        visible={open}
+        onClose={() => setOpen(false)}
+        title={title}
+        icon={sheetIcon}
+        maxHeight={520}
+      >
         <View className="gap-2">
           {options.map((option) => {
             const active = option.id === value;
@@ -89,7 +111,11 @@ export function ResponsiveTermPicker({
               >
                 <View className="min-w-0 flex-1">
                   <Text className="text-sm font-semibold text-ink">{option.label}</Text>
-                  {option.count !== undefined ? (
+                  {option.detail ? (
+                    <Text className="mt-0.5 text-xs text-subtle" numberOfLines={1}>
+                      {option.detail}
+                    </Text>
+                  ) : option.count !== undefined ? (
                     <Text className="mt-0.5 text-xs text-subtle">
                       {option.count} {option.count === 1 ? 'subject' : 'subjects'}
                     </Text>
