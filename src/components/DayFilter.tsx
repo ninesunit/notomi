@@ -14,12 +14,20 @@ import { DAY_FULL } from '@/lib/schema';
 export function DayFilter({
   visibleDays,
   onToggle,
+  className = 'mb-3',
 }: {
   visibleDays: number[];
   onToggle: (day: number) => void;
+  /**
+   * Spacing and flex, so the filter can share a row with the style toggle
+   * instead of claiming one of its own. Defaults to the margin it has always
+   * had — and deliberately not to `flex-1`, which on its own would tell a
+   * column parent to stretch it to the full height of the screen.
+   */
+  className?: string;
 }) {
   return (
-    <View className="mb-3 flex-row items-center gap-1">
+    <View className={`flex-row items-center gap-1 ${className}`}>
       {DAY_FULL.map((full, day) => {
         const on = visibleDays.includes(day);
         return (

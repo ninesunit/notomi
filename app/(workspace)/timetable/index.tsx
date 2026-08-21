@@ -13,6 +13,7 @@ import { AgendaWeek } from '@/components/AgendaWeek';
 import { DayFilter } from '@/components/DayFilter';
 import { useVisibleDays } from '@/hooks/useVisibleDays';
 import { useWeekStyle } from '@/hooks/useWeekStyle';
+import { WeekStyleToggle } from '@/components/WeekStyleToggle';
 import { laneOut } from '@/lib/timetableLayout';
 import { TimeField } from '@/components/TimeField';
 import { defaultScope, filterByTerm, TermFilter, type TermScope } from '@/components/TermFilter';
@@ -167,7 +168,7 @@ export default function Timetable() {
   const nowMinute = useNowMinute();
 
   const { visibleDays, toggleDay } = useVisibleDays();
-  const [style, setStyle] = useWeekStyle();
+  const [style] = useWeekStyle();
 
   const [firstHour, lastHour] = useMemo(() => {
     const blocks = [...classes.data, ...(showRoutines ? routines.data : [])];
@@ -375,47 +376,28 @@ export default function Timetable() {
               size="sm"
               onPress={() => setEditingRoutine('new')}
             />
+          </View>
+
+          {/*
+            Its own row, and one that survives on a phone.
+
+            The row above is hidden below PHONE on purpose: Routines, Add
+            routine and Scan stacked into three lines on top of the week they
+            describe. But these two segments went into that row when they were
+            added, and inherited the hiding — which left a phone with no way to
+            reach either the list view or the day timeline, the second of which
+            exists only for phones. Two small segments on one line is not the
+            clutter that was removed.
+          */}
+          <View className="flex-row items-center gap-2">
+            <WeekStyleToggle compact={tight} />
 
             {/* Week is the default: the whole point of a timetable is seeing
                 the week. The timeline stays one tap away for the days that
-                need the hour-by-hour shape. */}
-            {/*
-              Outside the Week/Day wrapper on purpose. Week versus day is a
-              phone-only question — a desktop shows the whole week and has no
-              day mode — but grid versus list is a preference at every width,
-              and it is the same preference the dashboard reads.
-            */}
-            <View className="flex-row overflow-hidden rounded-lg border border-line">
-              {(['grid', 'agenda'] as const).map((option) => (
-                <Pressable
-                  key={option}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: style === option }}
-                  accessibilityLabel={option === 'grid' ? 'Time grid' : 'Day-by-day list'}
-                  onPress={() => {
-                    feedback('toggle');
-                    setStyle(option);
-                  }}
-                  className={`flex-row items-center gap-1.5 px-3 py-1.5 ${
-                    style === option ? 'bg-ink' : 'bg-surface'
-                  }`}
-                >
-                  <Icon
-                    name={option === 'grid' ? 'layout-dashboard' : 'list'}
-                    size={13}
-                    tone={style === option ? 'inverse' : 'muted'}
-                  />
-                  <Text
-                    className={`text-xs font-semibold ${
-                      style === option ? 'text-paper' : 'text-muted'
-                    }`}
-                  >
-                    {option === 'grid' ? 'Grid' : 'List'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
+                need the hour-by-hour shape. Phone-only, because a desktop
+                shows the whole week and has no day mode — unlike grid versus
+                list, which is a preference at every width and the same one the
+                dashboard reads. */}
             {grid ? null : (
               <View className="flex-row overflow-hidden rounded-lg border border-line">
                 {(['week', 'day'] as const).map((option) => (

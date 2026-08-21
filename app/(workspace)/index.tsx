@@ -10,6 +10,7 @@ import { Sheet } from '@/components/Sheet';
 import { CompactWeekGrid } from '@/components/CompactWeekGrid';
 import { AgendaWeek } from '@/components/AgendaWeek';
 import { DayFilter } from '@/components/DayFilter';
+import { WeekStyleToggle } from '@/components/WeekStyleToggle';
 import { useVisibleDays } from '@/hooks/useVisibleDays';
 import { useWeekStyle } from '@/hooks/useWeekStyle';
 import { defaultScope, filterByTerm } from '@/components/TermFilter';
@@ -374,13 +375,22 @@ function ThisWeek({
          */
         <>
           {/*
-            The same control and the same setting as the timetable. A student
+            The same controls and the same settings as the timetable. A student
             who hides the weekend in one place and finds it back in the other
-            has two settings that look like one.
+            has two settings that look like one — and the style toggle sits
+            here at every width for the same reason, since a control that
+            exists on one device and not another is the same trap.
+
+            One row rather than two: the day filter's pills are flex-1, so it
+            takes whatever the toggle leaves and the week below keeps its
+            height.
           */}
-          {compact || style === 'agenda' ? (
-            <DayFilter visibleDays={visibleDays} onToggle={toggleDay} />
-          ) : null}
+          <View className="mb-3 flex-row items-center gap-2">
+            <WeekStyleToggle compact />
+            {compact || style === 'agenda' ? (
+              <DayFilter visibleDays={visibleDays} onToggle={toggleDay} className="flex-1" />
+            ) : null}
+          </View>
           {style === 'agenda' ? (
             <AgendaWeek
               classes={classes}
