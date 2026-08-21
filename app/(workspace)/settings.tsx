@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import { Link } from 'expo-router';
 
@@ -25,6 +25,7 @@ import { isDriveConfigured } from '@/lib/driveUtils';
 import { play, soundPreference } from '@/lib/sound';
 import { useThemeChoice, type ThemeChoice } from '@/lib/theme';
 import { exportAcademicData } from '@/services/dataExport';
+import { AI_LIMITS, budgetStatus, subscribeToBudget } from '@/lib/aiBudget';
 
 // Opened once a term at most, and it drags the migration machinery with it.
 const DriveMigrationModal = lazyScreen<{ visible: boolean; onClose: () => void }>(
@@ -84,6 +85,8 @@ export default function Settings() {
       />
 
       <RulesCard />
+
+      <AllowanceCard />
 
       <View className="mb-8 gap-2">
         <DriveConnect />
@@ -395,6 +398,61 @@ function DataCard() {
         </Touchable>
       </Link>
     </SettingCard>
+  );
+}
+
+/**
+ * What is left, and when it comes back.
+ *
+ * Notomi runs on free allowances that are shared across everyone using it, so
+ * they are finite in a way a student has no other way to see. A number here is
+ * the difference between "the AI is broken" and "I have used today's" — and
+ * the second one tells you what to do about it.
+ */
+function AllowanceCard() {
+  const [, bump] = useState(0);
+  useEffect(() => subscribeToBudget(() => bump((value) => value + 1)), []);
+
+  const status = budgetStatus();
+  const blocked = status.blockedUntil;
+
+  return (
+    <SettingCard
+      icon="activity"
+      title="Today's AI allowance"
+      subtitle="Shared across everyone using Notomi, so it resets rather than runs out for good."
+    >
+      <View className="flex-row gap-2">
+        <Meter label="Questions" left={status.standardLeft} of={AI_LIMITS.standardPerDay} />
+        <Meter label="File analyses" left={status.heavyLeft} of={AI_LIMITS.heavyPerDay} />
+      </View>
+      <Text className="text-[11px] leading-4 text-subtle">
+        {blocked
+          ? `The AI service has been failing, so Notomi has paused asking until ${blocked.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Everything else still works.`
+          : `Resets at midnight. Schedules, tasks, notes and anything already processed never depend on this.`}
+      </Text>
+    </SettingCard>
+  );
+}
+
+function Meter({ label, left, of }: { label: string; left: number; of: number }) {
+  const ratio = Math.max(0, Math.min(1, left / of));
+  return (
+    <View className="flex-1 gap-1.5 rounded-xl bg-sand p-3">
+      <View className="flex-row items-baseline gap-1">
+        <Text className="text-base font-bold text-ink">{left}</Text>
+        <Text className="text-[11px] text-muted">of {of}</Text>
+      </View>
+      <Text className="text-[11px] text-muted" numberOfLines={1}>
+        {label}
+      </Text>
+      <View className="h-1 overflow-hidden rounded-full bg-line">
+        <View
+          className={`h-full rounded-full ${ratio > 0.3 ? 'bg-pine' : ratio > 0 ? 'bg-amber' : 'bg-rose'}`}
+          style={{ width: `${Math.round(ratio * 100)}%` }}
+        />
+      </View>
+    </View>
   );
 }
 

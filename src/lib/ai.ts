@@ -24,6 +24,7 @@ import type {
   QuizQuestion,
   RevisionPlanItem,
 } from './schema';
+import { isQuotaError, noteOverload, noteSuccess, reserve, type Weight } from '@/lib/aiBudget';
 
 /**
  * Gemini's context window is well over a million tokens, so Notomi skips RAG
@@ -287,8 +288,29 @@ function canTryAnotherModel(error: unknown): boolean {
   );
 }
 
-/** Runs one request through the active model and current stable fallbacks. */
+/**
+ * Runs one request through the active model and current stable fallbacks.
+ *
+ * Also the only door: every AI call in the app arrives here, so this is where
+ * the student's allowance is claimed and where the provider's refusals are
+ * reported back to the budget. Putting it anywhere else would mean trusting
+ * two dozen call sites to remember.
+ */
 async function runWithModelFallback<T>(
+  operation: string,
+  params: Omit<ModelParams, 'model'>,
+  run: (candidate: GenerativeModel) => Promise<T>,
+  weight: Weight = 'standard'
+): Promise<T> {
+  const release = await reserve(weight);
+  try {
+    return await attemptWithModelFallback(operation, params, run);
+  } finally {
+    release();
+  }
+}
+
+async function attemptWithModelFallback<T>(
   operation: string,
   params: Omit<ModelParams, 'model'>,
   run: (candidate: GenerativeModel) => Promise<T>
@@ -332,6 +354,7 @@ async function runWithModelFallback<T>(
         }
       }
       clearModelCooldown(candidate);
+      noteSuccess();
       console.info(`[ai] ${operation} · ${candidate} · ${Date.now() - startedAt}ms`);
       if (candidate !== activeModel) {
         console.info(`[ai] switched from ${activeModel} to ${candidate}.`);
@@ -343,6 +366,9 @@ async function runWithModelFallback<T>(
       logAiFailure(operation, error, candidate);
       if (errorDetails(error).httpStatus === 429 || /quota|RESOURCE_EXHAUSTED/i.test(errorDetails(error).message)) {
         coolDownModel(candidate, error);
+        // Counted only on the last candidate: routing past one busy model is
+        // the system working, not the service being down.
+        if (index === candidates.length - 1) noteOverload();
       }
       if (!canTryAnotherModel(error) || index === candidates.length - 1) throw error;
       console.warn(`[ai] ${candidate} is unavailable; trying ${candidates[index + 1]}.`);
@@ -381,6 +407,12 @@ const AI_UNREACHABLE =
 
 /** Turns an unknown SDK failure into something worth showing a student. */
 function describe(error: unknown): string {
+  // A budget refusal already knows exactly which limit was hit and when it
+  // lifts. Running it through the guesswork below would replace a true,
+  // specific sentence with a generic one about the network — which is the
+  // failure mode this whole module exists to avoid.
+  if (isQuotaError(error)) return error.message;
+
   const raw = error instanceof Error ? error.message : String(error);
   const { httpStatus } = errorDetails(error);
 
@@ -727,7 +759,8 @@ async function generateFromMedia(
             candidate.generateContent([
               { inlineData: { data: toBase64(data), mimeType } },
               { text: prompt },
-            ])
+            ]),
+          'heavy'
         );
         return result.response.text();
       }
