@@ -131,7 +131,13 @@ export type BusyInterval = { day: number; start: number; end: number };
 
 export type Presence = {
   id: string;
-  /** What they are doing, or 'idle' when they stopped. */
+  /**
+   * What they are doing, or 'idle' when they stopped.
+   *
+   * 'reel' is never written any more — Notomi Reel is gone — but a phone that
+   * has not reloaded since can still publish one, and a stale doc outlives its
+   * writer, so the type keeps reading it.
+   */
   status: 'focus' | 'class' | 'reel' | 'idle';
   subjectName: string | null;
   /** When the current block ends, so a stale doc expires by itself. */

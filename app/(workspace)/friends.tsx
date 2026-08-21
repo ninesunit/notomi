@@ -776,7 +776,7 @@ function presenceState(presence: Presence | undefined): { label: string; color: 
   if (presence.status === 'class') {
     return { label: presence.subjectName ? `In Class · ${presence.subjectName}` : 'In Class', color: '#B0443E' };
   }
-  if (presence.status === 'reel') return { label: 'Learning on Notomi Reel', color: '#2E8B57' };
+  if (presence.status === 'reel') return { label: 'Reviewing', color: '#2E8B57' };
   return { label: 'Free', color: '#2E8B57' };
 }
 

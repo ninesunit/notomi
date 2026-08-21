@@ -28,6 +28,14 @@ export function HubTabs<T extends string>({
               <Touchable
                 key={tab.id}
                 accessibilityRole="tab"
+                /*
+                 * Named explicitly, because below the `sm` breakpoint the
+                 * label beside the icon is `hidden` — which is display:none,
+                 * which takes it out of the accessibility tree along with the
+                 * pixels. Without this the phone layout is five unlabelled
+                 * buttons to a screen reader.
+                 */
+                accessibilityLabel={tab.label}
                 accessibilityState={{ selected: active }}
                 // This tab plays its own cue, and only when the selection
                 // actually changes. Touchable contributes the press animation

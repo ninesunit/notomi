@@ -208,8 +208,10 @@ service cloud.firestore {
         allow update: if false;
       }
 
-      // Cached micro-learning cards and their private SRS interaction state.
-      // Discovery content never becomes public merely because Gemini wrote it.
+      // Review Deck cards: concepts lifted from a student's own material, plus
+      // the bookmarks, mastery flags and spaced-repetition schedule they build
+      // up over them. Still named for the feed that first wrote them — see
+      // paths.reviewCards for why the id did not move.
       match /reelCards/{cardId} {
         allow read, write: if isOwner(userId);
       }
@@ -334,11 +336,6 @@ service cloud.firestore {
         allow create, update: if isOwner(userId)
           && request.resource.data.status in ['focus', 'class', 'reel', 'idle'];
       allow delete: if isOwner(userId);
-    }
-
-    match /discoveryCards/{cardId} {
-      allow read: if request.auth != null;
-      allow write: if false;
     }
 
     // Arena uses Firestore listeners as its real-time room channel. A lobby is

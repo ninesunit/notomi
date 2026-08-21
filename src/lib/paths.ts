@@ -89,10 +89,21 @@ export const paths = {
   sharedMaterial: (db: Firestore, uid: string, shareId: string) =>
     doc(db, 'users', uid, 'shared_materials', shareId),
 
-  reelCards: (db: Firestore, uid: string) => collection(db, 'users', uid, 'reelCards'),
-  reelCard: (db: Firestore, uid: string, cardId: string) =>
+  /*
+   * Review Deck cards.
+   *
+   * The collection is still called reelCards on the server. It was written by
+   * Notomi Reel, which is gone, but the documents underneath it are the
+   * student's own concepts, bookmarks, mastery flags and spaced-repetition
+   * schedule. Copying all of that into a differently named collection would
+   * cost one write per card per student for no behaviour a student can see,
+   * and on the free daily write allowance a single semester's library would
+   * be enough to exhaust it. So the stored id stays put and the adapter lives
+   * here: everything above this line says reviewCards.
+   */
+  reviewCards: (db: Firestore, uid: string) => collection(db, 'users', uid, 'reelCards'),
+  reviewCard: (db: Firestore, uid: string, cardId: string) =>
     doc(db, 'users', uid, 'reelCards', cardId),
-  discoveryCards: (db: Firestore) => collection(db, 'discoveryCards'),
   noteCanvases: (db: Firestore, uid: string) =>
     collection(db, 'users', uid, 'note_canvases'),
   noteCanvas: (db: Firestore, uid: string, canvasId: string) =>

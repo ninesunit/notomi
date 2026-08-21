@@ -21,7 +21,8 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Knowledge',
     shortLabel: 'Knowledge',
     icon: 'book-open',
-    legacyPaths: ['/library', '/reader', '/study'],
+    /* /reel is here because the Review Deck is where its cards ended up. */
+    legacyPaths: ['/library', '/reader', '/study', '/reel'],
   },
   {
     href: '/schedule',
@@ -36,12 +37,6 @@ export const NAV_ITEMS: NavItem[] = [
     shortLabel: 'Tasks',
     icon: 'check-square',
     legacyPaths: ['/studio', '/todos', '/focus', '/capture'],
-  },
-  {
-    href: '/reel',
-    label: 'Notomi Reel',
-    shortLabel: 'Reel',
-    icon: 'film',
   },
   {
     href: '/social',

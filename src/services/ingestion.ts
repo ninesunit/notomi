@@ -336,23 +336,12 @@ export async function processUploadedMaterial(
     saveDeadlines(userId, subjectId, subjectName, documentRef.id, metadata?.deadlines ?? []),
   ]);
 
-  // Reel cards are an enhancement, not part of the upload transaction. Let
-  // the student finish immediately while generation continues in the
-  // background; failures remain retryable from the Reel surface.
-  void import('./reel')
-    .then(({ preGenerateDocumentReel }) =>
-      preGenerateDocumentReel({
-        uid: userId,
-        subjectId,
-        subjectName,
-        subjectCode:
-          metadata?.moduleCode ?? (subjectSnap.data()?.moduleCode as string | null) ?? null,
-        documentId: documentRef.id,
-        documentTitle: file.name,
-        text,
-      })
-    )
-    .catch((error) => console.warn('[ingestion] Reel pre-generation was deferred.', error));
+  // Nothing is generated here any more.
+  //
+  // Every upload used to mint six review cards in the background, so a
+  // semester's worth of slides arrived as a few hundred documents nobody had
+  // asked for, each one a write. Cards are now built from the document page
+  // when a student wants that document's deck — see buildDeckForDocument.
 
   return {
     documentId: documentRef.id,

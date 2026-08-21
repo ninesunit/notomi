@@ -1,25 +1,14 @@
-import { Platform, View, type ViewStyle } from 'react-native';
-import { NotomiReel } from '@/components/reel/NotomiReel';
-import { useSafeArea } from '@/hooks/useSafeArea';
+import { Redirect } from 'expo-router';
 
-const WEB_REEL_STYLE =
-  Platform.OS === 'web'
-    ? ({
-        height: '100dvh',
-        maxHeight: '100dvh',
-        overscrollBehaviorY: 'none',
-        touchAction: 'pan-y',
-      } as unknown as ViewStyle)
-    : undefined;
-
-export default function ReelPage() {
-  const insets = useSafeArea();
-  return (
-    <View
-      className="reel-viewport h-full w-full flex-1 overflow-hidden bg-paper"
-      style={[WEB_REEL_STYLE, Platform.OS === 'web' ? undefined : { paddingBottom: insets.bottom }]}
-    >
-      <NotomiReel />
-    </View>
-  );
+/**
+ * Notomi Reel used to live here.
+ *
+ * The feed is gone — the cards it produced are now a Review Deck a student
+ * opens on purpose, inside Knowledge, next to the material they came from.
+ * This route stays behind as a redirect so a bookmark, a home-screen shortcut
+ * or a shared link saved while Reel existed lands somewhere useful instead of
+ * on a blank screen.
+ */
+export default function ReelRedirect() {
+  return <Redirect href="/knowledge?view=review" />;
 }

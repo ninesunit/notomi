@@ -793,19 +793,34 @@ export type GeneratedCard = {
 };
 
 /* ------------------------------------------------------------------ *
- * Notomi Reel
+ * Review Deck
  * ------------------------------------------------------------------ */
 
-export type ReelCategory = 'courses' | 'tech' | 'science' | 'business' | 'general';
-export type ReelFormat = 'fact' | 'quiz' | 'diagram' | 'audio';
-export type ReelOrigin = 'material' | 'course-discovery' | 'global-discovery';
+export type ReviewFormat = 'fact' | 'quiz' | 'diagram' | 'audio';
 
-/** users/{uid}/reel_cards/{cardId} */
-export type ReelCard = {
+/**
+ * Where a card came from.
+ *
+ * 'material' is a concept lifted out of a document the student uploaded, and
+ * is the only origin Notomi still writes. 'discovery' is the legacy origin
+ * used by the retired Reel feed for generic cards unrelated to anyone's
+ * course; it survives in the type so old records still parse, and the deck
+ * only ever surfaces one the student themselves bookmarked or reviewed.
+ */
+export type ReviewOrigin = 'material' | 'discovery';
+
+/**
+ * users/{uid}/reelCards/{cardId}
+ *
+ * The collection id predates the Review Deck. Renaming it would mean copying
+ * every card a student owns — a bulk write for no behavioural gain — so the
+ * stored path stays as it is and only the vocabulary moved. See
+ * paths.reviewCards.
+ */
+export type ReviewCard = {
   id: string;
-  origin: ReelOrigin;
-  format: ReelFormat;
-  category: ReelCategory;
+  origin: ReviewOrigin;
+  format: ReviewFormat;
   title: string;
   body: string;
   takeaway: string;
@@ -825,11 +840,9 @@ export type ReelCard = {
   bookmarked: boolean;
   mastered: boolean;
   srsLevel: number;
-  dwellMs: number;
   timesSeen: number;
   quizAnswered: boolean;
   quizCorrect: boolean | null;
-  xpEarned: number;
   nextReviewAt: Timestamp | null;
   lastSeenAt: Timestamp | null;
   masteredAt: Timestamp | null;
@@ -927,9 +940,8 @@ export type NoteCanvasRecord = {
 };
 
 /** Strict structured output returned by Gemini before Firestore fields are added. */
-export type GeneratedReelCard = {
-  format: ReelFormat;
-  category: ReelCategory;
+export type GeneratedReviewCard = {
+  format: ReviewFormat;
   title: string;
   body: string;
   takeaway: string;

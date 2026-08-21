@@ -311,6 +311,9 @@ export default function SubjectFolder({
             <Link href={readerPath ?? `/reader/${subjectId}`} asChild>
               <Button label="Open Reader" icon="message-circle" size="sm" disabled={!hasText} />
             </Link>
+            <Link href={`/knowledge?tab=review&subjectId=${subjectId}`} asChild>
+              <Button label="Review" icon="layers" variant="secondary" size="sm" />
+            </Link>
             <Link href={`/study?subjectId=${subjectId}`} asChild>
               <Button
                 label="Take Quiz"

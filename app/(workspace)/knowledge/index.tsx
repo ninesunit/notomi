@@ -4,6 +4,7 @@ import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { getDocs, orderBy, query } from 'firebase/firestore';
 import { Icon, useTones } from '@/components/Icon';
 import { KnowledgeTabs, type KnowledgeTab } from '@/components/KnowledgeTabs';
+import { ReviewDeck } from '@/components/review/ReviewDeck';
 import { ScreenScroll } from '@/components/ScreenScroll';
 import { Button, Card, EmptyState, Loading, Notice, PageHeader, Touchable } from '@/components/ui';
 import {
@@ -29,13 +30,22 @@ import {
 import Library from '../library';
 import { subjectInk, subjectTint } from '@/lib/color';
 
-const VALID_TABS: KnowledgeTab[] = ['folders', 'reader', 'vault'];
+const VALID_TABS: KnowledgeTab[] = ['folders', 'reader', 'review', 'vault'];
 
 export default function KnowledgeHub() {
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useLocalSearchParams<{
+    tab?: string;
+    /** What /reel redirects with, so an old bookmark lands on the deck. */
+    view?: string;
+    /** Optional Review Deck scope, set when arriving from a course or a file. */
+    subjectId?: string;
+    docId?: string;
+    docTitle?: string;
+  }>();
   const router = useRouter();
-  const tab = VALID_TABS.includes(params.tab as KnowledgeTab)
-    ? (params.tab as KnowledgeTab)
+  const requested = params.view === 'review' ? 'review' : params.tab;
+  const tab = VALID_TABS.includes(requested as KnowledgeTab)
+    ? (requested as KnowledgeTab)
     : 'folders';
 
   return (
@@ -46,6 +56,12 @@ export default function KnowledgeHub() {
           <Library basePath="/knowledge/subject" />
         ) : tab === 'reader' ? (
           <ReaderDirectory />
+        ) : tab === 'review' ? (
+          <ReviewDeck
+            subjectId={params.subjectId ?? null}
+            documentId={params.docId ?? null}
+            documentTitle={params.docTitle ?? null}
+          />
         ) : (
           <DocumentVault
             onOpen={(subjectId, documentId) =>

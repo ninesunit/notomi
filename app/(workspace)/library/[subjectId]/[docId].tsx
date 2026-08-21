@@ -16,6 +16,7 @@ import type { FileKind, SourceDocument, Subject } from '@/lib/schema';
 import { generateNotes } from '@/services/aiNotes';
 import { getDb } from '@/services/firebase';
 import { getR2FileUrl } from '@/services/r2Storage';
+import { buildDeckForDocument } from '@/services/review';
 
 /**
  * The note reader: full study notes on the left, a grounded assistant on the
@@ -52,6 +53,8 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
   const [error, setError] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [showSource, setShowSource] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [built, setBuilt] = useState<number | null>(null);
 
   const subject = useDocument<Subject>(paths.subject(db, uid, subjectId), [uid, subjectId]);
   const document = useDocument<SourceDocument>(
@@ -71,6 +74,37 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
         : [],
     [record]
   );
+
+  /**
+   * Builds this document's review cards, on request.
+   *
+   * Notomi used to do this to every file the moment it finished uploading,
+   * whether or not anyone ever looked at the cards. Now it happens when a
+   * student asks for the deck, and it happens locally: the concepts are
+   * already written in the material, so picking them out is chunking rather
+   * than reasoning and costs neither an AI request nor a wait.
+   */
+  const buildDeck = useCallback(async () => {
+    if (!record || !subject.data) return;
+    setError(null);
+    setBuilt(null);
+    setBuilding(true);
+    try {
+      const count = await buildDeckForDocument({
+        uid,
+        subject: subject.data,
+        document: record,
+      });
+      setBuilt(count);
+      if (count === 0) {
+        setError('There is not enough readable text in this file to make review cards from.');
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBuilding(false);
+    }
+  }, [record, subject.data, uid]);
 
   const write = useCallback(async () => {
     if (!record) return;
@@ -207,6 +241,15 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
                   onPress={() => setChatOpen(true)}
                 />
               ) : null}
+              <Button
+                label={built ? `${built} cards ready` : 'Build review cards'}
+                icon="layers"
+                variant="secondary"
+                size="sm"
+                loading={building}
+                disabled={building || !hasText}
+                onPress={() => void buildDeck()}
+              />
               {record.r2FileKey || record.r2FileUrl ? (
                 <Button
                   label={sourcePage ? `Open page ${sourcePage}` : 'Open original'}
@@ -217,6 +260,25 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
                 />
               ) : null}
             </View>
+
+            {built ? (
+              <View className="items-start">
+                <Link
+                  href={{
+                    pathname: '/knowledge',
+                    params: {
+                      tab: 'review',
+                      subjectId,
+                      docId,
+                      docTitle: record.title || record.fileName,
+                    },
+                  }}
+                  asChild
+                >
+                  <Button label="Start reviewing" icon="arrow-right" size="sm" />
+                </Link>
+              </View>
+            ) : null}
           </View>
 
           {error ? (
@@ -230,7 +292,7 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
               <View className="flex-row items-center gap-2">
                 <Icon name="external-link" size={15} tone="amber" />
                 <Text className="text-sm font-semibold text-ink">
-                  From Notomi Reel{sourcePage ? ` · Page ${sourcePage}` : ''}
+                  From your Review Deck{sourcePage ? ` · Page ${sourcePage}` : ''}
                 </Text>
               </View>
               {sourceHighlight ? (
