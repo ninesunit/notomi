@@ -11,7 +11,6 @@ export type BackgroundReminderState =
   | 'unconfigured'
   | 'error';
 
-const VAPID_PUBLIC_KEY = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY ?? '';
 const DEVICE_KEY = 'notomi:push-device';
 
 function isIOS(): boolean {
@@ -44,6 +43,12 @@ function applicationServerKey(value: string): ArrayBuffer {
   return buffer;
 }
 
+function sameBytes(left: ArrayBuffer, right: ArrayBuffer): boolean {
+  const a = new Uint8Array(left);
+  const b = new Uint8Array(right);
+  return a.length === b.length && a.every((byte, index) => byte === b[index]);
+}
+
 function deviceId(): string {
   try {
     const existing = localStorage.getItem(DEVICE_KEY);
@@ -71,7 +76,7 @@ async function authenticatedFetch(path: string, init: RequestInit): Promise<Resp
 }
 
 /**
- * Store one compact four-week reminder queue in Cloudflare D1.
+ * Store one compact four-week reminder queue in a per-device Durable Object.
  *
  * This deliberately reuses the already-authenticated R2 Worker and never
  * creates Firebase reminder documents/listeners. A schedule change replaces
@@ -82,7 +87,7 @@ export async function syncBackgroundReminders(
 ): Promise<BackgroundReminderState> {
   if (!browserSupportsPush()) return 'local-only';
   if (isIOS() && !isStandalone()) return 'install-required';
-  if (!R2_WORKER_URL || !VAPID_PUBLIC_KEY) return 'unconfigured';
+  if (!R2_WORKER_URL) return 'unconfigured';
 
   const user = getFirebaseAuth().currentUser;
   // Guest workspaces are wiped on sign-out. Keeping a durable server queue for
@@ -91,18 +96,33 @@ export async function syncBackgroundReminders(
 
   try {
     const registration = await navigator.serviceWorker.ready;
+    const currentDeviceId = deviceId();
+    const keyResponse = await authenticatedFetch(
+      `/push/key?deviceId=${encodeURIComponent(currentDeviceId)}`,
+      { method: 'GET' }
+    );
+    if (!keyResponse.ok) throw new Error(`Reminder key returned ${keyResponse.status}.`);
+    const keyBody = await keyResponse.json() as { publicKey?: string };
+    if (!keyBody.publicKey) throw new Error('Reminder key was missing.');
+
+    const serverKey = applicationServerKey(keyBody.publicKey);
     let subscription = await registration.pushManager.getSubscription();
+    const subscribedKey = subscription?.options.applicationServerKey;
+    if (subscription && subscribedKey && !sameBytes(subscribedKey, serverKey)) {
+      await subscription.unsubscribe();
+      subscription = null;
+    }
     if (!subscription) {
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: applicationServerKey(VAPID_PUBLIC_KEY),
+        applicationServerKey: serverKey,
       });
     }
 
     const response = await authenticatedFetch('/push/sync', {
       method: 'POST',
       body: JSON.stringify({
-        deviceId: deviceId(),
+        deviceId: currentDeviceId,
         subscription: subscription.toJSON(),
         reminders: reminders.slice(0, 64).map((reminder) => ({
           id: reminder.id,

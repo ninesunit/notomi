@@ -34,6 +34,17 @@ bucket_name = "notomi-materials"
 binding = "DRIVE_TOKENS"
 id = "2c94f525b58348248f879c69871da8ae"
 
+# Each installed device owns an isolated, tiny reminder queue and alarm. This
+# avoids a global D1 scan/cron and lets Cloudflare wake only the device that has
+# a reminder due.
+[[durable_objects.bindings]]
+name = "REMINDER_DEVICES"
+class_name = "ReminderDevice"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ReminderDevice"]
+
 [vars]
 R2_BUCKET = "notomi-materials"
 FIREBASE_PROJECT_ID = "notomii"

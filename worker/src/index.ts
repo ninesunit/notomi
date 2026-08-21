@@ -31,11 +31,13 @@
  *
  * Every route requires a Firebase ID token in `Authorization: Bearer <token>`.
  */
+import type { PushSubscription } from '@block65/webcrypto-web-push';
 import {
-  buildPushPayload,
-  type PushSubscription,
-  type VapidKeys,
-} from '@block65/webcrypto-web-push';
+  ReminderDevice,
+  type ScheduledReminderInput,
+} from './reminder-device';
+
+export { ReminderDevice };
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
@@ -295,62 +297,14 @@ async function handleDrive(
 
 /* --------------------------- background push --------------------------- */
 
-type ScheduledReminderInput = {
-  id: string;
-  title: string;
-  body: string;
-  at: number;
-  url?: string;
-};
-
 type PushSyncBody = {
   deviceId?: string;
   subscription?: PushSubscription;
   reminders?: ScheduledReminderInput[];
 };
 
-let schemaPromise: Promise<void> | null = null;
-
 function pushEnabled(env: Env): boolean {
-  return Boolean(
-    env.REMINDERS_DB &&
-      env.VAPID_PUBLIC_KEY &&
-      env.VAPID_PRIVATE_KEY &&
-      env.VAPID_SUBJECT
-  );
-}
-
-/** Also runs in preview deployments, where applying a migration is easy to miss. */
-function ensurePushSchema(env: Env): Promise<void> {
-  if (!schemaPromise) {
-    schemaPromise = env.REMINDERS_DB.batch([
-      env.REMINDERS_DB.prepare(`
-        CREATE TABLE IF NOT EXISTS push_subscriptions (
-          uid TEXT NOT NULL,
-          device_id TEXT NOT NULL,
-          subscription TEXT NOT NULL,
-          updated_at INTEGER NOT NULL,
-          PRIMARY KEY (uid, device_id)
-        )
-      `),
-      env.REMINDERS_DB.prepare(`
-        CREATE TABLE IF NOT EXISTS push_reminders (
-          uid TEXT NOT NULL,
-          device_id TEXT NOT NULL,
-          reminder_id TEXT NOT NULL,
-          title TEXT NOT NULL,
-          body TEXT NOT NULL,
-          fire_at INTEGER NOT NULL,
-          target_url TEXT NOT NULL,
-          PRIMARY KEY (uid, device_id, reminder_id)
-        )
-      `),
-      env.REMINDERS_DB.prepare(
-        'CREATE INDEX IF NOT EXISTS push_reminders_due ON push_reminders (fire_at)'
-      ),
-    ]).then(() => undefined);
-  }
-  return schemaPromise;
+  return Boolean(env.REMINDER_DEVICES);
 }
 
 function validSubscription(value: unknown): value is PushSubscription {
@@ -372,25 +326,35 @@ async function handlePush(
 ): Promise<Response | null> {
   if (!path.startsWith('/push/')) return null;
   if (!pushEnabled(env)) return json({ error: 'background reminders are not configured' }, 501, cors);
-  await ensurePushSchema(env);
+
+  const url = new URL(request.url);
+  const contentLength = Number(request.headers.get('Content-Length') ?? '0');
+  if (Number.isFinite(contentLength) && contentLength > 256 * 1024) {
+    return json({ error: 'reminder queue is too large' }, 413, cors);
+  }
+  const body = request.method === 'GET'
+    ? null
+    : await request.json().catch(() => ({})) as PushSyncBody;
+  const deviceId = request.method === 'GET'
+    ? url.searchParams.get('deviceId') ?? ''
+    : body?.deviceId ?? '';
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(deviceId)) {
+    return json({ error: 'invalid device id' }, 400, cors);
+  }
+  const device = env.REMINDER_DEVICES.getByName(`${uid}:${deviceId}`);
+
+  if (path === '/push/key' && request.method === 'GET') {
+    return json({ publicKey: await device.publicKey() }, 200, cors);
+  }
 
   if (path === '/push/sync' && request.method === 'POST') {
-    const contentLength = Number(request.headers.get('Content-Length') ?? '0');
-    if (Number.isFinite(contentLength) && contentLength > 256 * 1024) {
-      return json({ error: 'reminder queue is too large' }, 413, cors);
-    }
-    const body = (await request.json().catch(() => ({}))) as PushSyncBody;
-    const deviceId = body.deviceId ?? '';
-    if (!/^[A-Za-z0-9_-]{8,80}$/.test(deviceId)) {
-      return json({ error: 'invalid device id' }, 400, cors);
-    }
-    if (!validSubscription(body.subscription)) {
+    if (!validSubscription(body?.subscription)) {
       return json({ error: 'invalid push subscription' }, 400, cors);
     }
 
     const now = Date.now();
     const horizon = now + 32 * 86_400_000;
-    const reminders = (Array.isArray(body.reminders) ? body.reminders : [])
+    const reminders = (Array.isArray(body?.reminders) ? body.reminders : [])
       .filter(
         (entry) =>
           typeof entry?.id === 'string' &&
@@ -402,145 +366,23 @@ async function handlePush(
       )
       .slice(0, 64);
 
-    const statements = [
-      env.REMINDERS_DB.prepare(`
-        INSERT INTO push_subscriptions (uid, device_id, subscription, updated_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(uid, device_id) DO UPDATE SET
-          subscription = excluded.subscription,
-          updated_at = excluded.updated_at
-      `).bind(uid, deviceId, JSON.stringify(body.subscription), now),
-      env.REMINDERS_DB.prepare(
-        'DELETE FROM push_reminders WHERE uid = ? AND device_id = ?'
-      ).bind(uid, deviceId),
-      ...reminders.map((entry) =>
-        env.REMINDERS_DB.prepare(`
-          INSERT INTO push_reminders
-            (uid, device_id, reminder_id, title, body, fire_at, target_url)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          uid,
-          deviceId,
-          entry.id.slice(0, 180),
-          entry.title.slice(0, 160),
-          entry.body.slice(0, 320),
-          Math.round(entry.at),
-          entry.url?.startsWith('/') ? entry.url.slice(0, 240) : '/dashboard'
-        )
-      ),
-    ];
-    await env.REMINDERS_DB.batch(statements);
-    return json({ synced: reminders.length }, 200, cors);
+    const bounded = reminders.map((entry) => ({
+      id: entry.id.slice(0, 180),
+      title: entry.title.slice(0, 160),
+      body: entry.body.slice(0, 320),
+      at: Math.round(entry.at),
+      url: entry.url?.startsWith('/') ? entry.url.slice(0, 240) : '/dashboard',
+    }));
+    const synced = await device.syncReminders(body.subscription, bounded);
+    return json({ synced }, 200, cors);
   }
 
   if (path === '/push/device' && request.method === 'DELETE') {
-    const body = (await request.json().catch(() => ({}))) as { deviceId?: string };
-    const deviceId = body.deviceId ?? '';
-    if (!/^[A-Za-z0-9_-]{8,80}$/.test(deviceId)) {
-      return json({ error: 'invalid device id' }, 400, cors);
-    }
-    await env.REMINDERS_DB.batch([
-      env.REMINDERS_DB.prepare(
-        'DELETE FROM push_reminders WHERE uid = ? AND device_id = ?'
-      ).bind(uid, deviceId),
-      env.REMINDERS_DB.prepare(
-        'DELETE FROM push_subscriptions WHERE uid = ? AND device_id = ?'
-      ).bind(uid, deviceId),
-    ]);
+    await device.clear();
     return json({ removed: true }, 200, cors);
   }
 
   return json({ error: 'not found' }, 404, cors);
-}
-
-type DuePush = {
-  uid: string;
-  device_id: string;
-  reminder_id: string;
-  title: string;
-  body: string;
-  target_url: string;
-  subscription: string;
-  fire_at: number;
-};
-
-async function sendDuePushes(env: Env): Promise<void> {
-  if (!pushEnabled(env)) return;
-  await ensurePushSchema(env);
-
-  const due = await env.REMINDERS_DB.prepare(`
-    SELECT r.uid, r.device_id, r.reminder_id, r.title, r.body, r.target_url, r.fire_at,
-           s.subscription
-    FROM push_reminders r
-    JOIN push_subscriptions s
-      ON s.uid = r.uid AND s.device_id = r.device_id
-    WHERE r.fire_at <= ?
-    ORDER BY r.fire_at ASC
-    LIMIT 40
-  `).bind(Date.now()).all<DuePush>();
-
-  const vapid: VapidKeys = {
-    subject: env.VAPID_SUBJECT,
-    publicKey: env.VAPID_PUBLIC_KEY,
-    privateKey: env.VAPID_PRIVATE_KEY,
-  };
-
-  const outcomes = await Promise.all(due.results.map(async (row) => {
-    try {
-      const subscription = JSON.parse(row.subscription) as PushSubscription;
-      const payload = await buildPushPayload(
-        {
-          data: JSON.stringify({
-            title: row.title,
-            body: row.body,
-            url: row.target_url,
-            tag: row.reminder_id,
-          }),
-          options: { ttl: 60 * 60 },
-        },
-        subscription,
-        vapid
-      );
-      try {
-        const response = await fetch(subscription.endpoint, payload);
-        if (response.ok) return { row, result: 'delivered' as const };
-        if (response.status === 404 || response.status === 410) {
-          return { row, result: 'expired' as const };
-        }
-        return { row, result: 'retry' as const };
-      } catch {
-        // A transient network failure should not delete a healthy device.
-        return { row, result: 'retry' as const };
-      }
-    } catch {
-      // JSON or payload construction failed: this subscription cannot recover.
-      return { row, result: 'expired' as const };
-    }
-  }));
-
-  const statements = [];
-  for (const { row, result } of outcomes) {
-    // Non-expired provider errors retry for up to an hour. This absorbs a push
-    // service outage without allowing a dead message to block the queue forever.
-    if (result === 'retry' && Date.now() - row.fire_at <= 60 * 60_000) continue;
-    statements.push(
-      env.REMINDERS_DB.prepare(`
-        DELETE FROM push_reminders
-        WHERE uid = ? AND device_id = ? AND reminder_id = ?
-      `).bind(row.uid, row.device_id, row.reminder_id)
-    );
-    if (result === 'expired') {
-      statements.push(
-        env.REMINDERS_DB.prepare(
-          'DELETE FROM push_reminders WHERE uid = ? AND device_id = ?'
-        ).bind(row.uid, row.device_id),
-        env.REMINDERS_DB.prepare(
-          'DELETE FROM push_subscriptions WHERE uid = ? AND device_id = ?'
-        ).bind(row.uid, row.device_id)
-      );
-    }
-  }
-  if (statements.length) await env.REMINDERS_DB.batch(statements);
 }
 
 /* --------------------------------- main --------------------------------- */
@@ -569,9 +411,7 @@ export default {
             enabled: driveEnabled(env),
           },
           push: {
-            database: Boolean(env.REMINDERS_DB),
-            publicKey: Boolean(env.VAPID_PUBLIC_KEY),
-            privateKey: Boolean(env.VAPID_PRIVATE_KEY),
+            durableObjects: Boolean(env.REMINDER_DEVICES),
             enabled: pushEnabled(env),
           },
         },
@@ -616,7 +456,7 @@ export default {
       return json({ error: `invalid token: ${(error as Error).message}` }, 401, cors);
     }
 
-    // Drive linking is authenticated the same way and scoped to the same uid.
+    // Each reminder queue is authenticated and namespaced to this uid/device.
     const pushResponse = await handlePush(url.pathname, request, env, uid, cors).catch(
       (error: unknown) => json({ error: (error as Error).message }, 500, cors)
     );
@@ -703,9 +543,5 @@ export default {
     } catch (error) {
       return json({ error: (error as Error).message }, 500, cors);
     }
-  },
-
-  async scheduled(_controller: ScheduledController, env: Env, context: ExecutionContext) {
-    context.waitUntil(sendDuePushes(env));
   },
 };
