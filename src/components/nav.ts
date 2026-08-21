@@ -8,6 +8,14 @@ export type NavItem = {
   legacyPaths?: string[];
 };
 
+/**
+ * Five surfaces, and Settings pinned below them.
+ *
+ * Notomi Reel was a sixth. It duplicated flashcards, the reader and spaced
+ * repetition while adding an infinite feed to a product whose whole claim is
+ * that studying should feel purposeful. Its cards live on, in Knowledge, in
+ * sessions a student starts deliberately.
+ */
 export const NAV_ITEMS: NavItem[] = [
   {
     href: '/dashboard',
@@ -21,7 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Knowledge',
     shortLabel: 'Knowledge',
     icon: 'book-open',
-    legacyPaths: ['/library', '/reader', '/study'],
+    legacyPaths: ['/library', '/reader', '/study', '/reel'],
   },
   {
     href: '/schedule',
@@ -36,12 +44,6 @@ export const NAV_ITEMS: NavItem[] = [
     shortLabel: 'Tasks',
     icon: 'check-square',
     legacyPaths: ['/studio', '/todos', '/focus', '/capture'],
-  },
-  {
-    href: '/reel',
-    label: 'Notomi Reel',
-    shortLabel: 'Reel',
-    icon: 'film',
   },
   {
     href: '/social',

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  getDocs,
   onSnapshot,
   type DocumentReference,
   type Query,
@@ -49,6 +50,56 @@ export function useCollection<T>(
 }
 
 /** Real-time single-document subscription. */
+/**
+ * A collection read once, not watched.
+ *
+ * The listener in `useCollection` is right for data that changes while you are
+ * looking at it — a chat, a room, a subject someone else is editing. It is
+ * wrong for a list you opened to work through, where every card kept open a
+ * subscription and every write anywhere in the collection billed a re-read to
+ * everyone.
+ *
+ * `refresh` is the other half of the trade: without a listener, the caller
+ * re-reads after its own mutations.
+ */
+export function useQueryOnce<T>(
+  query: Query<DocumentData> | null,
+  deps: unknown[]
+): State<T[]> & { refresh: () => void } {
+  const [state, setState] = useState<State<T[]>>({ data: [], loading: true, error: null });
+  const [nonce, setNonce] = useState(0);
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
+  useEffect(() => {
+    const current = queryRef.current;
+    if (!current) {
+      setState({ data: [], loading: false, error: null });
+      return;
+    }
+    let active = true;
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    getDocs(current)
+      .then((snapshot) => {
+        if (!active) return;
+        setState({
+          data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as T),
+          loading: false,
+          error: null,
+        });
+      })
+      .catch((error) => active && setState({ data: [], loading: false, error }));
+
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps, nonce]);
+
+  return { ...state, refresh: () => setNonce((value) => value + 1) };
+}
+
 export function useDocument<T>(
   ref: DocumentReference<DocumentData> | null,
   deps: unknown[]

@@ -17,7 +17,7 @@ import type {
   ExtractedClass,
   ExtractedMetadata,
   GeneratedCard,
-  GeneratedReelCard,
+  GeneratedReviewCard,
   LectureRundown,
   OpenQuestion,
   PodcastLine,
@@ -559,10 +559,16 @@ export async function generateProse(prompt: string, temperature = 0.4): Promise<
 }
 
 /* ------------------------------------------------------------------ *
- * Notomi Reel
- * ------------------------------------------------------------------ */
+ * Review deck
+ * ------------------------------------------------------------------ *
+ *
+ * One function, called only when a student asks for a deck. The feed's other
+ * two requests are gone: discovery cards invented content nobody had uploaded,
+ * and the per-card elaboration spent a request every time someone paused on a
+ * card they were already reading.
+ */
 
-const reelCardSchema = Schema.array({
+const reviewCardSchema = Schema.array({
   items: Schema.object({
     properties: {
       format: Schema.string({ description: 'fact, quiz, diagram, or audio' }),
@@ -589,7 +595,7 @@ const reelCardSchema = Schema.array({
   }),
 });
 
-function normaliseReelCards(value: unknown): GeneratedReelCard[] {
+function normaliseReviewCards(value: unknown): GeneratedReviewCard[] {
   if (!Array.isArray(value)) return [];
   const formats = new Set(['fact', 'quiz', 'diagram', 'audio']);
   const categories = new Set(['courses', 'tech', 'science', 'business', 'general']);
@@ -602,7 +608,7 @@ function normaliseReelCards(value: unknown): GeneratedReelCard[] {
     if (!title || !body) return [];
 
     const format = formats.has(String(card.format))
-      ? (String(card.format) as GeneratedReelCard['format'])
+      ? (String(card.format) as GeneratedReviewCard['format'])
       : 'fact';
     const options = Array.isArray(card.options)
       ? card.options.filter((option): option is string => typeof option === 'string').slice(0, 4)
@@ -612,7 +618,7 @@ function normaliseReelCards(value: unknown): GeneratedReelCard[] {
     return [{
       format,
       category: categories.has(String(card.category))
-        ? (String(card.category) as GeneratedReelCard['category'])
+        ? (String(card.category) as GeneratedReviewCard['category'])
         : 'general',
       title,
       body,
@@ -639,23 +645,23 @@ function normaliseReelCards(value: unknown): GeneratedReelCard[] {
   });
 }
 
-export async function generateMaterialReelCards(input: {
+export async function generateMaterialReviewCards(input: {
   subjectName: string;
   courseCode: string | null;
   documentTitle: string;
   text: string;
   count?: number;
-}): Promise<GeneratedReelCard[]> {
+}): Promise<GeneratedReviewCard[]> {
   const count = Math.max(3, Math.min(8, input.count ?? 6));
-  const parsed = await generateJson<GeneratedReelCard[]>(
+  const parsed = await generateJson<GeneratedReviewCard[]>(
     {
       generationConfig: {
         responseMimeType: 'application/json',
-        responseSchema: reelCardSchema,
+        responseSchema: reviewCardSchema,
         temperature: 0.45,
       },
     },
-    `Turn this university material into ${count} standalone micro-learning cards for a vertical knowledge feed.
+    `Turn this university material into ${count} standalone revision cards.
 
 COURSE: ${input.courseCode || input.subjectName}
 DOCUMENT: ${input.documentTitle}
@@ -673,106 +679,12 @@ Rules:
 
 SOURCE:
 ${input.text.slice(0, MAX_CONTEXT_CHARS)}`,
-    (value): value is GeneratedReelCard[] => Array.isArray(value)
+    (value): value is GeneratedReviewCard[] => Array.isArray(value)
   );
 
-  const cards = normaliseReelCards(parsed);
-  if (cards.length === 0) throw new AiError('No usable Reel cards came back from this material.');
+  const cards = normaliseReviewCards(parsed);
+  if (cards.length === 0) throw new AiError('No usable review cards came back from this material.');
   return cards;
-}
-
-export async function generateDiscoveryReelCards(input: {
-  courseCodes: string[];
-  category: 'all' | 'courses' | 'tech' | 'science' | 'business' | 'general';
-  count?: number;
-}): Promise<GeneratedReelCard[]> {
-  const count = Math.max(4, Math.min(8, input.count ?? 6));
-  const focus =
-    input.category === 'courses'
-      ? `the university courses ${input.courseCodes.join(', ') || 'the student is currently taking'}`
-      : input.category === 'tech'
-        ? 'technology and artificial intelligence'
-        : input.category === 'science'
-          ? 'general science'
-          : input.category === 'business'
-            ? 'business and finance'
-            : input.category === 'general'
-              ? 'high-value general academic knowledge'
-              : `a balanced mix of ${input.courseCodes.join(', ') || 'university study'}, technology, science, and business`;
-
-  const parsed = await generateJson<GeneratedReelCard[]>(
-    {
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: reelCardSchema,
-        temperature: 0.75,
-      },
-    },
-    `Generate ${count} accurate discovery micro-learning cards about ${focus}.
-
-Rules:
-- Mix fact, quiz, diagram, and audio formats.
-- Each card teaches one useful concept in under 30 seconds.
-- Course supplements should teach foundational concepts plausibly relevant to the listed course codes, but never claim they came from the student's files.
-- Quiz cards have exactly four plausible options and one correct zero-based index.
-- Keep "sourceQuote" empty and omit pageNumber because these are discovery cards.
-- Use category courses, tech, science, business, or general accurately.
-- No time-sensitive claims, citations, raw URLs, emojis, or markdown.
-- Return fresh concepts rather than minor rewordings of one idea.`,
-    (value): value is GeneratedReelCard[] => Array.isArray(value)
-  );
-
-  const cards = normaliseReelCards(parsed).map((card) => ({
-    ...card,
-    sourceQuote: null,
-    pageNumber: null,
-  }));
-  if (cards.length === 0) throw new AiError('No discovery cards could be generated just now.');
-  return cards;
-}
-
-export async function streamReelElaboration(
-  input: { title: string; body: string; takeaway: string; sourceContext?: string | null },
-  onText: (completeText: string) => void
-): Promise<string> {
-  const prompt = `Break down this micro-learning card for a university student.
-
-Use exactly these Markdown headings:
-## Plain-English Summary
-## Practical Example
-## Memory Hook
-
-Keep each section concise, grounded in the supplied source context when present, and do not use emojis. Never invent a citation or page number.
-
-CARD: ${input.title}
-${input.body}
-TAKEAWAY: ${input.takeaway}
-  ${input.sourceContext ? `SOURCE CONTEXT:\n${input.sourceContext.slice(0, 12_000)}` : ''}`;
-
-  try {
-    const complete = await withAiResponseCache(
-      {
-        namespace: 'reel-elaboration',
-        payload: JSON.stringify({ models: MODEL_POOL, prompt }),
-        ttlMs: 30 * 24 * 60 * 60 * 1000,
-      },
-      () =>
-        runWithModelFallback('reel elaboration', {}, async (candidate) => {
-          const result = await candidate.generateContentStream(prompt);
-          let streamed = '';
-          for await (const chunk of result.stream) {
-            streamed += chunk.text();
-            onText(streamed);
-          }
-          return streamed.trim();
-        })
-    );
-    // A cached response has no stream chunks, so still update the drawer once.
-    onText(complete);
-    return complete;
-  } catch (error) {
-    throw new AiError(describe(error), error);
-  }
 }
 
 /* ------------------------------------------------------------------ *

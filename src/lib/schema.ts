@@ -793,19 +793,31 @@ export type GeneratedCard = {
 };
 
 /* ------------------------------------------------------------------ *
- * Notomi Reel
+ * Review deck
  * ------------------------------------------------------------------ */
 
-export type ReelCategory = 'courses' | 'tech' | 'science' | 'business' | 'general';
-export type ReelFormat = 'fact' | 'quiz' | 'diagram' | 'audio';
-export type ReelOrigin = 'material' | 'course-discovery' | 'global-discovery';
+export type ReviewCategory = 'courses' | 'tech' | 'science' | 'business' | 'general';
+export type ReviewFormat = 'fact' | 'quiz' | 'diagram' | 'audio';
 
-/** users/{uid}/reel_cards/{cardId} */
-export type ReelCard = {
+/**
+ * Where a card came from. Only `material` is produced now — a card lifted from
+ * something the student uploaded. The discovery values remain because accounts
+ * still hold cards written when the feed existed, and a union that cannot
+ * describe stored data is a union that lies.
+ */
+export type ReviewOrigin = 'material' | 'course-discovery' | 'global-discovery';
+
+/**
+ * users/{uid}/reelCards/{cardId}
+ *
+ * The collection keeps its old name. Renaming it would mean migrating every
+ * card a student already has to gain nothing this comment cannot say.
+ */
+export type ReviewCard = {
   id: string;
-  origin: ReelOrigin;
-  format: ReelFormat;
-  category: ReelCategory;
+  origin: ReviewOrigin;
+  format: ReviewFormat;
+  category: ReviewCategory;
   title: string;
   body: string;
   takeaway: string;
@@ -825,7 +837,8 @@ export type ReelCard = {
   bookmarked: boolean;
   mastered: boolean;
   srsLevel: number;
-  dwellMs: number;
+  /** Written only by the feed that no longer exists; read for old cards. */
+  dwellMs?: number;
   timesSeen: number;
   quizAnswered: boolean;
   quizCorrect: boolean | null;
@@ -927,9 +940,9 @@ export type NoteCanvasRecord = {
 };
 
 /** Strict structured output returned by Gemini before Firestore fields are added. */
-export type GeneratedReelCard = {
-  format: ReelFormat;
-  category: ReelCategory;
+export type GeneratedReviewCard = {
+  format: ReviewFormat;
+  category: ReviewCategory;
   title: string;
   body: string;
   takeaway: string;

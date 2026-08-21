@@ -1,25 +1,13 @@
-import { Platform, View, type ViewStyle } from 'react-native';
-import { NotomiReel } from '@/components/reel/NotomiReel';
-import { useSafeArea } from '@/hooks/useSafeArea';
+import { Redirect } from 'expo-router';
 
-const WEB_REEL_STYLE =
-  Platform.OS === 'web'
-    ? ({
-        height: '100dvh',
-        maxHeight: '100dvh',
-        overscrollBehaviorY: 'none',
-        touchAction: 'pan-y',
-      } as unknown as ViewStyle)
-    : undefined;
-
-export default function ReelPage() {
-  const insets = useSafeArea();
-  return (
-    <View
-      className="reel-viewport h-full w-full flex-1 overflow-hidden bg-paper"
-      style={[WEB_REEL_STYLE, Platform.OS === 'web' ? undefined : { paddingBottom: insets.bottom }]}
-    >
-      <NotomiReel />
-    </View>
-  );
+/**
+ * The feed is gone; the cards are not.
+ *
+ * Kept as a redirect rather than deleted so a bookmark, a home-screen shortcut
+ * or a shared link from when this was a surface still lands somewhere real.
+ * `?view=review` rather than `?tab=` because that is the address the removal
+ * was specified against; the hub accepts both.
+ */
+export default function ReelRedirect() {
+  return <Redirect href={'/knowledge?view=review' as never} />;
 }

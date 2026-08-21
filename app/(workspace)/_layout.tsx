@@ -106,7 +106,7 @@ function WorkspaceShell() {
   }, [uid]);
 
   useEffect(() => {
-    if (!uid || !sharePresence || pathname.startsWith('/tasks') || pathname.startsWith('/reel')) return;
+    if (!uid || !sharePresence || pathname.startsWith('/tasks')) return;
     const publishCurrentClass = () => {
       const now = new Date();
       const day = (now.getDay() + 6) % 7;

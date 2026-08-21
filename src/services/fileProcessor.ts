@@ -192,7 +192,7 @@ async function extractPdf(data: ArrayBuffer): Promise<ParsedFile> {
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
-      // Keep the physical page boundary in the stored corpus. Reel cards and
+      // Keep the physical page boundary in the stored corpus. Review cards and
       // Reader deep links can then cite an exact page without guessing from a
       // character offset, while every existing text consumer still receives
       // ordinary readable text.

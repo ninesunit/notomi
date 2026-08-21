@@ -230,7 +230,7 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
               <View className="flex-row items-center gap-2">
                 <Icon name="external-link" size={15} tone="amber" />
                 <Text className="text-sm font-semibold text-ink">
-                  From Notomi Reel{sourcePage ? ` · Page ${sourcePage}` : ''}
+                  From your review deck{sourcePage ? ` · Page ${sourcePage}` : ''}
                 </Text>
               </View>
               {sourceHighlight ? (

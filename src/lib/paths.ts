@@ -89,10 +89,14 @@ export const paths = {
   sharedMaterial: (db: Firestore, uid: string, shareId: string) =>
     doc(db, 'users', uid, 'shared_materials', shareId),
 
+  /**
+   * Review cards. Still named for the feed they were built for, because
+   * renaming the collection would mean migrating every card a student already
+   * has to gain nothing this comment cannot say.
+   */
   reelCards: (db: Firestore, uid: string) => collection(db, 'users', uid, 'reelCards'),
   reelCard: (db: Firestore, uid: string, cardId: string) =>
     doc(db, 'users', uid, 'reelCards', cardId),
-  discoveryCards: (db: Firestore) => collection(db, 'discoveryCards'),
   noteCanvases: (db: Firestore, uid: string) =>
     collection(db, 'users', uid, 'note_canvases'),
   noteCanvas: (db: Firestore, uid: string, canvasId: string) =>

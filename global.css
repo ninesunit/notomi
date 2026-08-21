@@ -136,22 +136,9 @@
 }
 
 /*
- * React Native Web filters a few browser-only style keys from View/ScrollView.
- * These named classes keep Reel's gesture boundary explicit at the actual
- * scrolling surface, in addition to the document-level guard above.
+ * React Native Web filters a few browser-only style keys from View/ScrollView,
+ * so the canvas states its own gesture boundary by class name.
  */
-.reel-viewport {
-  overscroll-behavior-y: none;
-  touch-action: pan-y;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.reel-snap {
-  scroll-snap-type: y mandatory;
-  overscroll-behavior-y: none;
-  touch-action: pan-y;
-}
-
 .notes-canvas {
   touch-action: none;
   overscroll-behavior: none;

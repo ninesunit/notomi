@@ -1,11 +1,12 @@
 import { useRouter } from 'expo-router';
 import { HubTabs } from './HubTabs';
 
-export type KnowledgeTab = 'folders' | 'reader' | 'vault' | 'notes';
+export type KnowledgeTab = 'folders' | 'reader' | 'review' | 'vault' | 'notes';
 
 const KNOWLEDGE_TABS = [
   { id: 'folders', label: 'Course Folders', icon: 'book-open' },
   { id: 'reader', label: 'Open Reader', icon: 'message-circle' },
+  { id: 'review', label: 'Review', icon: 'layers' },
   { id: 'vault', label: 'Document Vault', icon: 'folder-kanban' },
   { id: 'notes', label: 'Notomi Notes', icon: 'pen-tool' },
 ] as const;

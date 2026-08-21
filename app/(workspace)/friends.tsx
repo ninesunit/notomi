@@ -776,7 +776,9 @@ function presenceState(presence: Presence | undefined): { label: string; color: 
   if (presence.status === 'class') {
     return { label: presence.subjectName ? `In Class · ${presence.subjectName}` : 'In Class', color: '#B0443E' };
   }
-  if (presence.status === 'reel') return { label: 'Learning on Notomi Reel', color: '#2E8B57' };
+  // Nothing writes 'reel' any more; a presence doc from before the feed was
+  // removed can still be read for a few minutes, so it keeps a sensible label.
+  if (presence.status === 'reel') return { label: 'Studying', color: '#2E8B57' };
   return { label: 'Free', color: '#2E8B57' };
 }
 
