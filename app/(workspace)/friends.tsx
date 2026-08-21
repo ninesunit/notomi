@@ -39,6 +39,7 @@ import {
   type Profile,
 } from '@/services/social';
 import { universityLabel, universitySearchKey } from '@/services/universities';
+import { TINT, subjectInk, subjectTint } from '@/lib/color';
 
 type DirectoryFilter = 'all' | 'university' | 'classmates';
 
@@ -661,7 +662,7 @@ function StudentCard({
               </View>
             ) : null}
           </View>
-          <Text className="mt-1 text-xs font-medium" style={{ color: state.color }}>{state.label}</Text>
+          <Text className="mt-1 text-xs font-medium" style={{ color: subjectInk(state.color) }}>{state.label}</Text>
         </View>
       </View>
       <View className="flex-row flex-wrap items-center gap-2">{actions}</View>
@@ -685,8 +686,8 @@ function Avatar({
       {avatarUrl ? (
         <Image source={{ uri: avatarUrl }} className="h-12 w-12 rounded-full" />
       ) : (
-        <View className="h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: `${color}24` }}>
-          <Text className="text-base font-bold" style={{ color }}>{name.charAt(0).toUpperCase()}</Text>
+        <View className="h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: subjectTint(color, TINT.fill) }}>
+          <Text className="text-base font-bold" style={{ color: subjectInk(color) }}>{name.charAt(0).toUpperCase()}</Text>
         </View>
       )}
       {statusColor ? (

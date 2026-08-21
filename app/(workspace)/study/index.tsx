@@ -18,6 +18,7 @@ import {
   downloadAnkiDeck,
 } from '@/services/ankiExport';
 import { logSession } from '@/services/sessions';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 type Phase = 'choosing' | 'generating' | 'active' | 'results';
 
@@ -483,9 +484,9 @@ export default function StudyCenter() {
               >
                 <View
                   className="h-10 w-10 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: `${candidate.color || '#B4552D'}1A` }}
+                  style={{ backgroundColor: subjectTint(candidate.color || '#B4552D', 0.1) }}
                 >
-                  <Icon name="book-open" size={16} color={candidate.color || tones.accent} />
+                  <Icon name="book-open" size={16} color={subjectInk(candidate.color || '#B4552D')} />
                 </View>
 
                 <View className="flex-1 gap-1">

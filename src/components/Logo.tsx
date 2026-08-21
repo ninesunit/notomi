@@ -1,5 +1,7 @@
 import Svg, { Path, Rect } from 'react-native-svg';
 
+import { useTheme } from '@/lib/theme';
+
 /**
  * The Notomi mark: an open academic workspace guided by one intelligent signal.
  *
@@ -8,9 +10,15 @@ import Svg, { Path, Rect } from 'react-native-svg';
  * co-pilot. The drawing stays deliberately simple so it remains legible as a
  * 16 px favicon as well as a full-size app icon.
  */
-export function Logo({ size = 32, tone = 'ink' }: { size?: number; tone?: 'ink' | 'paper' }) {
-  const surface = tone === 'ink' ? '#1B1A17' : '#F7F5EE';
-  const page = tone === 'ink' ? '#F7F5EE' : '#1B1A17';
+export function Logo({ size = 32, tone }: { size?: number; tone?: 'ink' | 'paper' }) {
+  // The mark is a tile, and a tile has to be able to be seen. Its dark ground
+  // is within a shade of the dark theme's own surface, so on that ground the
+  // tile would dissolve and leave the pages floating. Inverting by default is
+  // how an app icon behaves on a dark home screen; an explicit tone still wins.
+  const theme = useTheme();
+  const resolved = tone ?? (theme === 'dark' ? 'paper' : 'ink');
+  const surface = resolved === 'ink' ? '#1B1A17' : '#F7F5EE';
+  const page = resolved === 'ink' ? '#F7F5EE' : '#1B1A17';
   const accent = '#B4552D';
 
   return (

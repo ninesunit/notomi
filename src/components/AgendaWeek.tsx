@@ -10,6 +10,7 @@ import {
 } from '@/lib/schema';
 import { feedback } from '@/lib/sound';
 import type { ResolvedClass } from '@/services/timetable';
+import { TINT, subjectInk, subjectTint } from '@/lib/color';
 
 /**
  * The week as a list, one row per day.
@@ -150,7 +151,7 @@ function ClassChip({
       }
       className="overflow-hidden rounded-lg px-2.5 py-1"
       style={{
-        backgroundColor: `${block.color}1A`,
+        backgroundColor: subjectTint(block.color, 0.1),
         borderLeftWidth: 3,
         borderLeftColor: block.color,
       }}
@@ -206,9 +207,9 @@ function RoutineChip({ block, onPress }: { block: RoutineBlock; onPress?: () => 
           : undefined
       }
       className="flex-row items-center gap-2 rounded-lg border border-dashed px-2.5 py-1.5"
-      style={{ borderColor: `${block.color}59`, backgroundColor: `${block.color}0F` }}
+      style={{ borderColor: subjectTint(block.color, TINT.edge), backgroundColor: subjectTint(block.color, TINT.wash) }}
     >
-      <Icon name={meta?.icon ?? 'circle'} size={12} color={block.color} />
+      <Icon name={meta?.icon ?? 'circle'} size={12} color={subjectInk(block.color)} />
       <Text className="flex-1 text-[12px] font-medium text-muted" numberOfLines={1}>
         {block.title}
       </Text>
@@ -242,7 +243,7 @@ export function NowLine({ classes }: { classes: ResolvedClass[] }) {
   return (
     <View
       className="flex-row items-center gap-2.5 rounded-xl px-3.5 py-2.5"
-      style={{ backgroundColor: `${block.color}1A` }}
+      style={{ backgroundColor: subjectTint(block.color, 0.1) }}
     >
       <View className="h-2 w-2 rounded-full" style={{ backgroundColor: block.color }} />
       <Text className="text-[11px] font-bold uppercase tracking-wider" style={{ color: block.color }}>

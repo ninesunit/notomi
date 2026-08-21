@@ -4,6 +4,7 @@ import { Icon } from '@/components/Icon';
 import { DEFAULT_SUBJECT_ICON, type Subject } from '@/lib/schema';
 import { FadeIn } from './motion';
 import { Touchable } from '@/components/ui';
+import { TINT, subjectInk, subjectTint } from '@/lib/color';
 
 /**
  * A subject folder tile.
@@ -36,7 +37,7 @@ export function SubjectCard({
   return (
     <View
       className="overflow-hidden rounded-2xl border border-line"
-      style={{ backgroundColor: `${color}0F` }}
+      style={{ backgroundColor: subjectTint(color, TINT.wash) }}
     >
       <View className="h-1.5 w-full" style={{ backgroundColor: color }} />
 
@@ -49,10 +50,10 @@ export function SubjectCard({
           <View className="flex-row items-start justify-between gap-3">
             <View
               className="h-11 w-11 items-center justify-center rounded-xl"
-              style={{ backgroundColor: `${color}24` }}
+              style={{ backgroundColor: subjectTint(color, TINT.fill) }}
             >
               {/* Falls back for every subject made before the picker existed. */}
-              <Icon name={(subject.icon ?? DEFAULT_SUBJECT_ICON) as never} size={18} color={color} />
+              <Icon name={(subject.icon ?? DEFAULT_SUBJECT_ICON) as never} size={18} color={subjectInk(color)} />
             </View>
 
             {/* Space reserved for the overlaid menu button so the arrow never
@@ -88,7 +89,7 @@ export function SubjectCard({
             {subject.tag ? (
               <View
                 className="rounded-full px-2 py-0.5"
-                style={{ backgroundColor: `${color}24` }}
+                style={{ backgroundColor: subjectTint(color, TINT.fill) }}
               >
                 <Text className="text-[11px] font-semibold" style={{ color }}>
                   {subject.tag}

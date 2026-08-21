@@ -12,6 +12,7 @@ import {
   type Profile,
 } from '@/services/social';
 import { universityLabel } from '@/services/universities';
+import { TINT, subjectTint } from '@/lib/color';
 
 export default function PublicProfilePage() {
   const router = useRouter();
@@ -150,7 +151,7 @@ function PublicAvatar({ profile, size }: { profile: Profile; size: number }) {
   return (
     <View
       className="items-center justify-center rounded-full"
-      style={{ width: size, height: size, backgroundColor: `${color}24` }}
+      style={{ width: size, height: size, backgroundColor: subjectTint(color, TINT.fill) }}
     >
       <Text className="font-heading text-2xl font-bold" style={{ color }}>
         {(profile.displayName || 'S').charAt(0).toUpperCase()}

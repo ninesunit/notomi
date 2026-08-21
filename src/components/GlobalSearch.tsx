@@ -246,7 +246,7 @@ export function GlobalSearch() {
             onPress={() => setOpen(false)}
             focusable={false}
             style={StyleSheet.absoluteFill}
-            className="bg-ink/40"
+            className="bg-scrim/40"
           />
 
           <View className="w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-surface">

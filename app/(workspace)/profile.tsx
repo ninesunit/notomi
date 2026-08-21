@@ -28,6 +28,7 @@ import {
   uploadProfileImage,
 } from '@/services/r2Storage';
 import { searchUniversities, universityLabel, type University } from '@/services/universities';
+import { TINT, subjectInk, subjectTint } from '@/lib/color';
 
 const AVATAR_PRESETS = ['#B4552D', '#2E6F5E', '#4C5FA8', '#8A4B86', '#2B7A78'];
 
@@ -184,9 +185,9 @@ function ProfileAvatar({
   return (
     <View
       className="items-center justify-center rounded-full"
-      style={{ width: size, height: size, backgroundColor: `${color}24` }}
+      style={{ width: size, height: size, backgroundColor: subjectTint(color, TINT.fill) }}
     >
-      <Text className="text-2xl font-bold" style={{ color }}>
+      <Text className="text-2xl font-bold" style={{ color: subjectInk(color) }}>
         {name.charAt(0).toUpperCase()}
       </Text>
     </View>
@@ -427,9 +428,13 @@ function EditProfileModal({
               accessibilityLabel={`Use avatar colour ${preset}`}
               onPress={() => setAvatarPreset(preset)}
               className="h-10 w-10 items-center justify-center rounded-full"
-              style={{ backgroundColor: `${preset}24`, borderWidth: avatarPreset === preset ? 2 : 0, borderColor: preset }}
+              style={{
+                backgroundColor: subjectTint(preset, TINT.fill),
+                borderWidth: avatarPreset === preset ? 2 : 0,
+                borderColor: subjectInk(preset),
+              }}
             >
-              {avatarPreset === preset ? <Icon name="check" size={15} color={preset} /> : null}
+              {avatarPreset === preset ? <Icon name="check" size={15} color={subjectInk(preset)} /> : null}
             </Pressable>
           ))}
         </View>

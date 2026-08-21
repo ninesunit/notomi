@@ -1277,7 +1277,7 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
   return (
     <View
       nativeID="notomi-notes-canvas"
-      className="notes-canvas relative min-h-0 flex-1 overflow-hidden bg-paper"
+      className="notes-canvas relative min-h-0 flex-1 overflow-hidden bg-canvas"
       style={[
         NOTE_STYLE,
         {
@@ -1451,7 +1451,12 @@ export function NotomiNotes({ notebookId, initialPageId }: { notebookId: string;
                 accessibilityLabel={`Use ${entry} ink`}
                 accessibilityState={{ selected: color === entry }}
                 onPress={() => setColor(entry)}
-                className={`h-6 w-6 items-center justify-center rounded-full ${color === entry ? 'border-2 border-accent' : ''}`}
+                // On the paper it draws on, not on the toolbar: the darkest pen
+                // is all but invisible against dark chrome, and lifting the
+                // swatch to suit the toolbar would misreport what the pen lays
+                // down. The canvas does not change with the theme, so neither
+                // does the swatch's honesty.
+                className={`h-6 w-6 items-center justify-center rounded-full bg-canvas ${color === entry ? 'border-2 border-accent' : ''}`}
               >
                 <View className="h-4 w-4 rounded-full" style={{ backgroundColor: entry }} />
               </Pressable>

@@ -118,7 +118,7 @@ export function DatePicker({
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <View className="flex-1 items-center justify-center bg-ink/40 px-5">
+        <View className="flex-1 items-center justify-center bg-scrim/40 px-5">
           <View className="w-full max-w-sm gap-4 rounded-2xl border border-line bg-surface p-5">
             <View className="flex-row items-center justify-between">
               <Text className="text-[15px] font-semibold text-ink">Pick a due date</Text>

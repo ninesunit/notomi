@@ -14,6 +14,7 @@ import type { Flashcard, SourceDocument, Subject } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { deckStats, deleteDeck, resetDeck, saveGeneratedCards, setCardStatus, studyOrder } from '@/services/flashcards';
 import { logSession } from '@/services/sessions';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 /**
  * Flashcard deck.
@@ -165,9 +166,9 @@ export default function Flashcards() {
               >
                 <View
                   className="h-10 w-10 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: `${candidate.color}1A` }}
+                  style={{ backgroundColor: subjectTint(candidate.color, 0.1) }}
                 >
-                  <Icon name="layers" size={16} color={candidate.color} />
+                  <Icon name="layers" size={16} color={subjectInk(candidate.color)} />
                 </View>
                 <View className="flex-1 gap-1">
                   <Text className="text-[15px] font-semibold text-ink">{candidate.name}</Text>

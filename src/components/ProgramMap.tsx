@@ -19,6 +19,7 @@ import {
   formatMinutes,
   type SubjectStudy,
 } from '@/services/sessions';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 /**
  * The degree as a tree: programme at the root, terms as branches, subjects as
@@ -162,7 +163,7 @@ export function ProgramMap({
                         className="flex-row items-center gap-2.5 rounded-xl border border-line bg-paper px-3 py-2.5"
                         style={{ borderLeftWidth: 3, borderLeftColor: subject.color }}
                       >
-                        <Icon name={(subject.icon ?? DEFAULT_SUBJECT_ICON) as never} size={15} color={subject.color} />
+                        <Icon name={(subject.icon ?? DEFAULT_SUBJECT_ICON) as never} size={15} color={subjectInk(subject.color)} />
                         <View className="flex-1">
                           <Text className="text-[13px] font-semibold text-ink" numberOfLines={1}>
                             {subject.name}
@@ -240,9 +241,9 @@ function SubjectDrawer({
     >
       <View
         className="flex-row items-center gap-3 rounded-xl p-4"
-        style={{ backgroundColor: `${subject.color}14` }}
+        style={{ backgroundColor: subjectTint(subject.color, 0.08) }}
       >
-        <Icon name={(subject.icon ?? DEFAULT_SUBJECT_ICON) as never} size={22} color={subject.color} />
+        <Icon name={(subject.icon ?? DEFAULT_SUBJECT_ICON) as never} size={22} color={subjectInk(subject.color)} />
         <View className="flex-1">
           <Text className="text-[15px] font-bold text-ink">{subject.name}</Text>
           <Text className="text-xs text-muted">

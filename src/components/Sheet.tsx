@@ -101,7 +101,7 @@ export function Sheet({
           // pointer target only, and Escape already closes the modal.
           focusable={false}
           style={StyleSheet.absoluteFill}
-          className="bg-ink/40"
+          className="bg-scrim/40"
         />
 
         <View

@@ -1,5 +1,7 @@
 import type { ComponentType } from 'react';
 import type { SvgProps } from 'react-native-svg';
+
+import { useTheme, type Theme } from '@/lib/theme';
 import {
   Activity,
   AlertCircle,
@@ -67,6 +69,7 @@ import {
   MessageCircle,
   Mic,
   Minus,
+  Moon,
   Monitor,
   MoreHorizontal,
   MousePointer2,
@@ -91,6 +94,7 @@ import {
   Shield,
   SlidersHorizontal,
   Sparkles,
+  Sun,
   Square,
   SquarePen,
   Star,
@@ -187,6 +191,7 @@ const ICONS = {
   mic: Mic,
   minus: Minus,
   monitor: Monitor,
+  moon: Moon,
   'more-horizontal': MoreHorizontal,
   'mouse-pointer-2': MousePointer2,
   network: Network,
@@ -210,6 +215,7 @@ const ICONS = {
   shield: Shield,
   'sliders-horizontal': SlidersHorizontal,
   sparkles: Sparkles,
+  sun: Sun,
   square: Square,
   'square-pen': SquarePen,
   star: Star,
@@ -238,6 +244,22 @@ const ICONS = {
 
 export type IconName = keyof typeof ICONS;
 
+type Tone =
+  /** Body text and most glyphs. */
+  | 'muted'
+  /** Secondary, de-emphasised. */
+  | 'subtle'
+  /** Primary text weight. */
+  | 'ink'
+  /** On a dark or accent-filled surface. */
+  | 'inverse'
+  | 'accent'
+  | 'pine'
+  | 'amber'
+  | 'rose'
+  /** Dividers and other structural marks. */
+  | 'line';
+
 /**
  * What an icon is *for*, rather than what colour it happens to be today.
  *
@@ -251,24 +273,42 @@ export type IconName = keyof typeof ICONS;
  * 213 sites use only eleven distinct values, and each maps onto exactly one
  * meaning. So this is a rename with a purpose, not a redesign.
  */
-const TONES = {
-  /** Body text and most glyphs. */
+const LIGHT: Record<Tone, string> = {
   muted: '#6F6A5F',
-  /** Secondary, de-emphasised. */
   subtle: '#9A9488',
-  /** Primary text weight. */
   ink: '#18181B',
-  /** On a dark or accent-filled surface. */
   inverse: '#F7F5EE',
   accent: '#B4552D',
   pine: '#2E6F5E',
   amber: '#B4832A',
   rose: '#B0443E',
-  /** Dividers and other structural marks. */
   line: '#C9C4B8',
-} as const;
+};
 
-export type IconTone = keyof typeof TONES;
+/**
+ * The same nine meanings on the dark ground, not the same nine colours.
+ *
+ * `inverse` is the one worth reading twice: it means "on a filled surface",
+ * and the filled surface is `bg-ink`, which in the dark is cream. So inverse
+ * flips with it. Everything else is lifted until it clears the ground —
+ * `accent` at #B4552D measures 3.79:1 on near-black, which is legible and
+ * lifeless, so it rises with the rest of the palette.
+ */
+const DARK: Record<Tone, string> = {
+  muted: '#A9A296',
+  subtle: '#7C766A',
+  ink: '#F2EFE7',
+  inverse: '#14130F',
+  accent: '#E08A5E',
+  pine: '#5FAF95',
+  amber: '#D9AC5C',
+  rose: '#E0776F',
+  line: '#3F3A33',
+};
+
+const TONES: Record<Theme, Record<Tone, string>> = { light: LIGHT, dark: DARK };
+
+export type IconTone = Tone;
 
 /**
  * The same tones, for the handful of call sites that cannot use the prop: an
@@ -277,7 +317,7 @@ export type IconTone = keyof typeof TONES;
  * is what will let the dark palette arrive without touching those sites again.
  */
 export function useTones(): Record<IconTone, string> {
-  return TONES;
+  return TONES[useTheme()];
 }
 
 export function Icon({
@@ -300,9 +340,10 @@ export function Icon({
   tone?: IconTone;
   strokeWidth?: number;
 }) {
+  const tones = useTones();
   const Glyph = ICONS[name];
   // Order matters: an explicit colour is always data or brand, and data must
   // never be overridden by a theme.
-  const resolved = color ?? (tone ? TONES[tone] : TONES.muted);
+  const resolved = color ?? (tone ? tones[tone] : tones.muted);
   return <Glyph size={size} color={resolved} strokeWidth={strokeWidth} {...props} />;
 }

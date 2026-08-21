@@ -27,6 +27,7 @@ import {
   type MaterialKind,
 } from '@/services/materials';
 import Library from '../library';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 const VALID_TABS: KnowledgeTab[] = ['folders', 'reader', 'vault'];
 
@@ -94,9 +95,9 @@ function ReaderDirectory() {
               >
                 <View
                   className="h-10 w-10 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: `${subject.color}20` }}
+                  style={{ backgroundColor: subjectTint(subject.color, 0.125) }}
                 >
-                  <Icon name="book-open" size={17} color={subject.color} />
+                  <Icon name="book-open" size={17} color={subjectInk(subject.color)} />
                 </View>
                 <View className="flex-1 gap-0.5">
                   <Text className="text-[15px] font-semibold text-ink">{subject.name}</Text>
@@ -384,7 +385,7 @@ function DocumentVault({ onOpen }: { onOpen: (subjectId: string, documentId: str
                           <Icon
                             name={picking ? (ticked ? 'check-circle-2' : 'circle') : 'file-text'}
                             size={16}
-                            color={picking && ticked ? subject.color : picking ? tones.subtle : subject.color}
+                            color={picking && ticked ? subjectInk(subject.color) : picking ? tones.subtle : subjectInk(subject.color)}
                           />
                           <View className="flex-1 gap-0.5">
                             <Text className="text-sm font-semibold text-ink" numberOfLines={1}>

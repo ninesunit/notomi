@@ -9,6 +9,7 @@ import { Button, Card, PageHeader } from '@/components/ui';
 import { useAuth } from '@/hooks/useAuth';
 import { isDriveConfigured } from '@/lib/driveUtils';
 import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
+import { useThemeChoice, type ThemeChoice } from '@/lib/theme';
 
 /**
  * Settings.
@@ -20,13 +21,16 @@ import { isSoundEnabled, play, setSoundEnabled } from '@/lib/sound';
 export default function Settings() {
   const { user, logOut } = useAuth();
   const [sound, setSound] = useState(isSoundEnabled);
+  const [theme, setTheme] = useThemeChoice();
   const [migrating, setMigrating] = useState(false);
 
   const displayName = user?.displayName || (user?.isAnonymous ? 'Guest' : user?.email) || 'You';
 
   return (
     <ScreenScroll>
-      <PageHeader title="Settings" subtitle="Reminders, sound and your account." />
+      <PageHeader title="Settings" subtitle="Appearance, reminders, sound and your account." />
+
+      <AppearanceCard value={theme} onChange={setTheme} />
 
       <RemindersCard />
 
@@ -144,5 +148,67 @@ function Row({ label, value }: { label: string; value: string }) {
       <Text className="text-sm text-muted">{label}</Text>
       <Text className="text-sm font-medium text-ink">{value}</Text>
     </View>
+  );
+}
+
+/**
+ * Three choices, two looks: "Match device" is a standing instruction rather
+ * than a third theme, which is why it is worded as following something and not
+ * as being something.
+ */
+function AppearanceCard({
+  value,
+  onChange,
+}: {
+  value: ThemeChoice;
+  onChange: (choice: ThemeChoice) => void;
+}) {
+  const options: Array<{ id: ThemeChoice; label: string; icon: 'sun' | 'moon' | 'monitor' }> = [
+    { id: 'light', label: 'Light', icon: 'sun' },
+    { id: 'dark', label: 'Dark', icon: 'moon' },
+    { id: 'system', label: 'Match device', icon: 'monitor' },
+  ];
+
+  return (
+    <Card className="mb-8 gap-4">
+      <View className="flex-row items-center gap-3">
+        <View className="h-9 w-9 items-center justify-center rounded-lg bg-sand">
+          <Icon name="sun" size={16} tone="muted" />
+        </View>
+        <View className="flex-1">
+          <Text className="text-[15px] font-semibold text-ink">Appearance</Text>
+          <Text className="text-xs text-muted">How Notomi looks on this device.</Text>
+        </View>
+      </View>
+
+      <View className="flex-row gap-1.5">
+        {options.map((option) => {
+          const active = value === option.id;
+          return (
+            <Pressable
+              key={option.id}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              onPress={() => {
+                if (active) return;
+                play('toggle');
+                onChange(option.id);
+              }}
+              className={`min-w-0 flex-1 flex-row items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 ${
+                active ? 'bg-ink' : 'bg-sand'
+              }`}
+            >
+              <Icon name={option.icon} size={14} tone={active ? 'inverse' : 'muted'} />
+              <Text
+                className={`text-xs font-semibold ${active ? 'text-paper' : 'text-muted'}`}
+                numberOfLines={1}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </Card>
   );
 }

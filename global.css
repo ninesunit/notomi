@@ -28,6 +28,51 @@
   --amber-soft: 247 237 216;
   --rose: 176 68 62;
   --rose-soft: 247 226 225;
+
+  /*
+   * Two tokens that stay put when the rest of the palette turns over.
+   *
+   * A scrim is the dark behind a sheet; inverting it would light the room up
+   * to open a drawer. A canvas is a sheet of paper the student writes dark ink
+   * on — pen colours are stored per stroke, so a dark page would not re-theme
+   * the handwriting, it would hide it.
+   */
+  --scrim: 24 24 27;
+  --canvas: 250 249 245;
+}
+
+/*
+ * Warm, not inverted. Notomi's character is paper, and a blue-black dark mode
+ * would be a different product wearing its name.
+ *
+ * Two rules matter more than the specific values. `surface` sits *lighter*
+ * than `paper`, because elevation rises in the dark rather than sinking. And
+ * the `-soft` tokens become dark tinted surfaces rather than pale ones — a
+ * naive flip leaves them glowing, which is what makes most retrofitted dark
+ * themes look wrong.
+ *
+ * `accent` is lifted from #B4552D, which measures 3.79:1 on this ground:
+ * legible, and lifeless. At #E08A5E it is 6.6:1 and still terracotta.
+ */
+:root[data-theme='dark'] {
+  --paper: 20 19 15;
+  --surface: 28 26 22;
+  --sand: 36 33 28;
+  --line: 52 48 42;
+  --ink: 242 239 231;
+  --muted: 169 162 150;
+  --subtle: 124 118 106;
+  --accent: 224 138 94;
+  --accent-soft: 58 36 25;
+  --pine: 95 175 149;
+  --pine-soft: 23 51 43;
+  --amber: 217 172 92;
+  --amber-soft: 56 44 20;
+  --rose: 224 119 111;
+  --rose-soft: 58 31 29;
+
+  /* Black rather than ink, since ink is now the cream the page is written in. */
+  --scrim: 0 0 0;
 }
 
 /*

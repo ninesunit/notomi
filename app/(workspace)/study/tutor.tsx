@@ -14,6 +14,7 @@ import type { AnswerGrade, OpenQuestion, SourceDocument, Subject } from '@/lib/s
 import { getDb } from '@/services/firebase';
 import { logSession } from '@/services/sessions';
 import { recordMiss } from '@/lib/srs';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 /**
  * Active recall: the student writes the answer, Gemini marks it.
@@ -463,9 +464,9 @@ export default function Tutor() {
               >
                 <View
                   className="h-10 w-10 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: `${candidate.color}1A` }}
+                  style={{ backgroundColor: subjectTint(candidate.color, 0.1) }}
                 >
-                  <Icon name="book-open" size={16} color={candidate.color} />
+                  <Icon name="book-open" size={16} color={subjectInk(candidate.color)} />
                 </View>
                 <View className="flex-1 gap-1">
                   <Text className="text-[15px] font-semibold text-ink">{candidate.name}</Text>

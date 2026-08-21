@@ -15,6 +15,7 @@ import {
 } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { syncSubjectToClasses } from '@/services/timetable';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 /**
  * Create or edit a subject folder.
@@ -189,7 +190,7 @@ function SubjectForm({
                 >
                   {/* Tinted with the chosen colour so the two pickers read as
                       one decision rather than two unrelated grids. */}
-                  <Icon name={option as never} size={18} color={selected ? color : tones.muted} />
+                  <Icon name={option as never} size={18} color={selected ? subjectInk(color) : tones.muted} />
                 </Touchable>
               );
             })}
@@ -212,7 +213,7 @@ function SubjectForm({
               >
                 <View
                   className="h-6 w-6 rounded-full"
-                  style={{ backgroundColor: option.value }}
+                  style={{ backgroundColor: subjectInk(option.value) }}
                 />
               </Pressable>
             ))}
@@ -224,11 +225,11 @@ function SubjectForm({
           <Text className="text-sm font-medium text-muted">Preview</Text>
           <View
             className="overflow-hidden rounded-xl border border-line"
-            style={{ backgroundColor: `${color}14` }}
+            style={{ backgroundColor: subjectTint(color, 0.08) }}
           >
             <View className="h-1.5 w-full" style={{ backgroundColor: color }} />
             <View className="flex-row items-center gap-3 p-3.5">
-              <Icon name={icon as never} size={20} color={color} />
+              <Icon name={icon as never} size={20} color={subjectInk(color)} />
               <View className="flex-1">
                 <Text className="text-sm font-semibold text-ink" numberOfLines={1}>
                   {name.trim() || 'Subject name'}

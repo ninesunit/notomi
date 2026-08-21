@@ -23,6 +23,7 @@ import {
   type Presence,
   type Profile,
 } from '@/services/social';
+import { TINT, subjectTint } from '@/lib/color';
 
 /**
  * Pomodoro timer.
@@ -482,7 +483,7 @@ function FocusRoom({
           <View key={friend.id} className="flex-row items-center gap-3">
             <View
               className="h-9 w-9 items-center justify-center rounded-full"
-              style={{ backgroundColor: `${friend.color}24` }}
+              style={{ backgroundColor: subjectTint(friend.color, TINT.fill) }}
             >
               <Text className="text-xs font-bold" style={{ color: friend.color }}>
                 {friend.displayName.charAt(0).toUpperCase()}

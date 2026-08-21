@@ -35,6 +35,7 @@ import { academicClasses, type ResolvedClass } from '@/services/timetable';
 import { buildBurnoutWeeks, findActiveSemester } from '@/services/academicPlanner';
 import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
 import { pickMaterials, type MaterialFile } from '@/services/ingestion';
+import { subjectTint, workloadTint } from '@/lib/color';
 
 /**
  * The dashboard.
@@ -447,7 +448,7 @@ function DashboardClassSheet({
           <View
             className="rounded-2xl border border-line p-4"
             style={{
-              backgroundColor: `${block.color}12`,
+              backgroundColor: subjectTint(block.color, 0.07),
               borderLeftColor: block.color,
               borderLeftWidth: 4,
             }}
@@ -512,14 +513,12 @@ function CompactBurnout({ semester, todos }: { semester: Semester | null; todos:
       </View>
       <View className="flex-row gap-1">
         {weeks.slice(0, 14).map((week) => {
-          const ratio = week.workload / peak;
-          const color = week.workload === 0 ? '#E9E5D9' : ratio < 0.5 ? '#DCE9E3' : ratio < 0.8 ? '#EAD9B6' : '#E7BDB8';
           return (
             <View
               key={week.index}
               accessibilityLabel={`Week ${week.index + 1}, workload ${week.workload}`}
               className="h-5 w-2 rounded-full"
-              style={{ backgroundColor: color }}
+              style={{ backgroundColor: workloadTint(week.workload, peak) }}
             />
           );
         })}

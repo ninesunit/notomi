@@ -29,6 +29,7 @@ import { Markdown } from './Markdown';
 import { FadeIn, Reveal } from './motion';
 import { Sheet } from './Sheet';
 import { Badge, Button, Card, EmptyState, IconButton, Loading, Notice } from './ui';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 /**
  * Tutorials, labs and assignments for one subject.
@@ -180,9 +181,9 @@ function AssignmentCard({
       >
         <View
           className="mt-0.5 h-9 w-9 items-center justify-center rounded-lg"
-          style={{ backgroundColor: `${meta.color}1F` }}
+          style={{ backgroundColor: subjectTint(meta.color, 0.12) }}
         >
-          <Icon name={meta.icon} size={17} color={meta.color} />
+          <Icon name={meta.icon} size={17} color={subjectInk(meta.color)} />
         </View>
 
         <View className="flex-1 gap-1.5">
@@ -561,7 +562,7 @@ function DraftReview({ draft, onChange }: { draft: Draft; onChange: (next: Draft
               <Icon
                 name={option.icon}
                 size={13}
-                color={draft.kind === option.id ? tones.inverse : option.color}
+                color={draft.kind === option.id ? tones.inverse : subjectInk(option.color)}
               />
               <Text
                 className={`text-xs font-semibold ${

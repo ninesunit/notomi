@@ -94,6 +94,19 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+/**
+ * The resolved theme for code that cannot hold a hook — the subject-colour
+ * helpers in lib/color.ts, which are called inside render bodies at three
+ * dozen sites and would otherwise each need one.
+ *
+ * Safe because the root layout subscribes with `useTheme()`, so a change
+ * re-renders the whole tree and every reader picks the new value up in the
+ * same pass. Anything that starts memoising components has to revisit this.
+ */
+export function getTheme(): Theme {
+  return current;
+}
+
 /** The palette actually on screen, already resolved. */
 export function useTheme(): Theme {
   return useSyncExternalStore(

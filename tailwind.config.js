@@ -23,6 +23,9 @@ module.exports = {
         'amber-soft': 'rgb(var(--amber-soft) / <alpha-value>)',
         rose: 'rgb(var(--rose) / <alpha-value>)',
         'rose-soft': 'rgb(var(--rose-soft) / <alpha-value>)',
+        // Fixed in both themes — see the note in global.css.
+        scrim: 'rgb(var(--scrim) / <alpha-value>)',
+        canvas: 'rgb(var(--canvas) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Inter_400Regular', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],

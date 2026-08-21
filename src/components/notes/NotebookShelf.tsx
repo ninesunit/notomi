@@ -15,6 +15,7 @@ import {
   NOTE_LIMITS,
   saveNoteNotebook,
 } from '@/services/notes';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 const NOTEBOOK_COLORS = ['#B4552D', '#2E6F5E', '#4C5FA8', '#8A4B86', '#4A5568'];
 
@@ -177,8 +178,8 @@ export function NotebookShelf() {
               <View style={{ height: 6, backgroundColor: notebook.color }} />
               <View className="gap-4 p-5">
                 <View className="flex-row items-start gap-3">
-                  <View className="h-11 w-11 items-center justify-center rounded-xl" style={{ backgroundColor: `${notebook.color}18` }}>
-                    <Icon name="notebook-pen" size={20} color={notebook.color} />
+                  <View className="h-11 w-11 items-center justify-center rounded-xl" style={{ backgroundColor: subjectTint(notebook.color, 0.095) }}>
+                    <Icon name="notebook-pen" size={20} color={subjectInk(notebook.color)} />
                   </View>
                   <View className="min-w-0 flex-1 gap-1">
                     <Text className="font-heading text-base font-semibold text-ink" numberOfLines={1}>{notebook.title}</Text>
@@ -260,7 +261,7 @@ export function NotebookShelf() {
                 onPress={() => setColor(entry)}
                 className={`h-9 w-9 items-center justify-center rounded-full ${color === entry ? 'border-2 border-ink' : ''}`}
               >
-                <View className="h-6 w-6 rounded-full" style={{ backgroundColor: entry }} />
+                <View className="h-6 w-6 rounded-full" style={{ backgroundColor: subjectInk(entry) }} />
               </Pressable>
             ))}
           </View>

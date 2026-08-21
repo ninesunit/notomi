@@ -17,6 +17,7 @@ import {
   stageLabel,
   type IngestStage,
 } from '@/services/ingestion';
+import { subjectInk } from '@/lib/color';
 
 /**
  * Whiteboard capture.
@@ -162,7 +163,7 @@ export default function Capture() {
                       active ? 'border-accent bg-accent-soft' : 'border-line bg-surface'
                     }`}
                   >
-                    <Icon name="book-open" size={15} color={candidate.color} />
+                    <Icon name="book-open" size={15} color={subjectInk(candidate.color)} />
                     <Text
                       className={`text-[13px] font-semibold ${
                         active ? 'text-accent' : 'text-muted'

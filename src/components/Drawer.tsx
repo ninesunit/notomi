@@ -269,7 +269,7 @@ export function NavDrawer({
           onPress={onClose}
           focusable={false}
           style={StyleSheet.absoluteFill}
-          className="bg-ink/40"
+          className="bg-scrim/40"
         />
       </Animated.View>
 

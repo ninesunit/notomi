@@ -16,6 +16,7 @@ import type {
 } from '@/lib/schema';
 import { attendanceSummary, buildBurnoutWeeks, saveAttendanceStatus } from '@/services/academicPlanner';
 import { getDb } from '@/services/firebase';
+import { workloadTint } from '@/lib/color';
 
 export function BurnoutHeatmap({ semester, todos }: { semester: Semester | null; todos: Todo[] }) {
   const weeks = useMemo(() => buildBurnoutWeeks(semester, todos), [semester, todos]);
@@ -36,21 +37,12 @@ export function BurnoutHeatmap({ semester, todos }: { semester: Semester | null;
 
       <View className="flex-row flex-wrap gap-2">
         {weeks.map((week) => {
-          const ratio = week.workload / peak;
-          const color =
-            week.workload === 0
-              ? '#E9E5D9'
-              : ratio <= 0.33
-                ? '#DCE9E3'
-                : ratio <= 0.66
-                  ? '#EAD9B6'
-                  : '#E7BDB8';
           return (
             <View key={week.index} className="items-center gap-1">
               <View
                 accessibilityLabel={`Week ${week.index + 1}: ${week.tasks} deadlines, workload ${week.workload}`}
                 className="h-8 w-8 items-center justify-center rounded-md border border-ink/5"
-                style={{ backgroundColor: color }}
+                style={{ backgroundColor: workloadTint(week.workload, peak) }}
               >
                 <Text className="text-[10px] font-semibold text-ink/70">{week.index + 1}</Text>
               </View>

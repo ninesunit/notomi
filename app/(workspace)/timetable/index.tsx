@@ -60,6 +60,7 @@ import {
 import { findActiveSemester } from '@/services/academicPlanner';
 import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
 import { GRID as GRID_BREAKPOINT, PHONE } from '@/lib/breakpoints';
+import { TINT, subjectInk, subjectTint } from '@/lib/color';
 
 /**
  * The timetable.
@@ -924,14 +925,14 @@ function DayTimeline({
                 style={{
                   top: box.top + 3,
                   height: box.height,
-                  backgroundColor: `${block.color}12`,
+                  backgroundColor: subjectTint(block.color, 0.07),
                   borderWidth: 1,
                   borderStyle: 'dashed',
-                  borderColor: `${block.color}59`,
+                  borderColor: subjectTint(block.color, TINT.edge),
                 }}
               >
                 <View className="flex-row items-center gap-1.5">
-                  <Icon name={meta?.icon ?? 'circle'} size={12} color={block.color} />
+                  <Icon name={meta?.icon ?? 'circle'} size={12} color={subjectInk(block.color)} />
                   <Text className="flex-1 text-[13px] font-medium text-muted" numberOfLines={1}>
                     {block.title}
                   </Text>
@@ -967,7 +968,7 @@ function DayTimeline({
                 style={{
                   top: box.top + 3,
                   height: box.height,
-                  backgroundColor: `${block.color}1F`,
+                  backgroundColor: subjectTint(block.color, 0.12),
                   borderLeftWidth: 4,
                   borderLeftColor: block.color,
                 }}
@@ -1172,14 +1173,14 @@ function WeekGrid({
                         style={{
                           top: top + 1,
                           height: blockHeight,
-                          backgroundColor: `${block.color}14`,
+                          backgroundColor: subjectTint(block.color, 0.08),
                           borderWidth: 1,
                           borderStyle: 'dashed',
-                          borderColor: `${block.color}59`,
+                          borderColor: subjectTint(block.color, TINT.edge),
                         }}
                       >
                         <View className="flex-row items-center gap-1">
-                          <Icon name={meta?.icon ?? 'circle'} size={9} color={block.color} />
+                          <Icon name={meta?.icon ?? 'circle'} size={9} color={subjectInk(block.color)} />
                           <Text className="flex-1 text-[10px] leading-tight text-muted" numberOfLines={1}>
                             {block.title}
                           </Text>
@@ -1214,7 +1215,7 @@ function WeekGrid({
                           // keeps working at every screen width.
                           left: `${(lane / lanes) * 100}%`,
                           width: `${(1 / lanes) * 100}%`,
-                          backgroundColor: `${block.color}24`,
+                          backgroundColor: subjectTint(block.color, TINT.fill),
                           borderLeftWidth: 3,
                           borderLeftColor: block.color,
                         }}
@@ -1677,7 +1678,7 @@ function RoutineForm({
               <Icon
                 name={option.icon}
                 size={13}
-                color={category === option.id ? tones.inverse : option.color}
+                color={category === option.id ? tones.inverse : subjectInk(option.color)}
               />
               <Text
                 className={`text-xs font-semibold ${

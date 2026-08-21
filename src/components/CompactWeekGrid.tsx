@@ -11,6 +11,7 @@ import {
 } from '@/lib/schema';
 import { laneOut } from '@/lib/timetableLayout';
 import type { ResolvedClass } from '@/services/timetable';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 const RULER_WIDTH = 22;
 const HEADER_HEIGHT = 26;
@@ -215,21 +216,21 @@ export function CompactWeekGrid({
                         style={{
                           top: top + 1,
                           height: blockHeight,
-                          backgroundColor: `${block.color}12`,
+                          backgroundColor: subjectTint(block.color, 0.07),
                           borderWidth: 1,
                           borderStyle: 'dashed',
-                          borderColor: `${block.color}4D`,
+                          borderColor: subjectTint(block.color, 0.3),
                         }}
                       >
                         {detail ? (
                           <View className="flex-row items-center gap-1">
-                            <Icon name={meta?.icon ?? 'circle'} size={9} color={block.color} />
+                            <Icon name={meta?.icon ?? 'circle'} size={9} color={subjectInk(block.color)} />
                             <Text className="flex-1 text-[9px] text-muted" numberOfLines={1}>
                               {block.title}
                             </Text>
                           </View>
                         ) : (
-                          <Icon name={meta?.icon ?? 'circle'} size={9} color={block.color} />
+                          <Icon name={meta?.icon ?? 'circle'} size={9} color={subjectInk(block.color)} />
                         )}
                       </Touchable>
                     );
@@ -267,7 +268,7 @@ export function CompactWeekGrid({
                           height: blockHeight,
                           left: `${(lane / lanes) * 100}%`,
                           width: `${(1 / lanes) * 100}%`,
-                          backgroundColor: `${block.color}26`,
+                          backgroundColor: subjectTint(block.color, 0.15),
                           borderLeftWidth: 2,
                           borderLeftColor: block.color,
                         }}

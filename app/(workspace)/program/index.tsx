@@ -46,6 +46,7 @@ import {
   updateSemester,
   type SemesterInput,
 } from '@/services/program';
+import { subjectInk, subjectTint } from '@/lib/color';
 
 /**
  * The program planner: the degree seen as a sequence of semesters, each holding
@@ -530,9 +531,9 @@ function SubjectRow({
       <View className="flex-row flex-wrap items-center gap-3">
         <View
           className="h-7 w-7 items-center justify-center rounded-lg"
-          style={{ backgroundColor: `${subject.color}1F` }}
+          style={{ backgroundColor: subjectTint(subject.color, 0.12) }}
         >
-          <Icon name="book" size={13} color={subject.color} />
+          <Icon name="book" size={13} color={subjectInk(subject.color)} />
         </View>
 
         <Link href={`/knowledge/subject/${subject.id}`} asChild>
@@ -709,9 +710,9 @@ function UnassignedShelf({
             <View className="flex-row items-center gap-3">
               <View
                 className="h-7 w-7 items-center justify-center rounded-lg"
-                style={{ backgroundColor: `${subject.color}1F` }}
+                style={{ backgroundColor: subjectTint(subject.color, 0.12) }}
               >
-                <Icon name="book" size={13} color={subject.color} />
+                <Icon name="book" size={13} color={subjectInk(subject.color)} />
               </View>
               <Text className="flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
                 {subject.name}
