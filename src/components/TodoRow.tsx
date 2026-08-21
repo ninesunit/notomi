@@ -3,7 +3,8 @@ import { Pressable, Text, TextInput, useWindowDimensions, View } from 'react-nat
 import { Icon, useTones } from '@/components/Icon';
 import { CountdownChip } from './Countdown';
 import { DatePicker } from './DatePicker';
-import { Badge, IconButton } from './ui';
+import { Badge, Button, IconButton } from './ui';
+import { Sheet } from './Sheet';
 import { formatDue, toDate } from '@/lib/dates';
 import type { Priority, SubTask, Todo } from '@/lib/schema';
 import { PHONE } from '@/lib/breakpoints';
@@ -36,6 +37,7 @@ export function TodoRow({
 }) {
   const tones = useTones();
   const [expanded, setExpanded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(todo.title);
@@ -159,6 +161,7 @@ export function TodoRow({
             />
           ) : (
             <Text
+              numberOfLines={narrow ? 2 : undefined}
               className={`text-[15px] leading-6 ${
                 todo.isCompleted ? 'text-subtle line-through' : 'text-ink'
               }`}
@@ -167,6 +170,15 @@ export function TodoRow({
             </Text>
           )}
 
+          {/*
+            One line of metadata on a phone, not five.
+            
+            A due date, a countdown, a subject, a source badge and a step count
+            is more supporting detail than the task it supports, and it wraps to
+            three lines at 390pt. The countdown and the step count are the two
+            that are already implied — the date says when, and tapping opens the
+            steps — so they wait for the wide layout.
+          */}
           <View className="flex-row flex-wrap items-center gap-2">
             {due ? (
               <Text
@@ -178,7 +190,7 @@ export function TodoRow({
               </Text>
             ) : null}
 
-            {due && !todo.isCompleted ? <CountdownChip due={due} compact /> : null}
+            {due && !todo.isCompleted && !narrow ? <CountdownChip due={due} compact /> : null}
 
             {todo.subjectName ? (
               <Text className="text-xs text-subtle" numberOfLines={1}>
@@ -188,7 +200,7 @@ export function TodoRow({
 
             {todo.source === 'syllabus' ? <Badge label="From syllabus" tone="pine" /> : null}
 
-            {subTasks.length > 0 ? (
+            {subTasks.length > 0 && !narrow ? (
               <Text className="text-xs text-subtle">
                 {doneCount}/{subTasks.length} steps
               </Text>
@@ -196,12 +208,16 @@ export function TodoRow({
           </View>
         </Pressable>
 
-        {narrow ? null : controls}
+        {narrow ? (
+          <IconButton
+            icon="more-horizontal"
+            label={`More actions for ${todo.title}`}
+            onPress={() => setMenuOpen(true)}
+          />
+        ) : (
+          controls
+        )}
       </View>
-
-      {narrow ? (
-        <View className="flex-row items-center gap-2 px-4 pb-3 pl-12">{controls}</View>
-      ) : null}
 
       {confirming ? (
         <View className="flex-row items-center gap-3 border-t border-line bg-rose-soft/50 px-4 py-2 pl-12">
@@ -213,6 +229,60 @@ export function TodoRow({
           </Pressable>
         </View>
       ) : null}
+
+      {/*
+        The actions, on request.
+        
+        These used to sit in a second permanent row under every task, which is
+        four controls per task competing with the task. Behind a single button
+        they cost one line for the whole list instead of one line each — and
+        nothing is lost, because the row still expands on tap for the date and
+        the steps.
+      */}
+      <Sheet
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title={todo.title}
+        icon="check-square"
+        variant="compact"
+      >
+        <View className="gap-2">
+          <Button
+            label="Rename"
+            icon="edit-2"
+            variant="secondary"
+            onPress={() => {
+              setMenuOpen(false);
+              setTitleDraft(todo.title);
+              setEditing(true);
+            }}
+          />
+          <Button
+            label={`Priority: ${todo.priority}`}
+            icon="flag"
+            variant="secondary"
+            onPress={() => actions.cyclePriority(todo)}
+          />
+          <Button
+            label={expanded ? 'Hide date and steps' : 'Date and steps'}
+            icon={expanded ? 'chevron-up' : 'chevron-down'}
+            variant="secondary"
+            onPress={() => {
+              setMenuOpen(false);
+              setExpanded(true);
+            }}
+          />
+          <Button
+            label="Delete task"
+            icon="trash-2"
+            variant="danger"
+            onPress={() => {
+              setMenuOpen(false);
+              actions.remove(todo);
+            }}
+          />
+        </View>
+      </Sheet>
 
       {expanded ? (
         <View className="gap-3 border-t border-line bg-paper/60 px-4 py-3 pl-12">

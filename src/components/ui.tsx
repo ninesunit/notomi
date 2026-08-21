@@ -365,6 +365,10 @@ export function PageHeader({
         */}
         <Text
           accessibilityRole="header"
+          // Two lines, then an ellipsis. A course called "Fundamentals of
+          // Digital Competency for Undergraduate Studies" is four lines of
+          // 28pt type on a phone, and the page starts underneath it.
+          numberOfLines={2}
           className="font-heading text-[28px] font-bold leading-8 tracking-tight text-ink"
         >
           {title}

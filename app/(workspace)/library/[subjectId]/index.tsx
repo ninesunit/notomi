@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { Linking, Platform, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { Icon, useTones } from '@/components/Icon';
 import { orderBy, query } from 'firebase/firestore';
@@ -54,6 +54,7 @@ import { describeLastStudied, formatMinutes, studyBySubject } from '@/services/s
 import { findActiveSemester } from '@/services/academicPlanner';
 import { DEFAULT_SUBJECT_ICON } from '@/lib/schema';
 import { subjectInk, subjectTint } from '@/lib/color';
+import { PHONE } from '@/lib/breakpoints';
 
 type TabId = 'sources' | 'tasks' | 'log';
 
@@ -68,6 +69,8 @@ export default function SubjectFolder({
 } = {}) {
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>();
   const uid = useUid();
+  const { width } = useWindowDimensions();
+  const phone = width < PHONE;
   const router = useRouter();
   const db = getDb();
   const [removing, setRemoving] = useState<string | null>(null);
@@ -272,9 +275,15 @@ export default function SubjectFolder({
         </Pressable>
       </Link>
 
-      {/* The subject colour and vector icon identify the folder at a glance. */}
+      {/*
+        The subject colour and vector icon identify the folder at a glance —
+        which is worth eighty points of a desktop page and not of an iPhone
+        one, where it is the whole reason the first document sits below the
+        fold. The colour is still on the icon beside the title and on every
+        row beneath it.
+      */}
       <View
-        className="mb-5 h-20 w-full overflow-hidden rounded-2xl"
+        className={`mb-5 h-20 w-full overflow-hidden rounded-2xl ${phone ? 'hidden' : ''}`}
         style={{ backgroundColor: subjectTint(subject.data.color, 0.12) }}
       >
         <View className="h-1.5 w-full" style={{ backgroundColor: subject.data.color }} />
@@ -302,25 +311,46 @@ export default function SubjectFolder({
         subtitle={[
           subject.data.moduleCode,
           `${documents.data.length} ${documents.data.length === 1 ? 'source' : 'sources'}`,
-          totalChars > 0 ? `${formatChars(totalChars)} of context` : null,
+          // Merged into the metadata on a phone rather than given its own row
+          // of pills, which is the same fact for a fifth of the height.
+          phone
+            ? study?.minutes
+              ? `${formatMinutes(study.minutes)} studied`
+              : null
+            : totalChars > 0
+              ? `${formatChars(totalChars)} of context`
+              : null,
         ]
           .filter(Boolean)
           .join(' · ')}
         actions={
           <>
+            {/* Open Reader is what a student came here to do, so it stays.
+                Quiz and Edit are occasional, and on a phone three buttons wrap
+                to a second row that pushes the sources down again. */}
             <Link href={readerPath ?? `/reader/${subjectId}`} asChild>
               <Button label="Open Reader" icon="message-circle" size="sm" disabled={!hasText} />
             </Link>
-            <Link href={`/study?subjectId=${subjectId}`} asChild>
-              <Button
-                label="Take Quiz"
-                icon="zap"
-                variant="secondary"
-                size="sm"
-                disabled={!hasText}
+            {phone ? (
+              <IconButton
+                icon="more-horizontal"
+                label="More subject actions"
+                onPress={() => setActionsOpen(true)}
               />
-            </Link>
-            <IconButton icon="edit-2" label="Edit subject" onPress={() => setEditOpen(true)} />
+            ) : (
+              <>
+                <Link href={`/study?subjectId=${subjectId}`} asChild>
+                  <Button
+                    label="Take Quiz"
+                    icon="zap"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!hasText}
+                  />
+                </Link>
+                <IconButton icon="edit-2" label="Edit subject" onPress={() => setEditOpen(true)} />
+              </>
+            )}
           </>
         }
       />
@@ -340,7 +370,7 @@ export default function SubjectFolder({
 
       {/* Study time is already logged against this subject by the focus timer
           and the study centre; this is where a student sees it back. */}
-      <View className="mb-6 flex-row flex-wrap items-center gap-2">
+      <View className={`mb-6 flex-row flex-wrap items-center gap-2 ${phone ? 'hidden' : ''}`}>
         <View className="flex-row items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2">
           <Icon name="clock" size={13} tone="subtle" />
           <Text className="text-sm font-bold text-ink">{formatMinutes(study?.minutes ?? 0)}</Text>
@@ -398,11 +428,35 @@ export default function SubjectFolder({
       <Sheet
         visible={actionsOpen}
         onClose={() => setActionsOpen(false)}
-        title="Add content"
+        title={phone ? 'Subject actions' : 'Add content'}
         icon="plus"
         maxHeight={430}
       >
         <View className="gap-2">
+          {/* On a phone this sheet is also where Quiz and Edit went, so the
+              header could keep to one primary action. */}
+          {phone ? (
+            <>
+              <Link href={`/study?subjectId=${subjectId}`} asChild>
+                <Button
+                  label="Take Quiz"
+                  icon="zap"
+                  variant="secondary"
+                  disabled={!hasText}
+                  onPress={() => setActionsOpen(false)}
+                />
+              </Link>
+              <Button
+                label="Edit subject"
+                icon="edit-2"
+                variant="secondary"
+                onPress={() => {
+                  setActionsOpen(false);
+                  setEditOpen(true);
+                }}
+              />
+            </>
+          ) : null}
           <Button
             label="Add material"
             icon="upload-cloud"
@@ -552,7 +606,14 @@ export default function SubjectFolder({
                         </View>
 
                         {document.summary ? (
-                          <Text className="text-sm leading-6 text-ink/75">{document.summary}</Text>
+                          // Two lines on a phone. A card that prints the whole
+                          // summary is a card the next document sits below.
+                          <Text
+                            numberOfLines={phone ? 2 : undefined}
+                            className="text-sm leading-6 text-ink/75"
+                          >
+                            {document.summary}
+                          </Text>
                         ) : null}
 
                         {document.error ? (
