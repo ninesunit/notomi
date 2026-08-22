@@ -15,7 +15,7 @@ import { PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans/70
 import { SetupScreen } from '@/components/SetupScreen';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { registerServiceWorker } from '@/services/appUpdate';
-import { trackViewportHeight } from '@/lib/viewport';
+import { trackFocusedInputs, trackViewportHeight } from '@/lib/viewport';
 import { useTheme } from '@/lib/theme';
 import { CrashScreen } from '@/components/CrashScreen';
 import { isFirebaseConfigured } from '@/services/firebase';
@@ -89,7 +89,14 @@ export default function RootLayout() {
 
   // Bound to the visible viewport rather than the layout one, so the iOS
   // keyboard shortens the app instead of covering the bottom of it.
-  useEffect(() => trackViewportHeight(), []);
+  useEffect(() => {
+    const stopHeightTracking = trackViewportHeight();
+    const stopFocusTracking = trackFocusedInputs();
+    return () => {
+      stopFocusTracking();
+      stopHeightTracking();
+    };
+  }, []);
 
   /**
    * Promise rejections nobody awaited.

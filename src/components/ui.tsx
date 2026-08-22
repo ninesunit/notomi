@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Icon, type IconName, useTones } from '@/components/Icon';
 import { feedback } from '@/lib/sound';
+import { useAutoScrollOnFocus } from '@/lib/viewport';
 
 /* ---------------------------- Touchable ---------------------------- */
 
@@ -260,16 +261,21 @@ export function Badge({
 type FieldProps = TextInputProps & { label?: string; hint?: string };
 
 export const Field = forwardRef<TextInput, FieldProps>(function Field(
-  { label, hint, className = '', ...props },
+  { label, hint, className = '', onFocus, ...props },
   ref
 ) {
   const tones = useTones();
+  const autoScrollOnFocus = useAutoScrollOnFocus();
   return (
     <View className="gap-1.5">
       {label ? <Text className="text-sm font-medium text-muted">{label}</Text> : null}
       <TextInput
         ref={ref}
         placeholderTextColor={tones.subtle}
+        onFocus={(event) => {
+          autoScrollOnFocus(event);
+          onFocus?.(event);
+        }}
         className={`rounded-xl border border-line bg-surface px-4 py-3 text-base text-ink ${className}`}
         {...props}
       />

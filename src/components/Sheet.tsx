@@ -112,11 +112,11 @@ export function Sheet({
         : maxHeight;
 
   /*
-   * Padding past the keys rather than a shorter scroller, so the last field
-   * can still be scrolled to the middle of what is left rather than sitting
-   * flat against the bottom edge of it.
+   * The panel itself is already shortened to visualViewport.height. Adding
+   * keyboardHeight again would count the keyboard twice and leave a large
+   * blank runway below the form. Only the home-indicator inset remains.
    */
-  const bodyPadBottom = keyboardAware ? viewport.keyboardHeight + insets.bottom : 0;
+  const bodyPadBottom = keyboardAware ? insets.bottom : 0;
 
   // Header-mounted for keyboard-aware variants; the footer may be covered.
   const actionInHeader = Boolean(primaryAction) && keyboardAware;

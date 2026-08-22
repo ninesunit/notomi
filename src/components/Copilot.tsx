@@ -4,6 +4,7 @@ import { Icon, useTones } from '@/components/Icon';
 import { useUid } from '@/hooks/useAuth';
 import type { CopilotTurn } from '@/lib/ai';
 import { feedback } from '@/lib/sound';
+import { useAutoScrollOnFocus } from '@/lib/viewport';
 import { listen, supportsVoice, type VoiceSession } from '@/lib/voiceInput';
 import { askCopilot } from '@/services/copilot';
 import { Markdown } from './Markdown';
@@ -38,6 +39,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hearing, setHearing] = useState(false);
+  const autoScrollOnFocus = useAutoScrollOnFocus();
 
   const scroller = useRef<ScrollView>(null);
   const voice = useRef<VoiceSession | null>(null);
@@ -122,7 +124,14 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
   }, []);
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Ask Notomi" icon="zap" maxHeight={460}>
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title="Ask Notomi"
+      icon="zap"
+      maxHeight={460}
+      variant="form"
+    >
       {turns.length === 0 ? (
         <View className="gap-3">
           <Text className="text-sm leading-5 text-muted">
@@ -201,6 +210,7 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
           placeholder={hearing ? 'Listening…' : 'Ask, or say what you have to do'}
           placeholderTextColor={tones.subtle}
           onSubmitEditing={() => void send(draft)}
+          onFocus={autoScrollOnFocus}
           className="max-h-24 min-h-[44px] flex-1 rounded-2xl border border-line bg-paper px-4 py-2.5 text-base leading-5 text-ink"
           style={{ textAlignVertical: 'top' }}
         />

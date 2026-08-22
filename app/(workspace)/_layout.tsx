@@ -52,7 +52,11 @@ export const RAIL_BREAKPOINT = 900;
  */
 const VIEWPORT =
   Platform.OS === 'web'
-    ? ({ height: '100dvh', maxHeight: '100dvh', overflow: 'hidden' } as unknown as ViewStyle)
+    ? ({
+        height: 'var(--app-height, 100dvh)',
+        maxHeight: 'var(--app-height, 100dvh)',
+        overflow: 'hidden',
+      } as unknown as ViewStyle)
     : undefined;
 
 /**

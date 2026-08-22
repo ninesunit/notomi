@@ -32,6 +32,7 @@ import type { ChatMessage, SourceDocument, Subject } from '@/lib/schema';
 import { exportMarkdown, exportPdf, exportText } from '@/services/documentExport';
 import { extractText } from '@/services/fileProcessor';
 import type { MaterialFile } from '@/services/ingestion';
+import { useAutoScrollOnFocus } from '@/lib/viewport';
 
 const STARTERS = [
   'Summarise the key concepts across all my sources.',
@@ -42,6 +43,7 @@ const STARTERS = [
 
 export default function Reader({ parentHref }: { parentHref?: string } = {}) {
   const tones = useTones();
+  const autoScrollOnFocus = useAutoScrollOnFocus();
   const { subjectId } = useLocalSearchParams<{ subjectId: string }>();
   const uid = useUid();
   const db = getDb();
@@ -336,6 +338,7 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
         className={`flex-1 ${Platform.OS === 'web' ? 'overflow-y-auto' : ''}`}
         contentContainerClassName="px-5 py-6 md:px-8"
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         <View className="mx-auto w-full gap-5" style={{ maxWidth: 880 }}>
           {truncated ? (
@@ -423,6 +426,7 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
             onSubmitEditing={() => void send(draft)}
             blurOnSubmit={false}
             editable={!thinking}
+            onFocus={autoScrollOnFocus}
           />
           <Pressable
             accessibilityRole="button"

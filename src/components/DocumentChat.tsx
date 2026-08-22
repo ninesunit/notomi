@@ -10,6 +10,8 @@ import { formatRelative } from '@/lib/dates';
 import { paths } from '@/lib/paths';
 import type { ChatRecord, ChatSession } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
+import { useSafeArea } from '@/hooks/useSafeArea';
+import { useAutoScrollOnFocus } from '@/lib/viewport';
 import {
   appendMessage,
   clearChat,
@@ -48,6 +50,8 @@ export function DocumentChat({
   heading: string;
 }) {
   const tones = useTones();
+  const insets = useSafeArea();
+  const autoScrollOnFocus = useAutoScrollOnFocus();
   const db = getDb();
   const [chatId, setChatId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -280,7 +284,10 @@ export function DocumentChat({
         {error ? <Notice title="Could not answer that" body={error} /> : null}
       </ScrollView>
 
-      <View className="flex-row items-end gap-2 border-t border-line p-2.5">
+      <View
+        className="flex-row items-end gap-2 border-t border-line px-2.5 pt-2.5"
+        style={{ paddingBottom: 10 + insets.bottom }}
+      >
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -288,6 +295,7 @@ export function DocumentChat({
           placeholderTextColor={tones.subtle}
           multiline
           onSubmitEditing={() => void send(draft)}
+          onFocus={autoScrollOnFocus}
           blurOnSubmit
           className="max-h-28 min-h-[40px] flex-1 rounded-xl border border-line bg-surface px-3 py-2.5 text-base text-ink"
         />

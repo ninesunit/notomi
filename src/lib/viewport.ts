@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { TextInputProps } from 'react-native';
 
 /**
  * Keeps the app exactly as tall as the part of the screen you can see.
@@ -45,6 +46,52 @@ export function trackViewportHeight(): () => void {
     viewport.removeEventListener('scroll', apply);
     document.documentElement.style.removeProperty('--app-height');
   };
+}
+
+type ScrollTarget = {
+  scrollIntoView?: (options?: ScrollIntoViewOptions) => void;
+  isConnected?: boolean;
+};
+
+const focusTimers = new WeakMap<ScrollTarget, ReturnType<typeof setTimeout>>();
+
+function scrollTargetIntoView(target: ScrollTarget, delay: number): ReturnType<typeof setTimeout> {
+  const pending = focusTimers.get(target);
+  if (pending) clearTimeout(pending);
+  const timer = setTimeout(() => {
+    focusTimers.delete(target);
+    if (target.isConnected === false || typeof target.scrollIntoView !== 'function') return;
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    target.scrollIntoView({
+      behavior: reducedMotion ? 'auto' : 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    });
+  }, delay);
+  focusTimers.set(target, timer);
+  return timer;
+}
+
+/**
+ * App-wide safety net for raw inputs that do not use the shared Field.
+ *
+ * React Native Web renders TextInput as an input or textarea. Listening once
+ * at the document boundary keeps every older form keyboard-safe without
+ * adding slightly different timers to dozens of screens. The delay gives iOS
+ * time to publish the smaller visual viewport before centring the field.
+ */
+export function trackFocusedInputs(delay = 180): () => void {
+  if (typeof document === 'undefined') return () => {};
+  const onFocus = (event: FocusEvent) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) return;
+    scrollTargetIntoView(target, delay);
+  };
+
+  document.addEventListener('focusin', onFocus);
+  return () => document.removeEventListener('focusin', onFocus);
 }
 
 export type VisualViewport = {
@@ -104,4 +151,23 @@ export function useVisualViewport(): VisualViewport {
   }, []);
 
   return state;
+}
+
+/**
+ * onFocus handler for high-priority composers and shared fields.
+ *
+ * The document listener above covers every web input; this hook also makes the
+ * intent explicit at the bottom-anchored controls most likely to be covered.
+ * On native targets `scrollIntoView` is absent, so the callback is a no-op and
+ * KeyboardAvoidingView keeps ownership of the platform-native behaviour.
+ */
+export function useAutoScrollOnFocus(delay = 180) {
+  return useCallback(
+    (event: Parameters<NonNullable<TextInputProps['onFocus']>>[0]) => {
+      const target = event.target as unknown as ScrollTarget;
+      if (typeof target?.scrollIntoView !== 'function') return;
+      scrollTargetIntoView(target, delay);
+    },
+    [delay]
+  );
 }

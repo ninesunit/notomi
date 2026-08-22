@@ -9,6 +9,7 @@ import { Markdown } from '@/components/Markdown';
 import { Badge, Button, Card, IconButton, Loading, Notice } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
 import { useDocument } from '@/hooks/useFirestore';
+import { useVisualViewport } from '@/lib/viewport';
 import { formatDateTime } from '@/lib/dates';
 import { formatChars } from '@/lib/format';
 import { paths } from '@/lib/paths';
@@ -47,6 +48,7 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
   const uid = useUid();
   const db = getDb();
   const { width } = useWindowDimensions();
+  const viewport = useVisualViewport();
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -325,7 +327,14 @@ export default function DocumentReader({ basePath = '/library' }: { basePath?: s
         <View className="min-h-0 w-[360px] border-l border-line bg-surface">{panel}</View>
       ) : (
         <Modal visible={chatOpen} animationType="slide" onRequestClose={() => setChatOpen(false)}>
-          <View className="min-h-0 flex-1 bg-surface">
+          <View
+            className="min-h-0 flex-1 bg-surface"
+            style={
+              Platform.OS === 'web' && viewport.height
+                ? { height: viewport.height, marginTop: viewport.offsetTop }
+                : undefined
+            }
+          >
             <View className="flex-row items-center gap-2 border-b border-line px-3 py-2">
               <Text className="flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
                 {record.title || record.fileName}
