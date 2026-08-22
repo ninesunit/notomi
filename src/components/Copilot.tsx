@@ -206,7 +206,6 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
           value={draft}
           onChangeText={setDraft}
           multiline
-          editable={!busy}
           placeholder={hearing ? 'Listening…' : 'Ask, or say what you have to do'}
           placeholderTextColor={tones.subtle}
           onSubmitEditing={() => void send(draft)}

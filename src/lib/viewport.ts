@@ -34,7 +34,9 @@ export function trackViewportHeight(): () => void {
      * and leaves a strip of blank page above the header. Once the height is
      * correct that scroll is unnecessary, so it is undone.
      */
-    if (window.scrollY !== 0) window.scrollTo(0, 0);
+    const active = document.activeElement;
+    const editing = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+    if (!editing && window.scrollY !== 0) window.scrollTo(0, 0);
   };
 
   apply();
@@ -50,6 +52,7 @@ export function trackViewportHeight(): () => void {
 
 type ScrollTarget = {
   scrollIntoView?: (options?: ScrollIntoViewOptions) => void;
+  getBoundingClientRect?: () => DOMRect;
   isConnected?: boolean;
 };
 
@@ -60,7 +63,29 @@ function scrollTargetIntoView(target: ScrollTarget, delay: number): ReturnType<t
   if (pending) clearTimeout(pending);
   const timer = setTimeout(() => {
     focusTimers.delete(target);
-    if (target.isConnected === false || typeof target.scrollIntoView !== 'function') return;
+    if (
+      target.isConnected === false ||
+      typeof target.scrollIntoView !== 'function' ||
+      typeof target.getBoundingClientRect !== 'function'
+    ) return;
+
+    /*
+     * Calling scrollIntoView on every focus sounds harmless, but on WebKit it
+     * can interrupt the very focus transaction that is opening the software
+     * keyboard. It is also visibly disruptive with a mouse on desktop. Wait
+     * for the keyboard's visual viewport resize, then move only a field that
+     * is actually outside that visible area.
+     */
+    const rect = target.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const visibleTop = viewport?.offsetTop ?? 0;
+    const visibleBottom = visibleTop + (viewport?.height ?? window.innerHeight);
+    const breathingRoom = 16;
+    if (
+      rect.top >= visibleTop + breathingRoom &&
+      rect.bottom <= visibleBottom - breathingRoom
+    ) return;
+
     const reducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
@@ -82,7 +107,7 @@ function scrollTargetIntoView(target: ScrollTarget, delay: number): ReturnType<t
  * adding slightly different timers to dozens of screens. The delay gives iOS
  * time to publish the smaller visual viewport before centring the field.
  */
-export function trackFocusedInputs(delay = 180): () => void {
+export function trackFocusedInputs(delay = 240): () => void {
   if (typeof document === 'undefined') return () => {};
   const onFocus = (event: FocusEvent) => {
     const target = event.target;
@@ -161,7 +186,7 @@ export function useVisualViewport(): VisualViewport {
  * On native targets `scrollIntoView` is absent, so the callback is a no-op and
  * KeyboardAvoidingView keeps ownership of the platform-native behaviour.
  */
-export function useAutoScrollOnFocus(delay = 180) {
+export function useAutoScrollOnFocus(delay = 240) {
   return useCallback(
     (event: Parameters<NonNullable<TextInputProps['onFocus']>>[0]) => {
       const target = event.target as unknown as ScrollTarget;

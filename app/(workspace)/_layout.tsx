@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -28,9 +28,10 @@ import { isActive, isDetailRoute, NAV_ITEMS, SETTINGS_ITEM } from '@/components/
 
 /**
  * Mounted in the shell, so it would otherwise sit in the first bundle of every
- * cold load — including the ones where nobody asks it anything. Rendered only
- * once opened, because a lazy component that is always rendered fetches its
- * chunk immediately and saves nothing.
+ * cold load — including the ones where nobody asks it anything. It is mounted
+ * on the first open and stays mounted for the rest of the signed-in workspace
+ * session. That lets a request finish while its sheet is closed and keeps the
+ * conversation available across routes without writing private chat to disk.
  */
 const Copilot = lazyScreen<{ visible: boolean; onClose: () => void }>(
   () => import('@/components/Copilot'),
@@ -103,9 +104,15 @@ function WorkspaceShell() {
 
   const [drawer, setDrawer] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [copilotMounted, setCopilotMounted] = useState(false);
   const [helping, setHelping] = useState(false);
   const [classBlocks, setClassBlocks] = useState<ClassBlock[]>([]);
   const [sharePresence, setSharePresence] = useState(false);
+
+  const openCopilot = useCallback(() => {
+    setCopilotMounted(true);
+    setAsking(true);
+  }, []);
 
   useEffect(() => {
     if (!uid) return;
@@ -233,7 +240,7 @@ function WorkspaceShell() {
                 }}
               >
                 <Sidebar
-                  onAsk={() => setAsking(true)}
+                  onAsk={openCopilot}
                   onCollapse={() => chrome.setHidden(true)}
                   onHelp={() => setHelping(true)}
                 />
@@ -259,7 +266,7 @@ function WorkspaceShell() {
                 >
                   <MobileTopBar
                     onMenu={() => setDrawer(true)}
-                    onAsk={() => setAsking(true)}
+                    onAsk={openCopilot}
                     onHide={() => chrome.setHidden(true)}
                     title={currentSurface}
                   />
@@ -313,7 +320,9 @@ function WorkspaceShell() {
               />
             )}
 
-            {asking ? <Copilot visible onClose={() => setAsking(false)} /> : null}
+            {copilotMounted ? (
+              <Copilot visible={asking} onClose={() => setAsking(false)} />
+            ) : null}
             <HelpTips visible={helping} onClose={() => setHelping(false)} />
           </View>
         </ReminderProvider>
