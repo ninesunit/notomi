@@ -33,6 +33,14 @@ import { exportTermCalendar } from '@/services/calendarExport';
 import { myProfile, privacyOf, savePrivacy, type PrivacySettings } from '@/services/social';
 import { SafetyRows } from '@/components/social/SafetyRows';
 import { AI_LIMITS, budgetStatus, subscribeToBudget } from '@/lib/aiBudget';
+import { Sheet } from '@/components/Sheet';
+import { InstallAppCard } from '@/components/InstallAppCard';
+import {
+  LANGUAGE_OPTIONS,
+  languageLabel,
+  languagePreference,
+  type AppLanguage,
+} from '@/lib/language';
 
 // Opened once a term at most, and it drags the migration machinery with it.
 const DriveMigrationModal = lazyScreen<{ visible: boolean; onClose: () => void }>(
@@ -79,9 +87,9 @@ const GROUPS: {
   {
     id: 'look',
     title: 'Look and feel',
-    subtitle: 'Theme and sound',
+    subtitle: 'Theme, language and sound',
     icon: 'sun',
-    keywords: 'appearance theme dark light mode colour color sound audio mute volume taps clicks',
+    keywords: 'appearance theme dark light mode colour color language english malay chinese tamil arabic spanish french sound audio mute volume taps clicks',
   },
   {
     id: 'week',
@@ -156,6 +164,7 @@ export default function Settings() {
                 onChange={(next: ThemeChoice) => setTheme(next)}
               />
             </SettingCard>
+            <LanguageCard />
             <SoundCard
               sound={uiSound.sound}
               volume={uiSound.volume}
@@ -207,6 +216,7 @@ export default function Settings() {
       case 'account':
         return (
           <>
+            <InstallAppCard showInstalled />
             <Card className="mb-8 gap-4">
               <View className="flex-row items-center gap-3">
                 <View className="h-11 w-11 items-center justify-center rounded-full bg-accent-soft">
@@ -570,6 +580,87 @@ function SoundCard({
         </Pressable>
       </View>
     </Card>
+  );
+}
+
+function LanguageCard() {
+  const [language, setLanguage] = languagePreference.use();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.lang =
+      language === 'auto' ? (navigator.language || 'en').split('-')[0] : language;
+  }, [language]);
+
+  const choose = (next: AppLanguage) => {
+    play('toggle');
+    setLanguage(next);
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <SettingCard
+        icon="languages"
+        title="Language"
+        subtitle="Used by Ask Notomi, Reader, generated notes, quizzes and document explanations."
+      >
+        <Touchable
+          accessibilityRole="button"
+          accessibilityLabel={`Language. ${languageLabel(language)}.`}
+          onPress={() => setOpen(true)}
+          className="flex-row items-center gap-3 rounded-xl bg-sand px-3.5 py-3"
+        >
+          <Icon name="languages" size={16} tone="muted" />
+          <Text className="min-w-0 flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
+            {languageLabel(language)}
+          </Text>
+          <Icon name="chevron-right" size={15} tone="subtle" />
+        </Touchable>
+        <Text className="text-[11px] leading-4 text-subtle">
+          Course codes, room names, formulas and quoted source text always stay exact. Interface
+          labels remain English while the selected language rolls out across Notomi.
+        </Text>
+      </SettingCard>
+
+      <Sheet
+        visible={open}
+        onClose={() => setOpen(false)}
+        title="Language"
+        icon="languages"
+        variant="compact"
+      >
+        <View className="gap-1">
+          {LANGUAGE_OPTIONS.map((option) => {
+            const active = language === option.id;
+            return (
+              <Touchable
+                key={option.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => choose(option.id)}
+                className={`flex-row items-center gap-3 rounded-xl px-3.5 py-3 ${
+                  active ? 'bg-ink' : 'bg-sand'
+                }`}
+              >
+                <View className="min-w-0 flex-1">
+                  <Text className={`text-sm font-semibold ${active ? 'text-paper' : 'text-ink'}`}>
+                    {option.label}
+                  </Text>
+                  {option.id === 'auto' ? (
+                    <Text className={`text-[11px] ${active ? 'text-paper/60' : 'text-muted'}`}>
+                      {option.detail}
+                    </Text>
+                  ) : null}
+                </View>
+                {active ? <Icon name="check" size={16} tone="inverse" /> : null}
+              </Touchable>
+            );
+          })}
+        </View>
+      </Sheet>
+    </>
   );
 }
 

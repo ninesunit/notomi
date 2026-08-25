@@ -223,7 +223,11 @@ export function Copilot({ visible, onClose }: { visible: boolean; onClose: () =>
             draft.trim() && !busy ? 'bg-ink' : 'bg-line'
           }`}
         >
-          <Icon name="arrow-up" size={18} tone={draft.trim() && !busy ? 'inverse' : 'subtle'} />
+          {busy ? (
+            <ActivityIndicator size="small" color={tones.subtle} />
+          ) : (
+            <Icon name="arrow-up" size={18} tone={draft.trim() ? 'inverse' : 'subtle'} />
+          )}
         </Pressable>
       </View>
     </Sheet>

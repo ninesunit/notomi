@@ -3,8 +3,12 @@
   "short_name": "Notomi",
   "description": "Upload your lectures, ask questions grounded in your own sources, and let your syllabus fill in your to-do list.",
   "start_url": "/",
+  "id": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "launch_handler": { "client_mode": "navigate-existing" },
+  "categories": ["education", "productivity"],
   "orientation": "any",
   "background_color": "#F7F5EE",
   "theme_color": "#F7F5EE",
@@ -18,21 +22,21 @@
       "name": "Capture a whiteboard",
       "short_name": "Capture",
       "description": "Photograph a board or slide straight into a subject",
-      "url": "/capture",
+      "url": "/tasks?tab=capture",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Start a focus block",
       "short_name": "Focus",
       "description": "25 minutes of work against a subject",
-      "url": "/focus",
+      "url": "/tasks?tab=focus",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Today's timetable",
       "short_name": "Timetable",
       "description": "Where you need to be today",
-      "url": "/timetable",
+      "url": "/schedule?tab=timetable",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]

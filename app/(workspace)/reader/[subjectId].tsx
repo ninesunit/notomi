@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -395,7 +396,10 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
                     </View>
                     <View className="flex-1">
                       {message.pending ? (
-                        <Text className="py-1 text-[15px] text-subtle">Reading your sources…</Text>
+                        <View className="flex-row items-center gap-2 py-1">
+                          <ActivityIndicator size="small" color={tones.accent} />
+                          <Text className="text-[15px] text-subtle">Reading your sources…</Text>
+                        </View>
                       ) : message.error ? (
                         <Notice title="Notomi could not answer that" body={message.text} />
                       ) : (
@@ -437,7 +441,11 @@ export default function Reader({ parentHref }: { parentHref?: string } = {}) {
               draft.trim() && !thinking ? 'bg-ink' : 'bg-sand'
             }`}
           >
-            <Icon name="arrow-up" size={17} tone={draft.trim() && !thinking ? 'inverse' : 'subtle'} />
+            {thinking ? (
+              <ActivityIndicator size="small" color={tones.subtle} />
+            ) : (
+              <Icon name="arrow-up" size={17} tone={draft.trim() ? 'inverse' : 'subtle'} />
+            )}
           </Pressable>
         </View>
         <Text className="mx-auto mt-2 w-full text-center text-xs text-subtle" style={{ maxWidth: 880 }}>

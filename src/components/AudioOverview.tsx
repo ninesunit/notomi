@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
-import { Icon } from '@/components/Icon';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { Icon, useTones } from '@/components/Icon';
 import { Button, Notice } from './ui';
 import { generatePodcast } from '@/lib/ai';
 import { PodcastPlayer, pickVoices, type VoicePair } from '@/lib/speech';
@@ -20,6 +20,7 @@ export function AudioOverview({
   context: string;
   subjectName: string;
 }) {
+  const tones = useTones();
   const [status, setStatus] = useState<Status>('idle');
   const [lines, setLines] = useState<PodcastLine[]>([]);
   const [current, setCurrent] = useState(0);
@@ -123,7 +124,7 @@ export function AudioOverview({
   if (status === 'generating') {
     return (
       <View className="flex-row items-center gap-3 rounded-2xl border border-line bg-surface p-5">
-        <Icon name="loader" size={16} tone="pine" />
+        <ActivityIndicator size="small" color={tones.pine} />
         <Text className="flex-1 text-sm text-muted">
           Writing a two-speaker discussion of your sources…
         </Text>

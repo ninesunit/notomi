@@ -68,7 +68,8 @@ export function Sidebar({
             className="flex-row items-center gap-2.5 rounded-xl bg-ink px-3 py-2.5"
           >
             <Icon name="zap" size={15} tone="inverse" />
-            <Text className="text-[15px] font-semibold text-paper">Ask Notomi</Text>
+            <Text className="min-w-0 flex-1 text-[15px] font-semibold text-paper">Ask Notomi</Text>
+            <Text className="text-[10px] font-semibold text-paper/55">Ctrl Shift A</Text>
           </Touchable>
 
           <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-1 pb-2">

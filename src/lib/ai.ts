@@ -25,6 +25,8 @@ import type {
   RevisionPlanItem,
 } from './schema';
 import { isQuotaError, noteOverload, noteSuccess, reserve, type Weight } from '@/lib/aiBudget';
+import { beginAiActivity } from '@/lib/aiActivity';
+import { aiLanguageInstruction } from '@/lib/language';
 
 /**
  * Gemini's context window is well over a million tokens, so Notomi skips RAG
@@ -302,11 +304,22 @@ async function runWithModelFallback<T>(
   run: (candidate: GenerativeModel) => Promise<T>,
   weight: Weight = 'standard'
 ): Promise<T> {
-  const release = await reserve(weight);
+  const label =
+    operation === 'generateFromMedia'
+      ? 'Notomi is reading a file…'
+      : operation === 'askSources'
+        ? 'Notomi is reading your materials…'
+        : operation === 'copilot chat'
+          ? 'Ask Notomi is thinking…'
+          : 'Notomi is generating…';
+  const finishActivity = beginAiActivity(label);
+  let release: (() => void) | null = null;
   try {
+    release = await reserve(weight);
     return await attemptWithModelFallback(operation, params, run);
   } finally {
-    release();
+    release?.();
+    finishActivity();
   }
 }
 
@@ -503,15 +516,16 @@ export function buildContext(sources: { title: string; text: string }[]): string
 }
 
 async function generate(params: Omit<ModelParams, 'model'>, prompt: string): Promise<string> {
+  const localisedPrompt = `${aiLanguageInstruction()}\n\n${prompt}`;
   try {
     return await withAiResponseCache(
       {
         namespace: 'text',
-        payload: JSON.stringify({ models: MODEL_POOL, params, prompt }),
+        payload: JSON.stringify({ models: MODEL_POOL, params, prompt: localisedPrompt }),
       },
       async () => {
         const result = await runWithModelFallback('generateContent', params, (candidate) =>
-          candidate.generateContent(prompt)
+          candidate.generateContent(localisedPrompt)
         );
         return result.response.text();
       }
@@ -743,11 +757,17 @@ async function generateFromMedia(
   prompt: string,
   generationConfig: Record<string, unknown> = {}
 ): Promise<string> {
+  const localisedPrompt = `${aiLanguageInstruction()}\n\n${prompt}`;
   try {
     return await withAiResponseCache(
       {
         namespace: 'media',
-        payload: JSON.stringify({ models: MODEL_POOL, mimeType, generationConfig, prompt }),
+        payload: JSON.stringify({
+          models: MODEL_POOL,
+          mimeType,
+          generationConfig,
+          prompt: localisedPrompt,
+        }),
         bytes: data,
         ttlMs: 30 * 24 * 60 * 60 * 1000,
       },
@@ -758,7 +778,7 @@ async function generateFromMedia(
           (candidate) =>
             candidate.generateContent([
               { inlineData: { data: toBase64(data), mimeType } },
-              { text: prompt },
+              { text: localisedPrompt },
             ]),
           'heavy'
         );
@@ -1065,7 +1085,7 @@ export async function askSources(
   question: string
 ): Promise<string> {
   const params: Omit<ModelParams, 'model'> = {
-    systemInstruction: `${READER_SYSTEM_PROMPT}\n\nSOURCES:\n${context}`,
+    systemInstruction: `${READER_SYSTEM_PROMPT}\n\n${aiLanguageInstruction()}\n\nSOURCES:\n${context}`,
     generationConfig: { temperature: 0.3 },
   };
   const contents: Content[] = [
@@ -2360,7 +2380,9 @@ class is, call get_schedule; if they mention something due, call create_task.
   five is a bad one.
 
 TODAY
-${input.brief}`,
+${input.brief}
+
+${aiLanguageInstruction()}`,
     // Answers here are one or two sentences, usually read while walking
     // between classes. Deliberation buys nothing and costs the whole wait.
     generationConfig: { temperature: 0.3, thinkingConfig: FAST_THINKING },

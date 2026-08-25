@@ -1,6 +1,6 @@
 import { useState, type DragEvent } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
-import { Icon } from '@/components/Icon';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { Icon, useTones } from '@/components/Icon';
 import {
   materialFilesFromWeb,
   capturePhotoFromWeb,
@@ -22,6 +22,7 @@ export function FileDropZone({
   body?: string;
   compact?: boolean;
 }) {
+  const tones = useTones();
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,7 +66,11 @@ export function FileDropZone({
           dragging ? 'border-accent bg-accent-soft' : 'border-line bg-paper'
         }`}
       >
-        <Icon name="upload-cloud" size={compact ? 18 : 22} tone={dragging ? 'accent' : 'subtle'} />
+        {busy ? (
+          <ActivityIndicator size="small" color={tones.accent} />
+        ) : (
+          <Icon name="upload-cloud" size={compact ? 18 : 22} tone={dragging ? 'accent' : 'subtle'} />
+        )}
         <View className="items-center gap-1">
           <Text className="text-sm font-semibold text-ink">{title}</Text>
           <Text className="text-center text-xs leading-5 text-muted">{body}</Text>
@@ -81,9 +86,12 @@ export function FileDropZone({
             }
             className={`rounded-lg bg-ink px-4 py-2 ${busy ? 'opacity-50' : ''}`}
           >
-            <Text className="text-xs font-semibold text-paper">
-              {busy ? 'Working…' : 'Choose files'}
-            </Text>
+            <View className="flex-row items-center gap-2">
+              {busy ? <ActivityIndicator size="small" color={tones.inverse} /> : null}
+              <Text className="text-xs font-semibold text-paper">
+                {busy ? 'Working…' : 'Choose files'}
+              </Text>
+            </View>
           </Pressable>
           {Platform.OS === 'web' ? (
             <Pressable

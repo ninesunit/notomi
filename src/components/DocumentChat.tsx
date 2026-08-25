@@ -308,7 +308,11 @@ export function DocumentChat({
             thinking || !draft.trim() ? 'opacity-40' : ''
           }`}
         >
-          <Icon name="arrow-up" size={16} tone="inverse" />
+          {thinking ? (
+            <ActivityIndicator size="small" color={tones.inverse} />
+          ) : (
+            <Icon name="arrow-up" size={16} tone="inverse" />
+          )}
         </Pressable>
       </View>
     </View>

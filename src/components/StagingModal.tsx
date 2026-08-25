@@ -1,9 +1,14 @@
-import { Text, View } from 'react-native';
-import { Icon } from './Icon';
+import { ActivityIndicator, Text, View } from 'react-native';
+import { Icon, useTones } from './Icon';
 import { Sheet } from './Sheet';
 import { Button, IconButton, Notice } from './ui';
 import { classify, humanSize } from '@/services/fileProcessor';
-import type { IngestProgress, MaterialFile } from '@/services/ingestion';
+import {
+  stageLabel,
+  STAGE_ORDER,
+  type IngestProgress,
+  type MaterialFile,
+} from '@/services/ingestion';
 
 function typeLabel(file: MaterialFile): string {
   const name = file.name.toLowerCase();
@@ -39,7 +44,10 @@ export function StagingModal({
   onAdd: () => void;
   onProcess: () => void;
 }) {
+  const tones = useTones();
   const total = files.reduce((sum, file) => sum + (file.size ?? file.file?.size ?? 0), 0);
+  const stageIndex = progress ? STAGE_ORDER.indexOf(progress.stage) : -1;
+  const stageProgress = stageIndex < 0 ? 0.06 : (stageIndex + 1) / STAGE_ORDER.length;
   return (
     <Sheet
       visible={files.length > 0}
@@ -81,6 +89,30 @@ export function StagingModal({
 
       {error ? <Notice title="The batch could not be staged" body={error} /> : null}
 
+      {busy ? (
+        <View accessibilityLiveRegion="polite" className="gap-2 rounded-xl bg-accent-soft/60 p-3.5">
+          <View className="flex-row items-center gap-3">
+            <ActivityIndicator size="small" color={tones.accent} />
+            <View className="min-w-0 flex-1">
+              <Text className="text-sm font-semibold text-accent">
+                {progress ? stageLabel(progress.stage, progress.kind) : 'Preparing your files…'}
+              </Text>
+              <Text className="text-xs text-muted" numberOfLines={1}>
+                {progress
+                  ? `${progress.fileName} · ${progress.index} of ${progress.total}`
+                  : 'Nothing has been saved yet.'}
+              </Text>
+            </View>
+          </View>
+          <View className="h-1 overflow-hidden rounded-full bg-surface">
+            <View
+              className="h-full rounded-full bg-accent"
+              style={{ width: `${Math.round(stageProgress * 100)}%` }}
+            />
+          </View>
+        </View>
+      ) : null}
+
       <View className="gap-2">
         {files.map((file, index) => {
           const active = progress?.index === index + 1;
@@ -107,7 +139,7 @@ export function StagingModal({
                   </Text>
                   {active ? (
                     <Text className="text-[11px] font-medium text-accent">
-                      {progress.fileName ? `Processing ${progress.index} of ${progress.total}` : 'Processing'}
+                      {stageLabel(progress.stage, progress.kind)}
                     </Text>
                   ) : null}
                 </View>

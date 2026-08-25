@@ -76,6 +76,7 @@ import HelpCircle from 'lucide-react-native/icons/circle-question-mark';
 import Highlighter from 'lucide-react-native/icons/highlighter';
 import Image from 'lucide-react-native/icons/image';
 import Lasso from 'lucide-react-native/icons/lasso';
+import Languages from 'lucide-react-native/icons/languages';
 import Layers from 'lucide-react-native/icons/layers';
 import LayoutDashboard from 'lucide-react-native/icons/layout-dashboard';
 import Link from 'lucide-react-native/icons/link';
@@ -134,6 +135,8 @@ import UsersRound from 'lucide-react-native/icons/users-round';
 import Video from 'lucide-react-native/icons/video';
 import Volume2 from 'lucide-react-native/icons/volume-2';
 import VolumeX from 'lucide-react-native/icons/volume-x';
+import Wifi from 'lucide-react-native/icons/wifi';
+import WifiOff from 'lucide-react-native/icons/wifi-off';
 import X from 'lucide-react-native/icons/x';
 import XCircle from 'lucide-react-native/icons/circle-x';
 import Zap from 'lucide-react-native/icons/zap';
@@ -208,6 +211,7 @@ const ICONS = {
   image: Image,
   layers: Layers,
   lasso: Lasso,
+  languages: Languages,
   'layout-dashboard': LayoutDashboard,
   'link-2': Link,
   list: List,
@@ -265,6 +269,8 @@ const ICONS = {
   film: Film,
   'volume-2': Volume2,
   'volume-x': VolumeX,
+  wifi: Wifi,
+  'wifi-off': WifiOff,
   x: X,
   'x-circle': XCircle,
   zap: Zap,

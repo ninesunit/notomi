@@ -38,6 +38,7 @@ import { weekDays, weekOf, weekRangeLabel } from '@/services/teachingPlan';
 import { pickMaterials, type MaterialFile } from '@/services/ingestion';
 import { subjectTint, workloadTint } from '@/lib/color';
 import { SemesterSetup } from '@/components/SemesterSetup';
+import { InstallAppCard } from '@/components/InstallAppCard';
 
 /**
  * The dashboard.
@@ -127,6 +128,8 @@ export default function Dashboard() {
       )}
 
       <MissionStatus semester={activeSemester} todos={open} />
+
+      <InstallAppCard compact />
 
       <SemesterSetup
         uid={uid}

@@ -19,6 +19,8 @@ import { trackFocusedInputs, trackViewportHeight } from '@/lib/viewport';
 import { useTheme } from '@/lib/theme';
 import { CrashScreen } from '@/components/CrashScreen';
 import { isFirebaseConfigured } from '@/services/firebase';
+// Starts capturing the browser's one-shot install event before sign-in.
+import '@/hooks/usePWAInstall';
 import '../global.css';
 
 function Splash() {

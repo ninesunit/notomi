@@ -19,43 +19,68 @@ function ios(): boolean {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+type InstallState = { prompt: InstallPrompt | null; installed: boolean };
+
+let state: InstallState = { prompt: null, installed: standalone() };
+let listening = false;
+const listeners = new Set<(next: InstallState) => void>();
+
+function publish(patch: Partial<InstallState>): void {
+  state = { ...state, ...patch };
+  for (const listener of listeners) listener(state);
+}
+
+/**
+ * Captured once for the whole app.
+ *
+ * `beforeinstallprompt` is a one-shot browser event. A hook that starts
+ * listening only after sign-in can miss it on the login screen and leave the
+ * Dashboard's Install button permanently unavailable. The module-level store
+ * retains the event until any screen chooses to use it.
+ */
+function startListening(): void {
+  if (listening || Platform.OS !== 'web' || typeof window === 'undefined') return;
+  listening = true;
+  const before = (event: Event) => {
+    event.preventDefault();
+    publish({ prompt: event as InstallPrompt });
+  };
+  const complete = () => publish({ installed: true, prompt: null });
+  window.addEventListener('beforeinstallprompt', before);
+  window.addEventListener('appinstalled', complete);
+}
+
+startListening();
+
 export function usePWAInstall() {
-  const [prompt, setPrompt] = useState<InstallPrompt | null>(null);
-  const [installed, setInstalled] = useState(standalone);
+  const [current, setCurrent] = useState<InstallState>(() => state);
 
   useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-    const before = (event: Event) => {
-      event.preventDefault();
-      setPrompt(event as InstallPrompt);
-    };
-    const complete = () => {
-      setInstalled(true);
-      setPrompt(null);
-    };
-    window.addEventListener('beforeinstallprompt', before);
-    window.addEventListener('appinstalled', complete);
+    startListening();
+    listeners.add(setCurrent);
+    setCurrent(state);
     return () => {
-      window.removeEventListener('beforeinstallprompt', before);
-      window.removeEventListener('appinstalled', complete);
+      listeners.delete(setCurrent);
     };
   }, []);
 
   const install = useCallback(async () => {
-    if (!prompt) return false;
-    await prompt.prompt();
-    const result = await prompt.userChoice;
+    if (!state.prompt) return false;
+    const pending = state.prompt;
+    await pending.prompt();
+    const result = await pending.userChoice;
+    // Browser install prompts are single-use, including after dismissal.
+    publish({ prompt: null });
     if (result.outcome === 'accepted') {
-      setInstalled(true);
-      setPrompt(null);
+      publish({ installed: true });
       return true;
     }
     return false;
-  }, [prompt]);
+  }, []);
 
   return {
-    installed,
-    canPrompt: Boolean(prompt),
+    installed: current.installed,
+    canPrompt: Boolean(current.prompt),
     isIOS: ios(),
     install,
   };

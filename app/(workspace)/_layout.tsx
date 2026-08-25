@@ -14,6 +14,7 @@ import { getDocs } from 'firebase/firestore';
 import { lazyScreen } from '@/components/lazyScreen';
 import { EdgeSwipeArea, MobileTopBar, NavDrawer } from '@/components/Drawer';
 import { IngestBanner } from '@/components/IngestBanner';
+import { ConnectivityBanner } from '@/components/ConnectivityBanner';
 import { HelpTips } from '@/components/HelpTips';
 import { resumeDrive, setDriveIdentity } from '@/lib/driveUtils';
 import { useSafeArea } from '@/hooks/useSafeArea';
@@ -113,6 +114,21 @@ function WorkspaceShell() {
     setCopilotMounted(true);
     setAsking(true);
   }, []);
+
+  // The same quick route on desktop and iPad hardware keyboards. It does not
+  // steal a plain typing key and remains available from every workspace page.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const shortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key.toLowerCase() !== 'a') {
+        return;
+      }
+      event.preventDefault();
+      openCopilot();
+    };
+    window.addEventListener('keydown', shortcut);
+    return () => window.removeEventListener('keydown', shortcut);
+  }, [openCopilot]);
 
   useEffect(() => {
     if (!uid) return;
@@ -273,6 +289,7 @@ function WorkspaceShell() {
                 </Animated.View>
               )}
 
+              <ConnectivityBanner />
               <IngestBanner />
 
               {/* min-h-0 lets this shrink below its content so the banner is
