@@ -16,7 +16,14 @@ import {
   initializeAuth,
   type Auth,
 } from 'firebase/auth';
-import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore';
+import {
+  connectFirestoreEmulator,
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from 'firebase/firestore';
 import { getAI, getGenerativeModel, GoogleAIBackend, type AI, type GenerativeModel } from 'firebase/ai';
 
 /**
@@ -215,7 +222,23 @@ export function getFirebaseAuth(): Auth {
 
 export function getDb(): Firestore {
   if (!dbRef) {
-    dbRef = getFirestore(getFirebaseApp());
+    const app = getFirebaseApp();
+    if (Platform.OS === 'web') {
+      try {
+        dbRef = initializeFirestore(app, {
+          // Keeps the latest opened semester usable during a connection drop,
+          // queues writes until connectivity returns, and coordinates the
+          // cache across several Notomi tabs instead of duplicating it.
+          localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+        });
+      } catch {
+        // Another SDK consumer may have initialized Firestore first. The
+        // existing instance is still correct; it simply owns its cache config.
+        dbRef = getFirestore(app);
+      }
+    } else {
+      dbRef = getFirestore(app);
+    }
     if (USE_EMULATORS) connectFirestoreEmulator(dbRef, EMULATOR_HOST, 8080);
   }
   return dbRef;

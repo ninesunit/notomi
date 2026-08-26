@@ -129,8 +129,6 @@ export default function Dashboard() {
 
       <MissionStatus semester={activeSemester} todos={open} />
 
-      <InstallAppCard compact />
-
       <SemesterSetup
         uid={uid}
         classCount={classes.data.length}
@@ -146,11 +144,20 @@ export default function Dashboard() {
         </View>
       ) : null}
 
-      <Engines
-        busy={ingest.busy}
-        collapsed={compact}
-        onFiles={(files) => ingest.startFiles(files).then(() => undefined)}
-      />
+      {compact ? (
+        <MobileQuickActions
+          busy={ingest.busy}
+          onFiles={(files) => ingest.startFiles(files).then(() => undefined)}
+        />
+      ) : (
+        <Engines
+          busy={ingest.busy}
+          collapsed={false}
+          onFiles={(files) => ingest.startFiles(files).then(() => undefined)}
+        />
+      )}
+
+      {compact ? <MobileTodayBrief classes={liveClasses} routines={routines.data} /> : null}
 
       <ThisWeek
         classes={liveClasses}
@@ -161,6 +168,8 @@ export default function Dashboard() {
         compact={compact}
         semester={activeSemester}
       />
+
+      {setUp ? <InstallAppCard compact /> : null}
 
       <CompactBurnout
         semester={activeSemester}
@@ -179,6 +188,167 @@ export default function Dashboard() {
       />
 
     </ScreenScroll>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Phone start: one tap in, one glance out
+ * ------------------------------------------------------------------ */
+
+function MobileQuickActions({
+  busy,
+  onFiles,
+}: {
+  busy: boolean;
+  onFiles: (files: MaterialFile[]) => Promise<void>;
+}) {
+  const [error, setError] = useState<string | null>(null);
+
+  const choose = () => {
+    setError(null);
+    // Keep the picker inside the original press gesture for iOS Safari.
+    void pickMaterials()
+      .then((files) => (files.length > 0 ? onFiles(files) : undefined))
+      .catch((caught: unknown) =>
+        setError(caught instanceof Error ? caught.message : String(caught))
+      );
+  };
+
+  return (
+    <View className="mb-4 gap-2">
+      <View className="flex-row gap-2">
+        <Button
+          label="Scan files"
+          icon="upload-cloud"
+          loading={busy}
+          disabled={busy}
+          onPress={choose}
+          className="flex-1"
+        />
+        <Link href="/tasks?tab=board&compose=1" asChild>
+          <Button label="Add task" icon="plus" variant="secondary" className="flex-1" />
+        </Link>
+      </View>
+      {error ? <Notice title="Could not add those files" body={error} /> : null}
+    </View>
+  );
+}
+
+type TodayItem =
+  | { kind: 'class'; start: number; end: number; title: string; venue: string | null; block: ResolvedClass }
+  | { kind: 'routine'; start: number; end: number; title: string; venue: string | null };
+
+/**
+ * The answer a phone is opened for: what is happening now, and what follows.
+ * It deliberately shows at most two rows. The full week remains directly
+ * underneath, collapsed until it is actually wanted.
+ */
+function MobileTodayBrief({
+  classes,
+  routines,
+}: {
+  classes: ResolvedClass[];
+  routines: RoutineBlock[];
+}) {
+  const [selectedClass, setSelectedClass] = useState<ResolvedClass | null>(null);
+  const day = todayIndex();
+  const now = new Date();
+  const minute = now.getHours() * 60 + now.getMinutes();
+
+  const items = useMemo<TodayItem[]>(
+    () =>
+      [
+        ...classes
+          .filter((block) => block.day === day)
+          .map((block) => ({
+            kind: 'class' as const,
+            start: block.startMinute,
+            end: block.endMinute,
+            title: block.subjectName || block.title,
+            venue: block.venue,
+            block,
+          })),
+        ...routines
+          .filter((block) => block.day === day)
+          .map((block) => ({
+            kind: 'routine' as const,
+            start: block.startMinute,
+            end: block.endMinute,
+            title: block.title,
+            venue: block.venue,
+          })),
+      ].sort((left, right) => left.start - right.start),
+    [classes, day, routines]
+  );
+
+  const current = items.find((item) => item.start <= minute && item.end > minute) ?? null;
+  const next = items.find((item) => item.start > minute) ?? null;
+  const visible = [current, next].filter((item): item is TodayItem => item !== null);
+
+  return (
+    <View className="mb-4 gap-2.5">
+      <View className="flex-row items-center justify-between">
+        <Text className="text-[15px] font-semibold tracking-tight text-ink">Today</Text>
+        <Link href="/schedule" asChild>
+          <Touchable accessibilityRole="link" className="flex-row items-center gap-1 py-1">
+            <Text className="text-xs font-semibold text-muted">Open schedule</Text>
+            <Icon name="chevron-right" size={13} tone="subtle" />
+          </Touchable>
+        </Link>
+      </View>
+
+      <Card className="gap-0 p-0">
+        {visible.length === 0 ? (
+          <View className="px-4 py-4">
+            <Text className="text-sm font-semibold text-ink">Nothing else scheduled today</Text>
+            <Text className="mt-0.5 text-xs text-muted">Your next class will appear here.</Text>
+          </View>
+        ) : (
+          visible.map((item, index) => {
+            const happening = item === current;
+            const row = (
+              <View
+                className={`flex-row items-center gap-3 px-4 py-3.5 ${index > 0 ? 'border-t border-line' : ''}`}
+              >
+                <View className={`h-9 w-9 items-center justify-center rounded-xl ${happening ? 'bg-pine-soft' : 'bg-sand'}`}>
+                  <Icon name={item.kind === 'class' ? 'book-open' : 'clock'} size={16} tone={happening ? 'pine' : 'muted'} />
+                </View>
+                <View className="min-w-0 flex-1">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-[11px] font-bold uppercase tracking-wider text-subtle">
+                      {happening ? 'Now' : 'Next'}
+                    </Text>
+                    <Text className="text-xs text-muted">
+                      {minutesToLabel(item.start)}–{minutesToLabel(item.end)}
+                    </Text>
+                  </View>
+                  <Text className="text-sm font-semibold text-ink" numberOfLines={1}>{item.title}</Text>
+                  <Text className="text-xs text-muted" numberOfLines={1}>
+                    {item.venue?.trim() || (item.kind === 'class' ? 'Venue not set' : 'Personal routine')}
+                  </Text>
+                </View>
+                {item.kind === 'class' ? <Icon name="chevron-right" size={15} tone="subtle" /> : null}
+              </View>
+            );
+
+            return item.kind === 'class' ? (
+              <Touchable
+                key={`${item.kind}-${item.block.id}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${item.title}`}
+                onPress={() => setSelectedClass(item.block)}
+              >
+                {row}
+              </Touchable>
+            ) : (
+              <View key={`${item.kind}-${item.start}-${item.title}`}>{row}</View>
+            );
+          })
+        )}
+      </Card>
+
+      <DashboardClassSheet block={selectedClass} onClose={() => setSelectedClass(null)} />
+    </View>
   );
 }
 
@@ -332,6 +502,7 @@ function ThisWeek({
   const [selectedClass, setSelectedClass] = useState<ResolvedClass | null>(null);
   const { visibleDays, toggleDay } = useVisibleDays();
   const [style] = useWeekStyle();
+  const [weekOpen, setWeekOpen] = useState(!compact);
 
 
   /** The dates this repeating week actually falls on, when a term is running. */
@@ -366,10 +537,10 @@ function ThisWeek({
         (left, right) =>
           (toDate(left.todo.dueDate)?.getTime() ?? 0) - (toDate(right.todo.dueDate)?.getTime() ?? 0)
       )
-      .slice(0, 5);
+      .slice(0, compact ? 3 : 5);
     // `now` is derived from render time; todos is the real input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todos]);
+  }, [compact, todos]);
 
   const laterCount = Math.max(
     0,
@@ -378,7 +549,19 @@ function ThisWeek({
 
   return (
     <View className="mb-6 gap-2.5">
-      {compact ? null : (
+      {compact ? (
+        <Touchable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: weekOpen }}
+          onPress={() => setWeekOpen((current) => !current)}
+          className="flex-row items-center rounded-xl border border-line bg-surface px-4 py-3"
+        >
+          <Icon name="calendar-days" size={16} tone="muted" />
+          <Text className="ml-2.5 flex-1 text-sm font-semibold text-ink">Weekly schedule</Text>
+          <Text className="mr-2 text-xs font-semibold text-muted">{weekOpen ? 'Hide' : 'Show'}</Text>
+          <Icon name={weekOpen ? 'chevron-up' : 'chevron-down'} size={15} tone="subtle" />
+        </Touchable>
+      ) : (
         <View className="flex-row items-center justify-between">
           <Text className="text-lg font-semibold tracking-tight text-ink">Weekly schedule</Text>
           <Link href="/schedule" asChild>
@@ -387,7 +570,7 @@ function ThisWeek({
         </View>
       )}
 
-      {loading ? (
+      {compact && !weekOpen ? null : loading ? (
         <Loading label="Checking your week…" />
       ) : classes.length === 0 && routines.length === 0 ? (
         <Card className="gap-1">

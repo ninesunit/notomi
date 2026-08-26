@@ -31,6 +31,7 @@ import { paths } from '@/lib/paths';
 import type { SubTask, Subject, Todo } from '@/lib/schema';
 import { sweepOrphanedTodos } from '@/services/ingestion';
 import { feedback } from '@/lib/sound';
+import { useLocalSearchParams } from 'expo-router';
 
 /**
  * The cuts a student actually asks for.
@@ -71,6 +72,7 @@ const GROUPS: { key: DueBucket; title: string; hint: string }[] = [
 
 
 export default function Todos() {
+  const params = useLocalSearchParams<{ compose?: string }>();
   const uid = useUid();
   const db = getDb();
 
@@ -88,6 +90,7 @@ export default function Todos() {
 
   const [showCompleted, setShowCompleted] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
+  const composeHandled = useRef(false);
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [lens, setLens] = useState<Lens>('all');
 
@@ -118,6 +121,12 @@ export default function Todos() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [burst, setBurst] = useState(0);
+
+  useEffect(() => {
+    if (params.compose !== '1' || composeHandled.current) return;
+    composeHandled.current = true;
+    setComposerOpen(true);
+  }, [params.compose]);
 
   /**
    * Deleting a material now takes its deadlines with it, but accounts that

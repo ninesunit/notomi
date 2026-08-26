@@ -1,3 +1,5 @@
+import { getFirebaseAuth } from '@/services/firebase';
+
 /**
  * What a student is allowed to spend, and what happens when they have.
  *
@@ -73,7 +75,31 @@ export const AI_LIMITS = {
   breakerCooldownMs: 5 * 60_000,
 } as const;
 
+/** Guests are a product tour, not an unbounded way around the shared quota. */
+const GUEST_AI_LIMITS = {
+  standardPerDay: 8,
+  heavyPerDay: 2,
+} as const;
+
 const KEY = 'notomi:ai-budget-v1';
+
+function identity(): { key: string; guest: boolean } {
+  try {
+    const current = getFirebaseAuth().currentUser;
+    return {
+      key: `${KEY}:${current?.uid ?? 'signed-out'}`,
+      guest: current?.isAnonymous === true,
+    };
+  } catch {
+    return { key: `${KEY}:signed-out`, guest: false };
+  }
+}
+
+function dailyCaps(): { standard: number; heavy: number } {
+  return identity().guest
+    ? { standard: GUEST_AI_LIMITS.standardPerDay, heavy: GUEST_AI_LIMITS.heavyPerDay }
+    : { standard: AI_LIMITS.standardPerDay, heavy: AI_LIMITS.heavyPerDay };
+}
 
 type Ledger = {
   /** Local calendar day, so the reset lands at the student's midnight. */
@@ -98,7 +124,7 @@ function empty(): Ledger {
 function read(): Ledger {
   if (typeof localStorage === 'undefined') return empty();
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(identity().key);
     if (!raw) return empty();
     const parsed = JSON.parse(raw) as Ledger;
     // A new day is a fresh allowance; the breaker is not a daily thing and
@@ -115,7 +141,7 @@ function read(): Ledger {
 function write(ledger: Ledger): void {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(KEY, JSON.stringify(ledger));
+    localStorage.setItem(identity().key, JSON.stringify(ledger));
   } catch {
     /* Private mode. The in-flight lock below still holds for the session. */
   }
@@ -150,11 +176,12 @@ export type BudgetStatus = {
 
 export function budgetStatus(): BudgetStatus {
   const ledger = read();
+  const caps = dailyCaps();
   const midnight = new Date();
   midnight.setHours(24, 0, 0, 0);
   return {
-    standardLeft: Math.max(0, AI_LIMITS.standardPerDay - ledger.standard),
-    heavyLeft: Math.max(0, AI_LIMITS.heavyPerDay - ledger.heavy),
+    standardLeft: Math.max(0, caps.standard - ledger.standard),
+    heavyLeft: Math.max(0, caps.heavy - ledger.heavy),
     resetsAt: midnight,
     blockedUntil: ledger.blockedUntil > Date.now() ? new Date(ledger.blockedUntil) : null,
     busy: inFlight > 0,
@@ -213,6 +240,7 @@ let tail: Promise<void> = Promise.resolve();
 /** The two refusals that waiting cannot fix. */
 function refuseIfClosed(weight: Weight): void {
   const ledger = read();
+  const caps = dailyCaps();
   const now = Date.now();
 
   if (ledger.blockedUntil > now) {
@@ -224,7 +252,7 @@ function refuseIfClosed(weight: Weight): void {
   }
 
   const used = weight === 'heavy' ? ledger.heavy : ledger.standard;
-  const cap = weight === 'heavy' ? AI_LIMITS.heavyPerDay : AI_LIMITS.standardPerDay;
+  const cap = weight === 'heavy' ? caps.heavy : caps.standard;
   if (used >= cap) {
     const midnight = new Date();
     midnight.setHours(24, 0, 0, 0);

@@ -45,6 +45,25 @@ class_name = "ReminderDevice"
 tag = "v1"
 new_sqlite_classes = ["ReminderDevice"]
 
+# Fast, per-location counters supplied by Cloudflare itself. These protect the
+# free Worker/R2 allowance without adding KV/D1 writes or treating a campus IP
+# as one person. The verified Firebase uid is the key at runtime.
+[[ratelimits]]
+name = "USER_RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
+[[ratelimits]]
+name = "USER_MUTATION_LIMITER"
+namespace_id = "1002"
+
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
 [vars]
 R2_BUCKET = "notomi-materials"
 FIREBASE_PROJECT_ID = "notomii"

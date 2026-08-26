@@ -45,9 +45,21 @@ const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const GOOGLE_JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 
+function allowedOrigins(env: Env): string[] {
+  return env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
+}
+
+/** Native requests have no Origin; browser requests must come from Notomi. */
+function originAllowed(request: Request, env: Env): boolean {
+  const origin = request.headers.get('Origin');
+  if (!origin) return true;
+  const allowed = allowedOrigins(env);
+  return allowed.includes('*') || allowed.includes(origin);
+}
+
 function corsHeaders(request: Request, env: Env): Record<string, string> {
   const origin = request.headers.get('Origin') ?? '';
-  const allowed = env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean);
+  const allowed = allowedOrigins(env);
   const ok = allowed.includes('*') || allowed.includes(origin);
 
   return {
@@ -67,7 +79,12 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
 function json(body: unknown, status: number, headers: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...headers, 'Content-Type': 'application/json' },
+    headers: {
+      ...headers,
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
   });
 }
 
@@ -390,10 +407,14 @@ async function handlePush(
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const cors = corsHeaders(request, env);
-
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-
     const url = new URL(request.url);
+
+    if (request.method === 'OPTIONS') {
+      return originAllowed(request, env)
+        ? new Response(null, { status: 204, headers: cors })
+        : json({ error: 'origin not allowed' }, 403, {});
+    }
+
     if (url.pathname === '/health') {
       // Which of driveEnabled()'s three requirements are actually present at
       // runtime. Booleans only — never the values — because this route takes
@@ -444,6 +465,13 @@ export default {
       return new Response(object.body, { status: 200, headers });
     }
 
+    // CORS is not authorization, but rejecting an unexpected browser origin
+    // here prevents a stolen session token from being exercised by an
+    // unrelated site. Native clients omit Origin and continue normally.
+    if (!originAllowed(request, env)) {
+      return json({ error: 'origin not allowed' }, 403, {});
+    }
+
     // ---- authenticate -----------------------------------------------------
     const authHeader = request.headers.get('Authorization') ?? '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
@@ -453,7 +481,22 @@ export default {
     try {
       uid = await verifyIdToken(token, env.FIREBASE_PROJECT_ID);
     } catch (error) {
-      return json({ error: `invalid token: ${(error as Error).message}` }, 401, cors);
+      console.warn(JSON.stringify({ event: 'auth_rejected', reason: (error as Error).message }));
+      return json({ error: 'invalid token' }, 401, cors);
+    }
+
+    // Cloudflare's local rate-limit binding is asynchronous but does not add a
+    // network hop or a database write. One key per verified uid avoids
+    // penalising students who share campus Wi-Fi or a mobile carrier address.
+    const requestAllowance = await env.USER_RATE_LIMITER.limit({ key: uid });
+    if (!requestAllowance.success) {
+      return json({ error: 'too many requests; try again shortly' }, 429, cors);
+    }
+    if (request.method !== 'GET') {
+      const mutationAllowance = await env.USER_MUTATION_LIMITER.limit({ key: uid });
+      if (!mutationAllowance.success) {
+        return json({ error: 'too many changes; try again shortly' }, 429, cors);
+      }
     }
 
     // Each reminder queue is authenticated and namespaced to this uid/device.
@@ -471,7 +514,14 @@ export default {
     // ---- authorize: keys are namespaced by uid ----------------------------
     const prefix = `users/${uid}/`;
     const assertOwned = (key: string | null): key is string =>
-      !!key && key.startsWith(prefix) && !key.includes('..');
+      !!key &&
+      key.length > prefix.length &&
+      key.length <= 512 &&
+      key.startsWith(prefix) &&
+      !key.includes('..') &&
+      !key.includes('\\') &&
+      !key.includes('//') &&
+      !/[\u0000-\u001f\u007f]/.test(key);
 
     try {
       if (url.pathname === '/user-data' && request.method === 'DELETE') {
@@ -496,14 +546,19 @@ export default {
 
         if (request.method === 'PUT') {
           if (!request.body) return json({ error: 'empty upload' }, 400, cors);
+          const contentLength = Number(request.headers.get('Content-Length') ?? '0');
+          const maxBytes = key.includes('/profile/') ? 2 * 1024 * 1024 : 25 * 1024 * 1024;
+          if (!Number.isFinite(contentLength) || contentLength <= 0 || contentLength > maxBytes) {
+            return json(
+              { error: key.includes('/profile/') ? 'profile images must be 2 MB or smaller' : 'files must be 25 MB or smaller' },
+              413,
+              cors
+            );
+          }
           if (key.includes('/profile/')) {
             const contentType = request.headers.get('Content-Type') ?? '';
-            const contentLength = Number(request.headers.get('Content-Length') ?? '0');
             if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
               return json({ error: 'profile images must be JPEG, PNG or WebP' }, 415, cors);
-            }
-            if (!Number.isFinite(contentLength) || contentLength <= 0 || contentLength > 2 * 1024 * 1024) {
-              return json({ error: 'profile images must be 2 MB or smaller' }, 413, cors);
             }
           }
 

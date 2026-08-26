@@ -1,7 +1,10 @@
-import { Text, View } from 'react-native';
+import { useState } from 'react';
+import { Text, useWindowDimensions, View } from 'react-native';
 import { Icon, type IconName } from './Icon';
 import { feedback } from '@/lib/sound';
 import { Touchable } from '@/components/ui';
+import { Sheet } from '@/components/Sheet';
+import { PHONE } from '@/lib/breakpoints';
 
 export type HubTab<T extends string> = {
   id: T;
@@ -29,6 +32,83 @@ export function HubTabs<T extends string>({
   value: T;
   onChange: (tab: T) => void;
 }) {
+  const { width } = useWindowDimensions();
+  const [open, setOpen] = useState(false);
+  const active = tabs.find((tab) => tab.id === value) ?? tabs[0];
+
+  /*
+   * Five unlabelled glyphs saved horizontal space, but made the phone header a
+   * memory test. A single labelled selector states where the student is and
+   * moves the other destinations into a sheet that has room to name them.
+   * Tablet and desktop keep the faster one-click tab row below.
+   */
+  if (width < PHONE) {
+    return (
+      <>
+        <View className="shrink-0 border-b border-line bg-paper px-4 py-2">
+          <Touchable
+            accessibilityRole="button"
+            accessibilityLabel={`Change section. Current section: ${active.label}`}
+            accessibilityState={{ expanded: open }}
+            cue="none"
+            onPress={() => {
+              feedback('tap');
+              setOpen(true);
+            }}
+            className="h-11 w-full flex-row items-center gap-2.5 rounded-xl bg-ink px-3.5"
+          >
+            <Icon name={active.icon} size={16} tone="inverse" />
+            <Text className="min-w-0 flex-1 text-sm font-semibold text-paper" numberOfLines={1}>
+              {active.label}
+            </Text>
+            <Icon name="chevron-down" size={15} tone="inverse" />
+          </Touchable>
+        </View>
+
+        <Sheet
+          visible={open}
+          onClose={() => setOpen(false)}
+          title="Choose a section"
+          icon={active.icon}
+          variant="compact"
+        >
+          <View className="gap-1.5">
+            {tabs.map((tab) => {
+              const selected = tab.id === value;
+              return (
+                <Touchable
+                  key={tab.id}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selected }}
+                  onPress={() => {
+                    if (!selected) {
+                      feedback('toggle');
+                      onChange(tab.id);
+                    }
+                    setOpen(false);
+                  }}
+                  className={`min-h-12 flex-row items-center gap-3 rounded-xl px-3.5 py-3 ${
+                    selected ? 'bg-ink' : 'bg-paper'
+                  }`}
+                >
+                  <Icon name={tab.icon} size={17} tone={selected ? 'inverse' : 'muted'} />
+                  <Text
+                    className={`min-w-0 flex-1 text-[15px] font-semibold ${
+                      selected ? 'text-paper' : 'text-ink'
+                    }`}
+                  >
+                    {tab.label}
+                  </Text>
+                  {selected ? <Icon name="check" size={16} tone="inverse" /> : null}
+                </Touchable>
+              );
+            })}
+          </View>
+        </Sheet>
+      </>
+    );
+  }
+
   return (
     <View className="shrink-0 border-b border-line bg-paper">
       <View className="w-full self-center px-4 py-2 sm:px-5 sm:py-3 md:px-10" style={{ maxWidth: 1160 }}>

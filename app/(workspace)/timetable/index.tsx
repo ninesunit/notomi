@@ -1436,6 +1436,13 @@ function ClassForm({
       onClose={onClose}
       title={block ? 'Edit class' : 'Add class'}
       icon="calendar"
+      variant="fullscreen-mobile"
+      primaryAction={{
+        label: block ? 'Save' : days.length > 1 ? `Add ${days.length}` : 'Add',
+        onPress: () => void save(),
+        disabled: !valid,
+        loading: saving,
+      }}
       footer={
         <>
           {block ? (
@@ -1548,6 +1555,16 @@ function ClassForm({
 
       <Field label="Room" value={venue} onChangeText={setVenue} placeholder="LT-15" />
 
+      {block ? (
+        <Button
+          label="Delete class"
+          variant="danger"
+          icon="trash-2"
+          onPress={() => onDelete(block.id)}
+          className="sm:hidden"
+        />
+      ) : null}
+
       {error ? <Text className="text-xs text-rose">{error}</Text> : null}
     </Sheet>
   );
@@ -1626,6 +1643,13 @@ function RoutineForm({
       onClose={onClose}
       title={block ? 'Edit routine' : 'Add routine'}
       icon="clock"
+      variant="fullscreen-mobile"
+      primaryAction={{
+        label: block ? 'Save' : days.length > 1 ? `Add ${days.length}` : 'Add',
+        onPress: () => void save(),
+        disabled: !valid,
+        loading: saving,
+      }}
       footer={
         <>
           {block ? (
@@ -1714,6 +1738,16 @@ function RoutineForm({
         onChangeText={setVenue}
         placeholder="Sports hall"
       />
+
+      {block ? (
+        <Button
+          label="Delete routine"
+          variant="danger"
+          icon="trash-2"
+          onPress={() => onDelete(block.id)}
+          className="sm:hidden"
+        />
+      ) : null}
 
       {error ? <Text className="text-xs text-rose">{error}</Text> : null}
     </Sheet>

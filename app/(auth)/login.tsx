@@ -18,6 +18,7 @@ import { Button, Field, Notice, Touchable } from '@/components/ui';
 import { authErrorMessage, useAuth } from '@/hooks/useAuth';
 import { feedback } from '@/lib/sound';
 import { useSafeArea } from '@/hooks/useSafeArea';
+import { PHONE } from '@/lib/breakpoints';
 
 type Mode = 'signIn' | 'signUp';
 
@@ -56,9 +57,11 @@ export default function Login() {
   const [busy, setBusy] = useState<'form' | 'guest' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guestNoticeOpen, setGuestNoticeOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
 
   const { width } = useWindowDimensions();
   const insets = useSafeArea();
+  const phone = width < PHONE;
   /** Two columns only where there is genuinely room for the pitch beside the form. */
   const wide = width >= 900;
 
@@ -190,7 +193,7 @@ export default function Login() {
               label="Name"
               value={name}
               onChangeText={setName}
-              placeholder="Mika"
+              placeholder="Your name"
               autoCapitalize="words"
               textContentType="name"
             />
@@ -272,6 +275,135 @@ export default function Login() {
     </FadeIn>
   );
 
+  /*
+   * The phone is a doorway, not a product tour. One promise and one primary
+   * action fit above the fold; email is still fully supported, but it expands
+   * only when somebody chooses it. The richer proof remains beside the form
+   * on desktop and stacked on iPad where there is room to read it.
+   */
+  const phoneForm = (
+    <View className="gap-5">
+      <FadeIn index={0}>
+        <View className="gap-4">
+          <Logo size={46} />
+          <View className="gap-2.5">
+            <Text className="text-[32px] font-bold leading-9 tracking-tight text-ink">
+              Your semester,{`\n`}<Text className="text-accent">under control.</Text>
+            </Text>
+            <Text className="text-[15px] leading-6 text-muted">
+              Turn schedules, syllabuses and lecture slides into one clear plan.
+            </Text>
+          </View>
+        </View>
+      </FadeIn>
+
+      <FadeIn index={1}>
+        <View className="gap-4 rounded-3xl border border-line bg-surface p-5 shadow-sm">
+          {error ? <Notice title="Could not sign in" body={error} /> : null}
+
+          <GoogleButton
+            onPress={() => run(signInWithGoogle, 'google')}
+            loading={busy === 'google'}
+            disabled={busy !== null}
+          />
+
+          {emailOpen ? (
+            <View className="gap-3 border-t border-line pt-4">
+              <View className="flex-row items-center justify-between gap-3">
+                <Text className="text-[15px] font-semibold text-ink">
+                  {mode === 'signIn' ? 'Sign in with email' : 'Create an account'}
+                </Text>
+                <Touchable
+                  accessibilityRole="button"
+                  accessibilityLabel="Hide email form"
+                  onPress={() => setEmailOpen(false)}
+                  className="h-9 w-9 items-center justify-center rounded-lg"
+                >
+                  <Icon name="x" size={16} tone="muted" />
+                </Touchable>
+              </View>
+
+              {mode === 'signUp' ? (
+                <Field
+                  label="Name"
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Your name"
+                  autoCapitalize="words"
+                  textContentType="name"
+                />
+              ) : null}
+              <Field
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@university.edu"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="emailAddress"
+              />
+              <Field
+                label="Password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="••••••••"
+                secureTextEntry
+                textContentType={mode === 'signIn' ? 'password' : 'newPassword'}
+                onSubmitEditing={submit}
+                returnKeyType="go"
+              />
+              <Button
+                label={mode === 'signIn' ? 'Sign in' : 'Create account'}
+                icon="arrow-right"
+                onPress={submit}
+                loading={busy === 'form'}
+                disabled={busy !== null}
+              />
+              <Touchable
+                accessibilityRole="button"
+                onPress={() => {
+                  feedback('toggle');
+                  setMode(mode === 'signIn' ? 'signUp' : 'signIn');
+                  setError(null);
+                }}
+                className="items-center py-1.5"
+              >
+                <Text className="text-sm text-muted">
+                  {mode === 'signIn' ? 'New to Notomi? ' : 'Already have an account? '}
+                  <Text className="font-semibold text-accent">
+                    {mode === 'signIn' ? 'Create account' : 'Sign in'}
+                  </Text>
+                </Text>
+              </Touchable>
+            </View>
+          ) : (
+            <Button
+              label="Use email instead"
+              variant="secondary"
+              icon="message-circle"
+              onPress={() => setEmailOpen(true)}
+              disabled={busy !== null}
+            />
+          )}
+
+          <Touchable
+            accessibilityRole="button"
+            onPress={() => setGuestNoticeOpen(true)}
+            disabled={busy !== null}
+            className="items-center py-2"
+          >
+            <Text className="text-sm font-medium text-muted">Try a temporary guest session</Text>
+          </Touchable>
+        </View>
+      </FadeIn>
+
+      <Text className="text-center text-xs leading-5 text-subtle">
+        Free while you study. Your workspace stays private to your account.
+      </Text>
+    </View>
+  );
+
   return (
     <KeyboardAvoidingView
       className="flex-1 bg-paper"
@@ -284,14 +416,18 @@ export default function Login() {
           paddingBottom: insets.bottom + 32,
         }}
       >
-        <View
-          className={`w-full self-center ${
-            wide ? 'max-w-5xl flex-row items-center gap-14' : 'max-w-sm gap-8'
-          }`}
-        >
-          <View className={wide ? 'flex-1' : undefined}>{pitch}</View>
-          <View className={wide ? 'w-[400px]' : undefined}>{form}</View>
-        </View>
+        {phone ? (
+          <View className="w-full max-w-sm self-center">{phoneForm}</View>
+        ) : (
+          <View
+            className={`w-full self-center ${
+              wide ? 'max-w-5xl flex-row items-center gap-14' : 'max-w-sm gap-8'
+            }`}
+          >
+            <View className={wide ? 'flex-1' : undefined}>{pitch}</View>
+            <View className={wide ? 'w-[400px]' : undefined}>{form}</View>
+          </View>
+        )}
       </ScrollView>
 
       <Sheet
