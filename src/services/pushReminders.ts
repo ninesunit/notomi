@@ -155,3 +155,35 @@ export async function removeBackgroundReminders(): Promise<void> {
     console.warn('[reminders] Could not remove the background reminder queue.', error);
   }
 }
+
+/**
+ * Deliver a message alert through the same per-device notification channel as
+ * reminders. Messaging never depends on this call: a failed push does not
+ * roll back the Firestore message the recipient can read when they return.
+ */
+export async function sendMessageNotification(input: {
+  recipientId: string;
+  conversationId: string;
+  senderName: string;
+  preview: string;
+}): Promise<void> {
+  if (!R2_WORKER_URL || Platform.OS !== 'web') return;
+  const user = getFirebaseAuth().currentUser;
+  if (!user || user.isAnonymous) return;
+  try {
+    const response = await authenticatedFetch('/push/message', {
+      method: 'POST',
+      body: JSON.stringify({
+        recipientId: input.recipientId,
+        conversationId: input.conversationId,
+        title: input.senderName.slice(0, 80),
+        body: input.preview.slice(0, 180),
+      }),
+    });
+    if (!response.ok && response.status !== 404) {
+      console.warn(`[messages] Notification returned ${response.status}.`);
+    }
+  } catch (error) {
+    console.warn('[messages] Notification delivery failed.', error);
+  }
+}

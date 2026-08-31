@@ -12,6 +12,7 @@ import { getDb } from './firebase';
 import { uploadFileToR2 } from './r2Storage';
 import { busyPath, type BusyInterval } from './social';
 import type { MaterialFile } from './ingestion';
+import { createSocialInboxItem } from './socialInbox';
 
 export type SprintMember = { id: string; name: string; freeHours: number };
 export type SprintAttachment = {
@@ -106,6 +107,20 @@ export async function createGroupSprint(input: {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  const ownerName = members.find((member) => member.id === input.uid)?.name ?? 'A friend';
+  await Promise.all(
+    members
+      .filter((member) => member.id !== input.uid)
+      .map((member) => createSocialInboxItem({
+        senderId: input.uid,
+        senderName: ownerName,
+        recipientId: member.id,
+        type: 'sprint',
+        title: `${ownerName} added you to a group sprint`,
+        body: input.title.trim() || `${input.subjectName} project`,
+        payload: { sprintId: ref.id, subjectName: input.subjectName },
+      }))
+  ).catch(() => undefined);
   return ref.id;
 }
 

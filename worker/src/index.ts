@@ -318,6 +318,10 @@ type PushSyncBody = {
   deviceId?: string;
   subscription?: PushSubscription;
   reminders?: ScheduledReminderInput[];
+  recipientId?: string;
+  conversationId?: string;
+  title?: string;
+  body?: string;
 };
 
 function pushEnabled(env: Env): boolean {
@@ -334,11 +338,59 @@ function validSubscription(value: unknown): value is PushSubscription {
   );
 }
 
+const pushDevicesKey = (uid: string) => `push-devices:${uid}`;
+
+async function pushDevices(env: Env, uid: string): Promise<string[]> {
+  const value = await env.DRIVE_TOKENS.get(pushDevicesKey(uid), 'json').catch(() => null);
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && /^[A-Za-z0-9_-]{8,80}$/.test(entry)).slice(-5)
+    : [];
+}
+
+async function registerPushDevice(env: Env, uid: string, deviceId: string): Promise<void> {
+  const current = await pushDevices(env, uid);
+  const next = [...current.filter((entry) => entry !== deviceId), deviceId].slice(-5);
+  await env.DRIVE_TOKENS.put(pushDevicesKey(uid), JSON.stringify(next));
+}
+
+async function unregisterPushDevice(env: Env, uid: string, deviceId: string): Promise<void> {
+  const next = (await pushDevices(env, uid)).filter((entry) => entry !== deviceId);
+  if (next.length) await env.DRIVE_TOKENS.put(pushDevicesKey(uid), JSON.stringify(next));
+  else await env.DRIVE_TOKENS.delete(pushDevicesKey(uid));
+}
+
+type FirestoreValue = {
+  stringValue?: string;
+  arrayValue?: { values?: FirestoreValue[] };
+};
+
+async function messageRecipientAllowed(input: {
+  env: Env;
+  token: string;
+  senderId: string;
+  recipientId: string;
+  conversationId: string;
+}): Promise<boolean> {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(input.recipientId)) return false;
+  if (!/^[A-Za-z0-9_-]{1,270}$/.test(input.conversationId)) return false;
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(input.env.FIREBASE_PROJECT_ID)}/databases/(default)/documents/conversations/${encodeURIComponent(input.conversationId)}`,
+    { headers: { Authorization: `Bearer ${input.token}` } }
+  );
+  if (!response.ok) return false;
+  const document = await response.json() as { fields?: Record<string, FirestoreValue> };
+  const members = document.fields?.memberIds?.arrayValue?.values
+    ?.map((value) => value.stringValue)
+    .filter((value): value is string => typeof value === 'string') ?? [];
+  return members.length === 2 && members.includes(input.senderId) && members.includes(input.recipientId);
+}
+
 async function handlePush(
   path: string,
   request: Request,
   env: Env,
   uid: string,
+  token: string,
   cors: Record<string, string>
 ): Promise<Response | null> {
   if (!path.startsWith('/push/')) return null;
@@ -352,6 +404,50 @@ async function handlePush(
   const body = request.method === 'GET'
     ? null
     : await request.json().catch(() => ({})) as PushSyncBody;
+
+  if (path === '/push/message' && request.method === 'POST') {
+    const recipientId = body?.recipientId ?? '';
+    const conversationId = body?.conversationId ?? '';
+    const allowed = await messageRecipientAllowed({
+      env,
+      token,
+      senderId: uid,
+      recipientId,
+      conversationId,
+    });
+    if (!allowed) return json({ error: 'message recipient is not allowed' }, 403, cors);
+
+    const title = typeof body?.title === 'string' ? body.title.trim().slice(0, 80) : 'New message';
+    const message = typeof body?.body === 'string' ? body.body.trim().slice(0, 180) : 'Open Notomi to read it.';
+    const ids = await pushDevices(env, recipientId);
+    const results = await Promise.all(
+      ids.map(async (deviceId) => ({
+        deviceId,
+        outcome: await env.REMINDER_DEVICES.getByName(`${recipientId}:${deviceId}`).sendNow({
+          id: `message-${conversationId}`.slice(0, 180),
+          title: title || 'New message',
+          body: message || 'Open Notomi to read it.',
+          url: `/social?tab=messages&conversation=${encodeURIComponent(conversationId)}`,
+        }),
+      }))
+    );
+    const stale = new Set(
+      results
+        .filter((entry) => entry.outcome === 'expired' || entry.outcome === 'unavailable')
+        .map((entry) => entry.deviceId)
+    );
+    if (stale.size) {
+      const active = ids.filter((deviceId) => !stale.has(deviceId));
+      if (active.length) await env.DRIVE_TOKENS.put(pushDevicesKey(recipientId), JSON.stringify(active));
+      else await env.DRIVE_TOKENS.delete(pushDevicesKey(recipientId));
+    }
+    return json(
+      { delivered: results.filter((entry) => entry.outcome === 'delivered').length },
+      200,
+      cors
+    );
+  }
+
   const deviceId = request.method === 'GET'
     ? url.searchParams.get('deviceId') ?? ''
     : body?.deviceId ?? '';
@@ -391,11 +487,13 @@ async function handlePush(
       url: entry.url?.startsWith('/') ? entry.url.slice(0, 240) : '/dashboard',
     }));
     const synced = await device.syncReminders(body.subscription, bounded);
+    await registerPushDevice(env, uid, deviceId);
     return json({ synced }, 200, cors);
   }
 
   if (path === '/push/device' && request.method === 'DELETE') {
     await device.clear();
+    await unregisterPushDevice(env, uid, deviceId);
     return json({ removed: true }, 200, cors);
   }
 
@@ -500,7 +598,7 @@ export default {
     }
 
     // Each reminder queue is authenticated and namespaced to this uid/device.
-    const pushResponse = await handlePush(url.pathname, request, env, uid, cors).catch(
+    const pushResponse = await handlePush(url.pathname, request, env, uid, token, cors).catch(
       (error: unknown) => json({ error: (error as Error).message }, 500, cors)
     );
     if (pushResponse) return pushResponse;

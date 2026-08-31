@@ -24,10 +24,17 @@ export function ShareMaterial({
   friend,
   open,
   onClose,
+  onShared,
 }: {
   friend: Friend;
   open?: boolean;
   onClose?: () => void;
+  onShared?: (share: {
+    shareId: string;
+    kind: ShareKind;
+    title: string;
+    subjectName: string;
+  }) => void | Promise<void>;
 }) {
   const uid = useUid();
   const { user } = useAuth();
@@ -88,17 +95,26 @@ export function ShareMaterial({
     setBusy(true);
     setError(null);
     try {
-      await shareWithFriend({
-        senderId: uid,
-        senderName: user?.displayName || user?.email?.split('@')[0] || 'A friend',
-        recipientId: friend.id,
-        recipientName: friend.displayName,
+      const shareId = await shareWithFriend(
+        {
+          senderId: uid,
+          senderName: user?.displayName || user?.email?.split('@')[0] || 'A friend',
+          recipientId: friend.id,
+          recipientName: friend.displayName,
+          kind,
+          subjectId: selected.id,
+          subjectName: selected.name,
+          title: payload.title,
+          content: payload.content,
+          sourceFileName: payload.sourceFileName,
+        },
+        { notifyInbox: !onShared }
+      );
+      await onShared?.({
+        shareId,
         kind,
-        subjectId: selected.id,
-        subjectName: selected.name,
         title: payload.title,
-        content: payload.content,
-        sourceFileName: payload.sourceFileName,
+        subjectName: selected.name,
       });
       setVisible(false);
     } catch (caught) {

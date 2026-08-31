@@ -39,6 +39,8 @@ import { pickMaterials, type MaterialFile } from '@/services/ingestion';
 import { subjectTint, workloadTint } from '@/lib/color';
 import { SemesterSetup } from '@/components/SemesterSetup';
 import { InstallAppCard } from '@/components/InstallAppCard';
+import { buildDailyPlan } from '@/services/dailyPlan';
+import { workspaceHealth } from '@/services/workspaceHealth';
 
 /**
  * The dashboard.
@@ -159,6 +161,17 @@ export default function Dashboard() {
 
       {compact ? <MobileTodayBrief classes={liveClasses} routines={routines.data} /> : null}
 
+      {setUp ? (
+        <DashboardAssists
+          classes={liveClasses}
+          routines={routines.data}
+          todos={todos.data}
+          semesters={semesters.data}
+          subjects={subjects.data}
+          compact={compact}
+        />
+      ) : null}
+
       <ThisWeek
         classes={liveClasses}
         routines={routines.data}
@@ -188,6 +201,72 @@ export default function Dashboard() {
       />
 
     </ScreenScroll>
+  );
+}
+
+function DashboardAssists({
+  classes,
+  routines,
+  todos,
+  semesters,
+  subjects,
+  compact,
+}: {
+  classes: ResolvedClass[];
+  routines: RoutineBlock[];
+  todos: Todo[];
+  semesters: Semester[];
+  subjects: Subject[];
+  compact: boolean;
+}) {
+  const plan = useMemo(() => buildDailyPlan({ classes, routines, todos }), [classes, routines, todos]);
+  const issues = useMemo(
+    () => workspaceHealth({ semesters, subjects, classes, routines, todos }),
+    [semesters, subjects, classes, routines, todos]
+  );
+
+  return (
+    <View className={`mb-5 ${compact ? 'gap-2' : 'flex-row gap-3'}`}>
+      <Card className="min-w-0 flex-1 gap-3 p-4">
+        <View className="flex-row items-center gap-2">
+          <Icon name="sparkles" size={15} tone="accent" />
+          <Text className="flex-1 text-sm font-semibold text-ink">Today plan</Text>
+          <Link href="/tasks" asChild>
+            <Touchable accessibilityRole="link" className="flex-row items-center gap-1">
+              <Text className="text-xs font-semibold text-muted">Tasks</Text>
+              <Icon name="chevron-right" size={13} tone="subtle" />
+            </Touchable>
+          </Link>
+        </View>
+        {plan.length ? plan.slice(0, compact ? 2 : 3).map((item) => (
+          <View key={item.id} className="flex-row items-start gap-2.5">
+            <View className="mt-1 h-2 w-2 rounded-full bg-accent" />
+            <View className="min-w-0 flex-1">
+              <Text className="text-xs font-semibold text-ink" numberOfLines={1}>{item.title}</Text>
+              <Text className="text-[11px] text-muted" numberOfLines={1}>{item.detail}</Text>
+            </View>
+          </View>
+        )) : <Text className="text-xs text-muted">No fixed blocks or open tasks need placing today.</Text>}
+      </Card>
+
+      <Card className="min-w-0 flex-1 gap-3 p-4">
+        <View className="flex-row items-center gap-2">
+          <Icon name={issues.length ? 'alert-circle' : 'check-circle-2'} size={15} tone={issues.length ? 'amber' : 'pine'} />
+          <Text className="flex-1 text-sm font-semibold text-ink">Workspace check</Text>
+          <Text className={`text-xs font-semibold ${issues.length ? 'text-amber' : 'text-pine'}`}>
+            {issues.length ? `${issues.length} to review` : 'Ready'}
+          </Text>
+        </View>
+        {issues.length ? issues.slice(0, compact ? 1 : 2).map((issue) => (
+          <Link key={issue.id} href={issue.href} asChild>
+            <Touchable accessibilityRole="link" className="flex-row items-center gap-2 rounded-lg bg-sand px-3 py-2">
+              <Text className="min-w-0 flex-1 text-xs font-medium text-ink" numberOfLines={1}>{issue.title}</Text>
+              <Icon name="chevron-right" size={13} tone="subtle" />
+            </Touchable>
+          </Link>
+        )) : <Text className="text-xs text-muted">Terms, courses, schedule and tasks are consistent.</Text>}
+      </Card>
+    </View>
   );
 }
 

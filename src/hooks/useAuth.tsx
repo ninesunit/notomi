@@ -19,6 +19,7 @@ import {
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getDb, getFirebaseAuth, isFirebaseConfigured } from '@/services/firebase';
 import { deleteGuestWorkspace } from '@/services/guestCleanup';
+import { removeBackgroundReminders } from '@/services/pushReminders';
 
 type AuthValue = {
   user: User | null;
@@ -188,6 +189,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           return;
         }
+        // Remove this device from both reminder and message notification
+        // delivery while its Firebase session can still authenticate the call.
+        await removeBackgroundReminders();
         await signOut(auth);
       },
     }),

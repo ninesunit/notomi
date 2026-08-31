@@ -21,6 +21,44 @@ service cloud.firestore {
              .data.status == 'accepted';
     }
 
+    function isAcceptedPair(memberIds) {
+      return request.auth != null
+        && memberIds is list
+        && memberIds.size() == 2
+        && request.auth.uid in memberIds
+        && (
+          (memberIds[0] == request.auth.uid && isAcceptedFriend(memberIds[1]))
+          || (memberIds[1] == request.auth.uid && isAcceptedFriend(memberIds[0]))
+        );
+    }
+
+    function validConversationMember(member) {
+      return member is map
+        && member.keys().hasOnly(['id', 'displayName', 'username', 'color'])
+        && member.id is string
+        && member.id.size() <= 128
+        && member.displayName is string
+        && member.displayName.size() <= 60
+        && member.username is string
+        && member.username.size() <= 24
+        && member.color is string
+        && member.color.size() <= 24;
+    }
+
+    function validMessageAttachment(attachment) {
+      return attachment == null || (
+        attachment is map
+        && attachment.keys().hasOnly(['shareId', 'kind', 'title', 'subjectName'])
+        && attachment.shareId is string
+        && attachment.shareId.size() <= 128
+        && attachment.kind in ['material', 'summary', 'flashcards']
+        && attachment.title is string
+        && attachment.title.size() <= 200
+        && attachment.subjectName is string
+        && attachment.subjectName.size() <= 200
+      );
+    }
+
     // Every Notomi document lives under users/{userId}, so ownership is the
     // only rule the app needs. Nothing is readable across accounts.
     match /users/{userId} {
@@ -225,6 +263,50 @@ service cloud.firestore {
         allow update: if false;
       }
 
+      // Read receipts stay private. A conversation never writes into the
+      // recipient's account merely because the sender opened it.
+      match /conversation_reads/{conversationId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.lastReadAt is timestamp;
+      }
+
+      // Cross-account notifications contain summaries and ids only. The
+      // sender must already be an accepted friend, and the recipient alone
+      // controls read state and decisions after delivery.
+      match /social_inbox/{itemId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if request.auth != null
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.recipientId == userId
+          && isAcceptedFriend(userId)
+          && request.resource.data.type in ['availability', 'share', 'sprint', 'circle']
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 160
+          && request.resource.data.body is string
+          && request.resource.data.body.size() <= 600
+          && request.resource.data.payload is map
+          && request.resource.data.payload.keys().hasOnly(['shareId', 'kind', 'subjectName', 'slots', 'participantIds', 'sprintId'])
+          && (!('slots' in request.resource.data.payload)
+            || (request.resource.data.payload.slots is list
+              && request.resource.data.payload.slots.size() <= 3))
+          && (!('participantIds' in request.resource.data.payload)
+            || (request.resource.data.payload.participantIds is list
+              && request.resource.data.payload.participantIds.size() <= 4))
+          && (!('shareId' in request.resource.data.payload)
+            || (request.resource.data.payload.shareId is string
+              && request.resource.data.payload.shareId.size() <= 128))
+          && (!('sprintId' in request.resource.data.payload)
+            || (request.resource.data.payload.sprintId is string
+              && request.resource.data.payload.sprintId.size() <= 128))
+          && request.resource.data.status == 'new';
+        allow update: if isOwner(userId)
+          && request.resource.data.senderId == resource.data.senderId
+          && request.resource.data.recipientId == resource.data.recipientId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'readAt'])
+          && request.resource.data.status in ['new', 'accepted', 'declined'];
+      }
+
       // Who this student has blocked, and why if they said. Private to them:
       // filed under the blocker so blocking needs no permission on anything
       // the blocked account can read, and leaves them nothing to look up.
@@ -293,6 +375,96 @@ service cloud.firestore {
             && request.resource.data.nodeCount <= 5000
             && request.resource.data.version == 1;
         }
+      }
+    }
+
+    // Direct messages are limited to one accepted friend pair. A message can
+    // point at a read-only shared copy, never at the sender's private source.
+    match /conversations/{conversationId} {
+      allow read: if request.auth != null && request.auth.uid in resource.data.memberIds;
+      allow create: if isAcceptedPair(request.resource.data.memberIds)
+        && request.resource.data.members is list
+        && request.resource.data.members.size() == 2
+        && validConversationMember(request.resource.data.members[0])
+        && validConversationMember(request.resource.data.members[1])
+        && request.resource.data.lastMessage is string
+        && request.resource.data.lastMessage.size() <= 200
+        && request.resource.data.lastSenderId == request.auth.uid;
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.memberIds
+        && isAcceptedPair(resource.data.memberIds)
+        && request.resource.data.memberIds == resource.data.memberIds
+        && request.resource.data.members is list
+        && request.resource.data.members.size() == 2
+        && validConversationMember(request.resource.data.members[0])
+        && validConversationMember(request.resource.data.members[1])
+        && request.resource.data.lastSenderId == request.auth.uid
+        && request.resource.data.lastMessage is string
+        && request.resource.data.lastMessage.size() <= 200
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['members', 'lastMessage', 'lastSenderId', 'lastMessageAt', 'createdAt', 'updatedAt']);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.memberIds;
+        allow create: if request.auth != null
+          && request.auth.uid in getAfter(/databases/$(database)/documents/conversations/$(conversationId)).data.memberIds
+          && isAcceptedPair(getAfter(/databases/$(database)/documents/conversations/$(conversationId)).data.memberIds)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 2000
+          && validMessageAttachment(request.resource.data.attachment);
+        allow update, delete: if false;
+      }
+    }
+
+    // Course circles are opt-in and deterministic: one bounded group for one
+    // university and course code. Public course sharing is the join gate.
+    match /circles/{circleId} {
+      allow read: if request.auth != null && request.auth.uid in resource.data.memberIds;
+      allow create: if request.auth != null
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.memberIds == [request.auth.uid]
+        && request.resource.data.courseCode is string
+        && request.resource.data.courseCode.size() <= 30
+        && request.resource.data.universityId is string
+        && request.resource.data.universityId.size() <= 160
+        && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.shareCourses == true
+        && request.resource.data.courseCode in get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.courseCodes
+        && request.resource.data.universityId == get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.universityId;
+      allow update: if request.auth != null && (
+        (
+          request.auth.uid in resource.data.memberIds
+          && request.resource.data.memberIds == resource.data.memberIds
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt'])
+        )
+        || (
+          !(request.auth.uid in resource.data.memberIds)
+          && request.auth.uid in request.resource.data.memberIds
+          && request.resource.data.memberIds.size() <= 20
+          && request.resource.data.memberIds.toSet().difference(resource.data.memberIds.toSet()).hasOnly([request.auth.uid])
+          && resource.data.memberIds.toSet().difference(request.resource.data.memberIds.toSet()).size() == 0
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'updatedAt'])
+          && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.shareCourses == true
+          && resource.data.courseCode in get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.courseCodes
+          && resource.data.universityId == get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.universityId
+        )
+      );
+      allow delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
+
+      match /posts/{postId} {
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/circles/$(circleId)).data.memberIds;
+        allow create: if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/circles/$(circleId)).data.memberIds
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.senderName is string
+          && request.resource.data.senderName.size() <= 60
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 1500
+          && validMessageAttachment(request.resource.data.attachment);
+        allow update, delete: if false;
       }
     }
 

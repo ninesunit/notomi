@@ -13,6 +13,8 @@ import { paths } from '@/lib/paths';
 import { DAY_FULL, minutesToLabel, type ClassBlock, type RoutineBlock, type Semester, type Subject } from '@/lib/schema';
 import { feedback, play } from '@/lib/sound';
 import { getDb } from '@/services/firebase';
+import { conversationIdFor } from '@/services/socialMessaging';
+import { createSocialInboxItem } from '@/services/socialInbox';
 import {
   acceptFriend,
   blockUser,
@@ -485,6 +487,21 @@ export default function Friends() {
         mine={toBusyIntervals(classes.data, routines.data)}
         loading={loadingGaps}
         onToggle={chooseForMatch}
+        onPropose={async (gaps) => {
+          const chosen = accepted.filter((friend) => selected.includes(friend.id));
+          const slots = gaps.slice(0, 3);
+          await Promise.all(chosen.map((friend) => createSocialInboxItem({
+            senderId: uid,
+            senderName: profile.data?.displayName || 'A friend',
+            recipientId: friend.id,
+            type: 'availability',
+            title: `${profile.data?.displayName || 'A friend'} suggested study times`,
+            body: slots.map((gap) => `${DAY_FULL[gap.day]} ${minutesToLabel(gap.start)} to ${minutesToLabel(gap.end)}`).join(', '),
+            payload: { slots, participantIds: [uid, ...selected] },
+          })));
+          setNotice(`Sent ${slots.length} shared time options.`);
+          setSharedTimeOpen(false);
+        }}
         onSprint={() => {
           setSharedTimeOpen(false);
           router.push('/tasks?tab=focus');
@@ -499,6 +516,7 @@ export default function Friends() {
           setSharedTimeOpen(true);
         }}
         onWeek={setViewingWeek}
+        onMessage={(friend) => router.push(`/social?tab=messages&conversation=${conversationIdFor(uid, friend.id)}&recipient=${friend.id}` as never)}
         onShare={setSharingWith}
         onChallenge={(friend) => router.push(`/social?tab=arena&opponent=${friend.id}` as never)}
         onRemove={(friend) => {
@@ -615,6 +633,7 @@ function FriendMenu({
   onClose,
   onMatch,
   onWeek,
+  onMessage,
   onShare,
   onChallenge,
   onRemove,
@@ -624,6 +643,7 @@ function FriendMenu({
   onClose: () => void;
   onMatch: (friend: Friend) => void;
   onWeek: (friend: Friend) => void;
+  onMessage: (friend: Friend) => void;
   onShare: (friend: Friend) => void;
   onChallenge: (friend: Friend) => void;
   onRemove: (friend: Friend) => void;
@@ -651,6 +671,7 @@ function FriendMenu({
       variant="compact"
     >
       <View className="gap-1">
+        <MenuRow icon="message-circle" label="Message" onPress={() => run(onMessage)} />
         <MenuRow icon="clock" label="Find shared time" onPress={() => run(onMatch)} />
         <MenuRow icon="calendar" label="See their week" onPress={() => run(onWeek)} />
         <MenuRow icon="share-2" label="Share material" onPress={() => run(onShare)} />
@@ -982,6 +1003,7 @@ function SharedTimeSheet({
   mine,
   loading,
   onToggle,
+  onPropose,
   onSprint,
 }: {
   visible: boolean;
@@ -992,11 +1014,13 @@ function SharedTimeSheet({
   mine: BusyInterval[];
   loading: boolean;
   onToggle: (id: string) => void;
+  onPropose: (gaps: Gap[]) => Promise<void>;
   onSprint: () => void;
 }) {
   const [range, setRange] = useState('any');
   /** -1 is every day; anything else is a weekday index. */
   const [day, setDay] = useState(-1);
+  const [sending, setSending] = useState(false);
 
   const window = RANGES.find((entry) => entry.id === range) ?? RANGES[0];
   const complete = selected.every((id) => busyWeeks[id] !== undefined);
@@ -1021,7 +1045,14 @@ function SharedTimeSheet({
       variant="fullscreen-mobile"
       maxHeight={620}
       primaryAction={
-        ordered.length ? { label: 'Study sprint', onPress: onSprint } : undefined
+        ordered.length ? {
+          label: 'Send time options',
+          loading: sending,
+          onPress: () => {
+            setSending(true);
+            void onPropose(ordered).finally(() => setSending(false));
+          },
+        } : undefined
       }
     >
       <View className="gap-5">
@@ -1098,6 +1129,7 @@ function SharedTimeSheet({
                   <Text className="mt-0.5 text-xs text-muted">{formatDuration(gap.end - gap.start)}</Text>
                 </View>
               ))}
+              <Button label="Open Focus Room" icon="timer" variant="secondary" size="sm" onPress={onSprint} />
             </View>
           )}
         </View>

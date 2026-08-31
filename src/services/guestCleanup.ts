@@ -24,6 +24,8 @@ const USER_COLLECTIONS = [
   'attendance_logs',
   'shared_materials',
   'shares_sent',
+  'conversation_reads',
+  'social_inbox',
   'blocked',
   'reelCards',
   'reel_cards',

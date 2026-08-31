@@ -177,6 +177,58 @@ export class ReminderDevice extends DurableObject<Env> {
     await this.ctx.storage.deleteAlarm();
   }
 
+  /** Immediate visible push used by friend messages. */
+  async sendNow(input: {
+    id: string;
+    title: string;
+    body: string;
+    url: string;
+  }): Promise<'delivered' | 'expired' | 'unavailable' | 'retry'> {
+    await this.ready;
+    const row = this.ctx.storage.sql
+      .exec<{ payload: string }>('SELECT payload FROM subscription WHERE id = 1')
+      .toArray()[0];
+    if (!row) return 'unavailable';
+
+    let subscription: PushSubscription;
+    try {
+      subscription = JSON.parse(row.payload) as PushSubscription;
+    } catch {
+      await this.clear();
+      return 'expired';
+    }
+
+    try {
+      const keys = this.keys();
+      const payload = await buildPushPayload(
+        {
+          data: JSON.stringify({
+            title: input.title,
+            body: input.body,
+            url: input.url,
+            tag: input.id,
+          }),
+          options: { ttl: 15 * 60 },
+        },
+        subscription,
+        {
+          subject: VAPID_SUBJECT,
+          publicKey: keys.public_key,
+          privateKey: keys.private_key,
+        }
+      );
+      const response = await fetch(subscription.endpoint, payload);
+      if (response.ok) return 'delivered';
+      if (response.status === 404 || response.status === 410) {
+        await this.clear();
+        return 'expired';
+      }
+      return 'retry';
+    } catch {
+      return 'retry';
+    }
+  }
+
   async alarm(): Promise<void> {
     await this.ready;
     const subscriptionRow = this.ctx.storage.sql

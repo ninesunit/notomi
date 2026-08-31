@@ -102,6 +102,31 @@ export const paths = {
   sentShare: (db: Firestore, uid: string, shareId: string) =>
     doc(db, 'users', uid, 'shares_sent', shareId),
 
+  /** Private read state and actionable social notifications. */
+  conversationReads: (db: Firestore, uid: string) =>
+    collection(db, 'users', uid, 'conversation_reads'),
+  conversationRead: (db: Firestore, uid: string, conversationId: string) =>
+    doc(db, 'users', uid, 'conversation_reads', conversationId),
+  socialInbox: (db: Firestore, uid: string) =>
+    collection(db, 'users', uid, 'social_inbox'),
+  socialInboxItem: (db: Firestore, uid: string, itemId: string) =>
+    doc(db, 'users', uid, 'social_inbox', itemId),
+
+  /** Friend-only conversations. Attachments are pointers to read-only shares. */
+  conversations: (db: Firestore) => collection(db, 'conversations'),
+  conversation: (db: Firestore, conversationId: string) =>
+    doc(db, 'conversations', conversationId),
+  conversationMessages: (db: Firestore, conversationId: string) =>
+    collection(db, 'conversations', conversationId, 'messages'),
+  conversationMessage: (db: Firestore, conversationId: string, messageId: string) =>
+    doc(db, 'conversations', conversationId, 'messages', messageId),
+
+  /** One opt-in course circle per university and course code. */
+  circles: (db: Firestore) => collection(db, 'circles'),
+  circle: (db: Firestore, circleId: string) => doc(db, 'circles', circleId),
+  circlePosts: (db: Firestore, circleId: string) =>
+    collection(db, 'circles', circleId, 'posts'),
+
   /**
    * Review cards. Still named for the feed they were built for, because
    * renaming the collection would mean migrating every card a student already

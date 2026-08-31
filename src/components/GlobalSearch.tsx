@@ -13,11 +13,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Icon, useTones } from '@/components/Icon';
-import { getDocs, orderBy, query } from 'firebase/firestore';
+import { getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { useUid } from '@/hooks/useAuth';
 import { paths } from '@/lib/paths';
-import type { SourceDocument, Subject, Todo } from '@/lib/schema';
+import type { NoteNotebook, SourceDocument, Subject, Todo } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
+import type { MaterialShare } from '@/services/sharing';
 
 /**
  * Command palette over everything the student has: subject names, document
@@ -31,7 +32,7 @@ import { getDb } from '@/services/firebase';
 
 type Hit = {
   id: string;
-  kind: 'subject' | 'document' | 'notes' | 'todo';
+  kind: 'subject' | 'document' | 'notes' | 'todo' | 'notebook' | 'shared';
   title: string;
   subtitle: string;
   /** The matched line, with the query in context. */
@@ -48,11 +49,13 @@ type Entry = {
   body: string;
 };
 
-const KIND_META: Record<Hit['kind'], { icon: 'folder' | 'file-text' | 'feather' | 'check-square'; label: string }> = {
+const KIND_META: Record<Hit['kind'], { icon: 'folder' | 'file-text' | 'feather' | 'check-square' | 'notebook-pen' | 'share-2'; label: string }> = {
   subject: { icon: 'folder', label: 'Subject' },
   document: { icon: 'file-text', label: 'Document' },
   notes: { icon: 'feather', label: 'Notes' },
   todo: { icon: 'check-square', label: 'To-do' },
+  notebook: { icon: 'notebook-pen', label: 'Notebook' },
+  shared: { icon: 'share-2', label: 'Shared with me' },
 };
 
 /**
@@ -99,9 +102,11 @@ export function GlobalSearch({ compact = false }: { compact?: boolean } = {}) {
     setError(null);
     try {
       const db = getDb();
-      const [subjectSnapshot, todoSnapshot] = await Promise.all([
+      const [subjectSnapshot, todoSnapshot, notebookSnapshot, sharedSnapshot] = await Promise.all([
         getDocs(query(paths.subjects(db, uid), orderBy('updatedAt', 'desc'))),
         getDocs(paths.todos(db, uid)),
+        getDocs(query(paths.noteNotebooks(db, uid), limit(100))),
+        getDocs(query(paths.sharedMaterials(db, uid), limit(100))),
       ]);
 
       const built: Entry[] = [];
@@ -166,6 +171,31 @@ export function GlobalSearch({ compact = false }: { compact?: boolean } = {}) {
           href: '/tasks',
           haystack: todo.title.toLowerCase(),
           body: '',
+        });
+      }
+
+      for (const notebookDoc of notebookSnapshot.docs) {
+        const notebook = { id: notebookDoc.id, ...notebookDoc.data() } as NoteNotebook;
+        built.push({
+          kind: 'notebook',
+          title: notebook.title,
+          subtitle: notebook.subjectName || 'Notomi Notes',
+          href: `/knowledge/notes/${notebook.id}`,
+          haystack: `${notebook.title} ${notebook.subjectName ?? ''} ${notebook.subjectCode ?? ''}`.toLowerCase(),
+          body: '',
+        });
+      }
+
+      for (const sharedDoc of sharedSnapshot.docs) {
+        const share = { id: sharedDoc.id, ...sharedDoc.data() } as MaterialShare;
+        const searchable = share.content.slice(0, 120_000);
+        built.push({
+          kind: 'shared',
+          title: share.title,
+          subtitle: `${share.subjectName} · ${share.senderName}`,
+          href: '/knowledge?tab=folders',
+          haystack: `${share.title} ${share.subjectName} ${share.senderName} ${searchable}`.toLowerCase(),
+          body: searchable,
         });
       }
 
@@ -276,7 +306,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean } = {}) {
                 ref={inputRef}
                 value={term}
                 onChangeText={setTerm}
-                placeholder="Search subjects, documents, notes and to-dos"
+                placeholder="Search courses, files, notes, tasks and shared items"
                 placeholderTextColor={tones.subtle}
                 autoCorrect={false}
                 autoCapitalize="none"

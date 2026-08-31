@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { paths } from '@/lib/paths';
 import { getDb } from './firebase';
+import { createSocialInboxItem } from './socialInbox';
 
 export type ShareKind = 'material' | 'summary' | 'flashcards';
 
@@ -40,7 +41,10 @@ export type SentShare = {
   createdAt: Timestamp | null;
 };
 
-export async function shareWithFriend(input: Omit<MaterialShare, 'id' | 'createdAt'>): Promise<void> {
+export async function shareWithFriend(
+  input: Omit<MaterialShare, 'id' | 'createdAt'>,
+  options: { notifyInbox?: boolean } = {}
+): Promise<string> {
   const content = input.content.trim();
   if (!content) throw new Error('There is no readable content to share.');
   if (content.length > 850_000) throw new Error('That item is too large to share as one read-only copy.');
@@ -69,6 +73,19 @@ export async function shareWithFriend(input: Omit<MaterialShare, 'id' | 'created
     kind: input.kind,
     createdAt: serverTimestamp(),
   }).catch(() => undefined);
+
+  if (options.notifyInbox !== false) {
+    await createSocialInboxItem({
+      senderId: input.senderId,
+      senderName: input.senderName,
+      recipientId: input.recipientId,
+      type: 'share',
+      title: `${input.senderName} shared ${input.title.trim()}`,
+      body: `${input.subjectName} · Read-only ${input.kind}`,
+      payload: { shareId: copy.id, kind: input.kind, subjectName: input.subjectName },
+    }).catch(() => undefined);
+  }
+  return copy.id;
 }
 
 /** Everything this account has sent, newest first. Bounded; not a listener. */
