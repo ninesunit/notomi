@@ -8,9 +8,9 @@ import { Sheet } from '@/components/Sheet';
 import { ShareMaterial } from '@/components/social/ShareMaterial';
 import { Button, Card, EmptyState, Field, Loading, Notice, PageHeader, Touchable } from '@/components/ui';
 import { useUid } from '@/hooks/useAuth';
-import { useCollection, useDocument } from '@/hooks/useFirestore';
+import { useCollection, useDocument, useQueryOnce } from '@/hooks/useFirestore';
 import { paths } from '@/lib/paths';
-import { DAY_FULL, minutesToLabel, type ClassBlock, type RoutineBlock, type Subject } from '@/lib/schema';
+import { DAY_FULL, minutesToLabel, type ClassBlock, type RoutineBlock, type Semester, type Subject } from '@/lib/schema';
 import { feedback, play } from '@/lib/sound';
 import { getDb } from '@/services/firebase';
 import {
@@ -28,14 +28,11 @@ import {
   requestFriend,
   searchProfiles,
   suggestClassmates,
-  loadSharedWeek,
   stopSharing,
   syncPublicCourses,
   toBusyIntervals,
-  toSharedBlocks,
   usernameOf,
   type BusyInterval,
-  type SharedBlock,
   type Friend,
   type Gap,
   type Presence,
@@ -83,8 +80,17 @@ export default function Friends() {
   const friends = useCollection<Friend>(friendsPath(db, uid), [uid]);
   const classes = useCollection<ClassBlock>(paths.classes(db, uid), [uid]);
   const routines = useCollection<RoutineBlock>(paths.routines(db, uid), [uid]);
+  const semesters = useQueryOnce<Semester>(paths.semesters(db, uid), [uid]);
   const subjects = useCollection<Subject>(paths.subjects(db, uid), [uid]);
   const profile = useDocument<Profile>(profilePath(db, uid), [uid]);
+  const currentSemesterId = useMemo(
+    () => semesters.data.find((semester) => semester.isCurrent)?.id ?? semesters.data[0]?.id ?? null,
+    [semesters.data]
+  );
+  const currentClasses = useMemo(
+    () => classes.data.filter((block) => !currentSemesterId || !block.semesterId || block.semesterId === currentSemesterId),
+    [classes.data, currentSemesterId]
+  );
 
   const accepted = useMemo(
     () => friends.data.filter((friend) => friend.status === 'accepted'),
@@ -138,26 +144,25 @@ export default function Friends() {
   }, [acceptedKey]);
 
   useEffect(() => {
-    if (classes.loading || routines.loading || friends.loading) return;
-    if (accepted.length === 0) {
+    if (classes.loading || routines.loading || semesters.loading || friends.loading || profile.loading) return;
+    if (accepted.length === 0 || profile.data?.shareSchedule !== true) {
       void stopSharing(uid);
       return;
     }
     void publishBusy(
       uid,
-      toBusyIntervals(classes.data, routines.data),
-      // Labels only when the student has asked for them; the shape of the week
-      // goes out either way, because the free-time matcher runs on that alone.
-      profile.data?.shareSchedule === true ? toSharedBlocks(classes.data, routines.data) : []
+      toBusyIntervals(currentClasses, routines.data)
     );
   }, [
     uid,
     accepted.length,
-    classes.data,
+    currentClasses,
     classes.loading,
     routines.data,
     routines.loading,
+    semesters.loading,
     friends.loading,
+    profile.loading,
     profile.data?.shareSchedule,
   ]);
 
@@ -1117,15 +1122,9 @@ function StepLabel({ step, label, hint }: { step: number; label: string; hint?: 
   );
 }
 
-/**
- * A friend's week, when they have chosen to publish it with its labels.
- *
- * Deliberately a read of one document rather than anything live: a timetable
- * changes a handful of times a semester, and the alternative — a listener per
- * friend — costs a connection each to watch something that does not move.
- */
+/** A friend's busy intervals, loaded only when requested. */
 function FriendWeek({ friend, onClose }: { friend: Friend | null; onClose: () => void }) {
-  const [blocks, setBlocks] = useState<SharedBlock[] | null>(null);
+  const [blocks, setBlocks] = useState<BusyInterval[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -1133,8 +1132,8 @@ function FriendWeek({ friend, onClose }: { friend: Friend | null; onClose: () =>
     let live = true;
     setBlocks(null);
     setFailed(false);
-    void loadSharedWeek(friend.id)
-      .then((found) => live && setBlocks(found))
+    void loadBusyWeeks([friend.id])
+      .then((found) => live && setBlocks(found[friend.id] ?? []))
       .catch(() => live && setFailed(true));
     return () => {
       live = false;
@@ -1142,7 +1141,7 @@ function FriendWeek({ friend, onClose }: { friend: Friend | null; onClose: () =>
   }, [friend?.id]);
 
   const byDay = useMemo(() => {
-    const days: SharedBlock[][] = Array.from({ length: 7 }, () => []);
+    const days: BusyInterval[][] = Array.from({ length: 7 }, () => []);
     for (const block of blocks ?? []) days[block.day]?.push(block);
     return days;
   }, [blocks]);
@@ -1151,7 +1150,7 @@ function FriendWeek({ friend, onClose }: { friend: Friend | null; onClose: () =>
     <Sheet
       visible={friend !== null}
       onClose={onClose}
-      title={friend ? `${friend.displayName}’s week` : 'Their week'}
+      title={friend ? `${friend.displayName}’s busy week` : 'Their busy week'}
       icon="calendar"
     >
       {failed ? (
@@ -1161,8 +1160,8 @@ function FriendWeek({ friend, onClose }: { friend: Friend | null; onClose: () =>
       ) : blocks.length === 0 ? (
         <EmptyState
           icon="calendar"
-          title="Not shared"
-          body={`${friend?.displayName ?? 'They'} has not turned on schedule sharing. You can still use Find shared time to see when you are both free.`}
+          title="Free-time matching is off"
+          body={`${friend?.displayName ?? 'They'} has not shared their busy hours.`}
         />
       ) : (
         <View className="gap-3">
@@ -1180,9 +1179,7 @@ function FriendWeek({ friend, onClose }: { friend: Friend | null; onClose: () =>
                     <Text className="w-28 shrink-0 text-xs font-semibold tabular-nums text-muted">
                       {minutesToLabel(block.start)}–{minutesToLabel(block.end)}
                     </Text>
-                    <Text className="flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
-                      {block.title}
-                    </Text>
+                    <Text className="flex-1 text-sm font-semibold text-ink">Busy</Text>
                   </View>
                 ))}
               </View>

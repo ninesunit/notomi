@@ -12,7 +12,7 @@ import { WeekStyleToggle } from '@/components/WeekStyleToggle';
 import { useAuth, useUid } from '@/hooks/useAuth';
 import { useQueryOnce } from '@/hooks/useFirestore';
 import { paths } from '@/lib/paths';
-import type { Semester } from '@/lib/schema';
+import type { ClassBlock, RoutineBlock, Semester } from '@/lib/schema';
 import { getDb } from '@/services/firebase';
 import { useVisibleDays } from '@/hooks/useVisibleDays';
 import { useUISound } from '@/hooks/useUISound';
@@ -30,7 +30,15 @@ import { play } from '@/lib/sound';
 import { useThemeChoice, type ThemeChoice } from '@/lib/theme';
 import { exportAcademicData } from '@/services/dataExport';
 import { exportTermCalendar } from '@/services/calendarExport';
-import { myProfile, privacyOf, savePrivacy, type PrivacySettings } from '@/services/social';
+import {
+  myProfile,
+  privacyOf,
+  publishBusy,
+  savePrivacy,
+  stopSharing,
+  toBusyIntervals,
+  type PrivacySettings,
+} from '@/services/social';
 import { SafetyRows } from '@/components/social/SafetyRows';
 import { AI_LIMITS, budgetStatus, subscribeToBudget } from '@/lib/aiBudget';
 import { Sheet } from '@/components/Sheet';
@@ -688,7 +696,17 @@ function LanguageCard() {
 function PrivacyCard() {
   const uid = useUid();
   const [privacy, setPrivacy] = useState<PrivacySettings | null>(null);
+  const [saving, setSaving] = useState<keyof PrivacySettings | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const classes = useQueryOnce<ClassBlock>(paths.classes(getDb(), uid), [uid]);
+  const routines = useQueryOnce<RoutineBlock>(paths.routines(getDb(), uid), [uid]);
+  const semesters = useQueryOnce<Semester>(paths.semesters(getDb(), uid), [uid]);
+  const currentSemesterId =
+    semesters.data.find((semester) => semester.isCurrent)?.id ?? semesters.data[0]?.id ?? null;
+  const currentClasses = classes.data.filter(
+    (block) => !currentSemesterId || !block.semesterId || block.semesterId === currentSemesterId
+  );
+  const scheduleReady = !classes.loading && !routines.loading && !semesters.loading;
 
   useEffect(() => {
     let active = true;
@@ -700,18 +718,35 @@ function PrivacyCard() {
     };
   }, [uid]);
 
-  function update(patch: Partial<PrivacySettings>) {
-    if (!privacy) return;
-    const next = { ...privacy, ...patch };
+  async function syncFreeTime(enabled: boolean) {
+    if (enabled) {
+      await publishBusy(uid, toBusyIntervals(currentClasses, routines.data));
+    } else {
+      await stopSharing(uid);
+    }
+  }
+
+  async function update(key: keyof PrivacySettings) {
+    if (!privacy || saving || (key === 'shareSchedule' && !scheduleReady)) return;
+    const previous = privacy;
+    const next = { ...privacy, [key]: !privacy[key] };
     // Optimistic: the switch should move under the thumb, not after a
     // round trip. It goes back if the write fails.
     setPrivacy(next);
+    setSaving(key);
     setError(null);
     play('toggle');
-    void savePrivacy(uid, next).catch(() => {
-      setPrivacy(privacy);
+    try {
+      await savePrivacy(uid, next);
+      if (key === 'shareSchedule') await syncFreeTime(next.shareSchedule);
+    } catch {
+      setPrivacy(previous);
+      await savePrivacy(uid, previous).catch(() => undefined);
+      if (key === 'shareSchedule') await syncFreeTime(previous.shareSchedule).catch(() => undefined);
       setError('That did not save. Check your connection and try again.');
-    });
+    } finally {
+      setSaving(null);
+    }
   }
 
   const rows: Array<{ key: keyof PrivacySettings; title: string; detail: string }> = [
@@ -750,12 +785,16 @@ function PrivacyCard() {
               </View>
               <Pressable
                 accessibilityRole="switch"
-                accessibilityState={{ checked: privacy[row.key] }}
+                accessibilityState={{
+                  checked: privacy[row.key],
+                  disabled: saving !== null || (row.key === 'shareSchedule' && !scheduleReady),
+                }}
                 accessibilityLabel={`${row.title}. ${privacy[row.key] ? 'On' : 'Off'}.`}
-                onPress={() => update({ [row.key]: !privacy[row.key] })}
+                disabled={saving !== null || (row.key === 'shareSchedule' && !scheduleReady)}
+                onPress={() => void update(row.key)}
                 className={`h-7 w-12 shrink-0 justify-center rounded-full px-0.5 ${
                   privacy[row.key] ? 'bg-pine' : 'bg-line'
-                }`}
+                } ${saving !== null ? 'opacity-60' : ''}`}
               >
                 <View
                   className={`h-6 w-6 rounded-full bg-surface ${
@@ -769,6 +808,7 @@ function PrivacyCard() {
       )}
 
       {error ? <Text className="text-[11px] text-rose">{error}</Text> : null}
+      {saving ? <Text className="text-[11px] text-subtle">Saving privacy setting...</Text> : null}
 
       {/*
         The switches say what will happen. These say what already has — and a

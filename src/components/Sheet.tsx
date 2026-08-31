@@ -275,7 +275,10 @@ export function Sheet({
               keyboardShouldPersistTaps="handled"
               // Dragging the body puts the keyboard away, which is what a
               // thumb reaching past it is usually trying to do.
-              keyboardDismissMode="on-drag"
+              // On react-native-web, programmatic scrollIntoView can be
+              // reported as a drag. Dismissing on that event closes the iOS
+              // keyboard immediately after a lower field receives focus.
+              keyboardDismissMode={Platform.OS === 'web' ? 'none' : 'on-drag'}
             >
               {children}
             </ScrollView>

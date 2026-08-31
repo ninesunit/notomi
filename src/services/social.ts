@@ -34,11 +34,6 @@ import { universitySearchKey } from './universities';
  * they cannot see what you are doing, and nothing in the data would let them
  * work it out.
  *
- * A student who *wants* to compare timetables can publish the labelled week
- * too, under a separate setting that is off until they turn it on. Nothing else
- * depends on it — turning it on adds names to what friends already saw, and
- * turning it off takes them away on the next publish.
- *
  * Everything here is opt-in and reversible: stop sharing and the document is
  * deleted, not flagged.
  */
@@ -94,13 +89,7 @@ export type Profile = {
   courseCodes?: string[];
   shareCourses?: boolean;
   sharePresence?: boolean;
-  /**
-   * Publishes the week with its labels, not just its shape.
-   *
-   * Off by default and deliberately separate from everything else here: the
-   * free-time matcher needs no labels at all, so a student who only wants
-   * "when are we free" never has to hand over what they are studying.
-   */
+  /** Publish busy intervals for accepted friends to match free time. */
   shareSchedule?: boolean;
   searchPrefixes?: string[];
   stats?: PublicProfileStats;
@@ -252,6 +241,7 @@ export async function claimUsername(
     courseCodes: currentData?.courseCodes ?? [],
     shareCourses: currentData?.shareCourses ?? false,
     sharePresence: currentData?.sharePresence ?? false,
+    shareSchedule: currentData?.shareSchedule ?? false,
     stats: normaliseProfileStats(currentData?.stats),
     searchPrefixes: publicSearchPrefixes({
       username: clean,
@@ -611,6 +601,7 @@ export async function myProfile(uid: string): Promise<Profile | null> {
       : [],
     shareCourses: data.shareCourses === true,
     sharePresence: data.sharePresence === true,
+    shareSchedule: data.shareSchedule === true,
     searchPrefixes: Array.isArray(data.searchPrefixes) ? data.searchPrefixes : [],
     stats: normaliseProfileStats(data.stats),
     updatedAt: data.updatedAt ?? null,
@@ -762,43 +753,9 @@ export function toBusyIntervals(
   return merged;
 }
 
-/** One labelled block of a shared week — only ever published on request. */
-export type SharedBlock = BusyInterval & { title: string };
-
-/**
- * The same week, with names on it.
- *
- * Kept to the title and the room because that is what a friend comparing
- * timetables needs; the code, the lecturer and the section are not part of
- * "when are you in class". Trimmed hard so a long module name cannot be used
- * to smuggle a paragraph into a document strangers can be shown.
- */
-export function toSharedBlocks(classes: ClassBlock[], routines: RoutineBlock[]): SharedBlock[] {
-  return [
-    ...classes.map((block) => ({
-      day: block.day,
-      start: block.startMinute,
-      end: block.endMinute,
-      title: (block.subjectName || block.title || 'Class').slice(0, 60),
-    })),
-    ...routines.map((block) => ({
-      day: block.day,
-      start: block.startMinute,
-      end: block.endMinute,
-      title: (block.title || 'Busy').slice(0, 60),
-    })),
-  ]
-    .sort((a, b) => a.day - b.day || a.start - b.start)
-    .slice(0, 60);
-}
-
-export async function publishBusy(
-  uid: string,
-  intervals: BusyInterval[],
-  blocks: SharedBlock[] = []
-): Promise<void> {
+export async function publishBusy(uid: string, intervals: BusyInterval[]): Promise<void> {
   const cacheKey = `notomi:published-busy-v1:${uid}`;
-  const signature = JSON.stringify({ intervals, blocks });
+  const signature = JSON.stringify(intervals);
   try {
     if (typeof localStorage !== 'undefined' && localStorage.getItem(cacheKey) === signature) return;
   } catch {
@@ -806,9 +763,6 @@ export async function publishBusy(
   }
   await setDoc(busyPath(getDb(), uid), {
     intervals,
-    // Written every time, so turning the setting off removes the labels on the
-    // next publish rather than leaving yesterday's week readable.
-    blocks,
     updatedAt: serverTimestamp(),
   });
   try {
@@ -843,31 +797,6 @@ export async function loadBusyWeeks(friendIds: string[]): Promise<Record<string,
     })
   );
   return output;
-}
-
-/**
- * A friend's week, labelled — empty when they have not opted in.
- *
- * Read on demand rather than listened to: a timetable changes a few times a
- * semester, and one document per friend per open is cheaper than a listener
- * that lives for the session.
- */
-export async function loadSharedWeek(friendId: string): Promise<SharedBlock[]> {
-  const snapshot = await getDoc(busyPath(getDb(), friendId));
-  if (!snapshot.exists()) return [];
-
-  const blocks = snapshot.data().blocks;
-  if (!Array.isArray(blocks)) return [];
-
-  return blocks
-    .filter(
-      (block): block is SharedBlock =>
-        typeof block?.day === 'number' &&
-        typeof block?.start === 'number' &&
-        typeof block?.end === 'number' &&
-        typeof block?.title === 'string'
-    )
-    .sort((a, b) => a.day - b.day || a.start - b.start);
 }
 
 export async function syncPublicCourses(

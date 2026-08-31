@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Icon, useTones } from '@/components/Icon';
@@ -1588,7 +1588,10 @@ function RoutineForm({
   const tones = useTones();
   const [title, setTitle] = useState(block?.title ?? '');
   const [category, setCategory] = useState(block?.category ?? ROUTINE_CATEGORIES[0].id);
-  const [venue, setVenue] = useState(block?.venue ?? '');
+  // Venue does not participate in validation. Keeping it outside render state
+  // prevents an iOS WebKit rerender for every key while the field is being
+  // moved above the software keyboard.
+  const venue = useRef(block?.venue ?? '');
   /** Gym on Monday, Wednesday and Friday is one routine, added once. */
   const [days, setDays] = useState<number[]>([block?.day ?? todayIndex()]);
   const [startMinute, setStartMinute] = useState(block?.startMinute ?? 18 * 60);
@@ -1624,7 +1627,7 @@ function RoutineForm({
             day,
             startMinute,
             endMinute,
-            venue: venue.trim() || null,
+            venue: venue.current.trim() || null,
             color: meta?.color ?? '#6F6A5F',
           },
           block?.id
@@ -1734,8 +1737,10 @@ function RoutineForm({
 
       <Field
         label="Where (optional)"
-        value={venue}
-        onChangeText={setVenue}
+        defaultValue={venue.current}
+        onChangeText={(value) => {
+          venue.current = value;
+        }}
         placeholder="Sports hall"
       />
 

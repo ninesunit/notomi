@@ -349,15 +349,16 @@ service cloud.firestore {
     // A week reduced to when you are busy — day, start, end, and nothing else.
     // Readable only by someone you have accepted.
     match /busy/{userId} {
-      allow read: if isOwner(userId) || isAcceptedFriend(userId);
+      allow read: if isOwner(userId)
+        || (isAcceptedFriend(userId)
+          && get(/databases/$(database)/documents/profiles/$(userId)).data.shareSchedule == true
+          && resource.data.keys().hasOnly(['intervals', 'updatedAt']));
       allow create, update: if isOwner(userId)
+        && get(/databases/$(database)/documents/profiles/$(userId)).data.shareSchedule == true
+        && request.resource.data.keys().hasOnly(['intervals', 'updatedAt'])
         && request.resource.data.intervals is list
         && request.resource.data.intervals.size() <= 300
-        // The labelled week, when the owner has opted into sharing one. Bounded
-        // so this document cannot become a channel for arbitrary text.
-        && (!('blocks' in request.resource.data)
-          || (request.resource.data.blocks is list
-            && request.resource.data.blocks.size() <= 60));
+        && request.resource.data.updatedAt is timestamp;
       allow delete: if isOwner(userId);
     }
 
